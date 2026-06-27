@@ -1,0 +1,135 @@
+{% extends 'api/base.html' %}
+
+{% block title %}Environment Details - API TestLab{% endblock %}
+{% block page_title %}Environment: {{ env.name }}{% endblock %}
+
+{% block content %}
+<div class="card mb-4">
+    <div class="card-body">
+        <table class="table table-sm mb-0">
+            <tr><th width="180">Name</th><td>{{ env.name }}</td></tr>
+            <tr><th>Base URL</th><td><code>{{ env.base_url }}</code></td></tr>
+            <tr><th>Description</th><td>{{ env.description|default:"-" }}</td></tr>
+            <tr><th>Auth Type</th><td>{{ env.get_auth_type_display }}</td></tr>
+            <tr><th>Status</th><td>{% if env.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td></tr>
+            <tr><th>Created By</th><td>{{ env.created_by.username|default:"-" }}</td></tr>
+            <tr><th>Created At</th><td>{{ env.created_at|date:"M d, Y H:i" }}</td></tr>
+            <tr><th>Updated At</th><td>{{ env.updated_at|date:"M d, Y H:i" }}</td></tr>
+        </table>
+    </div>
+</div>
+
+{% if env.auth_type == 'oauth2' and oauth2_details %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="mb-0">OAuth 2.0 Details</h6>
+    </div>
+    <div class="card-body">
+        <table class="table table-sm mb-0">
+            <tr><th width="180">Add Auth Data To</th><td>{% if oauth2_details.add_to == 'request_url' %}Request URL{% else %}Request Headers{% endif %}</td></tr>
+            <tr><th>Client ID</th><td><code>{{ oauth2_details.client_id|default:'-' }}</code></td></tr>
+            <tr><th>Access Token URL</th><td><code>{{ oauth2_details.token_url|default:'-' }}</code></td></tr>
+            <tr><th>Header Prefix</th><td><code>{{ oauth2_details.header_prefix|default:'Bearer' }}</code></td></tr>
+            <tr><th>Current Token</th><td><code>{{ oauth2_details.token|default:'Not generated'|truncatechars:120 }}</code></td></tr>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="mb-0">Auth Credentials (JSON)</h6>
+    </div>
+    <div class="card-body">
+        {% if auth_credentials_pretty %}
+        <pre class="mb-0"><code>{{ auth_credentials_pretty }}</code></pre>
+        {% else %}
+        <span class="text-muted">No auth credentials set.</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="d-flex gap-2">
+    <a href="{% url 'api:environment_list' %}" class="btn btn-outline-secondary">Back to Environments</a>
+    {% if user.api_profile.role != 'viewer' %}
+    <button type="button" class="btn btn-outline-success" id="testConnectionBtn" onclick="testEnvironmentConnection({{ env.pk }})">
+        <i class="bi bi-plug"></i> Test Connection
+    </button>
+    <a href="{% url 'api:environment_edit' env.pk %}" class="btn btn-primary">
+        <i class="bi bi-pencil"></i> Edit
+    </a>
+    {% endif %}
+</div>
+
+<div id="testConnectionResult" class="mt-3"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function getCsrfToken() {
+    const csrfCookie = document.cookie.split(';')
+        .map(c => c.trim())
+        .find(c => c.startsWith('csrftoken='));
+    return csrfCookie ? csrfCookie.split('=')[1] : '';
+}
+
+function renderConnectionResult(type, message, extra) {
+    const box = document.getElementById('testConnectionResult');
+    const extraHtml = extra ? `<div class="small mt-1">${extra}</div>` : '';
+    box.innerHTML = `
+        <div class="alert alert-${type} mb-0" role="alert">
+            ${message}
+            ${extraHtml}
+        </div>
+    `;
+}
+
+function testEnvironmentConnection(envId) {
+    const btn = document.getElementById('testConnectionBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing...';
+    renderConnectionResult('info', 'Testing connection...', '');
+
+    const testUrlTemplate = "{% url 'api:environment_test_connection' 0 %}";
+    const endpoint = testUrlTemplate.replace('/0/test-connection/', `/${envId}/test-connection/`);
+
+    fetch(endpoint, {
+        method: 'GET',
+    })
+    .then(async (r) => {
+        const contentType = r.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+            const txt = (await r.text()).slice(0, 120);
+            throw new Error(`Unexpected response (${r.status}). ${txt}`);
+        }
+        return r.json();
+    })
+    .then(data => {
+        const detail = [
+            data.status_code ? `Status: ${data.status_code}` : null,
+            data.response_time_ms != null ? `Time: ${data.response_time_ms} ms` : null,
+            data.final_url ? `URL: ${data.final_url}` : null,
+            data.error ? `Error: ${data.error}` : null,
+        ].filter(Boolean).join(' | ');
+
+        if (data.ok) {
+            renderConnectionResult('success', data.message || 'Connection successful.', detail);
+        } else if (data.reachable) {
+            renderConnectionResult('warning', data.message || 'Connection reached server but returned non-success status.', detail);
+        } else {
+            renderConnectionResult('danger', data.message || 'Connection failed.', detail);
+        }
+    })
+    .catch(err => {
+        renderConnectionResult('danger', 'Connection test failed.', `Error: ${err}`);
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-plug"></i> Test Connection';
+    });
+}
+</script>
+{% endblock %}
+
+
+

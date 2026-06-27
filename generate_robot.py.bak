@@ -1,0 +1,485 @@
+"""
+generate_robot.py
+-----------------
+Query the `recordings` table for a session and use a local
+Ollama server with llama3 to produce a
+Robot Framework test suite.
+
+Usage
+-----
+# list available sessions
+python generate_robot.py --list
+
+# generate for a specific record_id
+python generate_robot.py --record-id <UUID>
+
+# also save to a .robot file
+python generate_robot.py --record-id <UUID> --output tests/my_suite.robot
+
+Environment variables (override defaults)
+------------------------------------------
+PGDATABASE   automation_db
+PGUSER       postgres
+PGPASSWORD   password
+PGHOST       localhost
+PGPORT       5432
+OLLAMA_API   http://localhost:11434/api     <- Ollama native API endpoint
+LLM_MODEL    llama3
+LLM_MAX_TOKENS  4096
+
+Ollama Setup
+------------
+podman run -d -p 11434:11434 ollama/ollama
+podman exec <container_id> ollama pull llama3
+"""
+
+import os
+import sys
+import json
+import argparse
+import textwrap
+from typing import Optional
+
+import psycopg2
+import psycopg2.extras
+import psycopg2.pool
+import requests
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+DB_CONFIG = {
+    "dbname":   os.getenv("PGDATABASE", "automation_db"),
+    "user":     os.getenv("PGUSER",     "postgres"),
+    "password": os.getenv("PGPASSWORD", "password"),
+    "host":     os.getenv("PGHOST",     "localhost"),
+    "port":     os.getenv("PGPORT",     "5432"),
+}
+
+# Module-level connection pool — created once on first use, shared across all
+# database helper functions in this script.
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Return the module-level pool, creating it on first call."""
+    global _pool
+    if _pool is None or _pool.closed:
+        _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, **DB_CONFIG)
+    return _pool
+
+
+def _get_conn():
+    """Borrow a connection from the pool."""
+    return _get_pool().getconn()
+
+
+def _put_conn(conn, *, discard: bool = False) -> None:
+    """Return (or discard) a connection to the pool."""
+    try:
+        _get_pool().putconn(conn, close=discard)
+    except Exception:
+        pass
+
+OLLAMA_API     = os.getenv("OLLAMA_API",     "http://localhost:11434/api")
+LLM_MODEL      = os.getenv("LLM_MODEL",      "llama3")
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4096"))
+
+# ---------------------------------------------------------------------------
+# Locator helpers
+# ---------------------------------------------------------------------------
+
+STRATEGY_MAP = {
+    "id":              "id",
+    "name":            "name",
+    "css":             "css",
+    "xpath":           "xpath",
+    "className":       "css",   # converted below
+    "class":           "css",
+    "linkText":        "link",
+    "partialLinkText": "partial link",
+    "tagName":         "tag",
+}
+
+
+def _to_rf_locator(strategy: str, value: str) -> str:
+    """Convert a raw strategy + value to a Robot Framework SeleniumLibrary locator."""
+    if not strategy or not value:
+        return ""
+    strat = strategy.strip().lower()
+    val   = value.strip()
+
+    if strat in ("classname", "class"):
+        # Convert to css class selector
+        cls = val.split()[0]          # take first token if multiple classes
+        return f"css:.{cls}"
+    if strat == "id":
+        return f"id:{val}"
+    if strat == "name":
+        return f"name:{val}"
+    if strat in ("css", "cssselector"):
+        return f"css:{val}"
+    if strat in ("xpath",):
+        return f"xpath:{val}"
+    if strat == "linktext":
+        return f"link:{val}"
+    if strat == "partiallinktext":
+        return f"partial link:{val}"
+    # fallback: pass through as-is
+    return f"{strat}:{val}"
+
+
+def _best_locator_from_raw_event(raw_event: dict) -> str:
+    """Extract the best locator string from a recorded raw_event JSON."""
+    locs = raw_event.get("locators") or {}
+    priority = ["robot", "id", "name", "css", "xpath",
+                "className", "class", "linkText", "partialLinkText"]
+    for p in priority:
+        val = locs.get(p)
+        if val:
+            if p == "robot":
+                return str(val)
+            return _to_rf_locator(p, str(val))
+    return ""
+
+
+def _best_locator_from_locators_raw(locators_raw) -> str:
+    """Extract the best locator from the steps.locators_raw JSONB column (same dict format)."""
+    if not locators_raw:
+        return ""
+    if isinstance(locators_raw, str):
+        try:
+            locators_raw = json.loads(locators_raw)
+        except Exception:
+            return ""
+    if not isinstance(locators_raw, dict):
+        return ""
+    priority = ["robot", "id", "name", "css", "xpath",
+                "className", "class", "linkText", "partialLinkText"]
+    for p in priority:
+        val = locators_raw.get(p)
+        if val:
+            if p == "robot":
+                return str(val)
+            return _to_rf_locator(p, str(val))
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Database helpers
+# ---------------------------------------------------------------------------
+
+def list_sessions(limit: int = 30) -> list[dict]:
+    """Return the most recent sessions from `steps`."""
+    query = """
+        SELECT record_id,
+               MIN(recorder)    AS recorder,
+               MIN(folder_name) AS folder_name,
+               MIN(created_at)  AS started_at,
+               COUNT(DISTINCT step_no) AS step_count
+        FROM steps
+        GROUP BY record_id
+        ORDER BY started_at DESC
+        LIMIT %s
+    """
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, [limit])
+            result = cur.fetchall()
+    except Exception:
+        _put_conn(conn, discard=True)
+        raise
+    else:
+        _put_conn(conn)
+        return result
+
+
+def _try_session_meta(conn, record_id: str) -> str:
+    """Return a friendly session name from session_meta if available."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT record_name FROM session_meta WHERE record_id = %s",
+                [record_id]
+            )
+            row = cur.fetchone()
+            return row[0] if row else ""
+    except Exception:
+        return ""
+
+
+def load_steps(record_id: str) -> list[dict]:
+    """Load all steps for *record_id* from the steps table (deduplicated)."""
+    query = """
+        SELECT DISTINCT ON (step_no)
+               id, step_no, action, page_url, element_tag,
+               raw_event, locators_raw,
+               field_name, field_value,
+               strategy, locator
+        FROM steps
+        WHERE record_id = %s
+        ORDER BY step_no, id
+    """
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, [record_id])
+            steps = [dict(r) for r in cur.fetchall()]
+
+        # Enrich with session name (reuse the same pooled connection)
+        name = _try_session_meta(conn, record_id)
+    except Exception:
+        _put_conn(conn, discard=True)
+        raise
+    else:
+        _put_conn(conn)
+
+    for s in steps:
+        if isinstance(s.get("raw_event"), str):
+            try:
+                s["raw_event"] = json.loads(s["raw_event"])
+            except Exception:
+                s["raw_event"] = {}
+        elif s.get("raw_event") is None:
+            s["raw_event"] = {}
+
+        # Resolve best locator string:
+        # 1. Direct strategy/locator columns (single primary locator written at record time)
+        # 2. locators_raw JSONB dict (all strategies, pre-extracted from raw_event)
+        # 3. raw_event["locators"] dict (fallback)
+        direct_strat = (s.get("strategy") or "").strip()
+        direct_loc   = (s.get("locator")  or "").strip()
+        if direct_strat and direct_loc:
+            s["_rf_locator"] = _to_rf_locator(direct_strat, direct_loc)
+        else:
+            s["_rf_locator"] = (
+                _best_locator_from_locators_raw(s.get("locators_raw"))
+                or _best_locator_from_raw_event(s["raw_event"])
+            )
+
+        s["_session_name"] = name
+
+    return steps
+
+
+# ---------------------------------------------------------------------------
+# Prompt builder
+# ---------------------------------------------------------------------------
+
+SYSTEM_PROMPT = textwrap.dedent("""\
+    You are an expert in Robot Framework and the SeleniumLibrary.
+    Convert the JSON step list provided by the user into a complete,
+    production-ready Robot Framework (.robot) test suite.
+
+    Rules:
+    - Use SeleniumLibrary keywords only.
+    - Map actions as follows:
+        click       → Click Element  <locator>
+        dblclick    → Double Click Element  <locator>
+        input       → Input Text  <locator>  <value>
+        change      → Select From List By Value / Input Text (depending on tag)
+        keydown     → Press Keys  <locator>  <key>   (Enter → ENTER, Tab → TAB)
+        submit      → Submit Form  <locator>
+        contextmenu → (skip — not supported by SeleniumLibrary; add a comment)
+        navigate    → Go To  <url>
+    - Use CSS or id locators where available; fall back to XPath.
+    - Group repeated interactions on the same page into Keywords.
+    - Extract ${BASE_URL} from the first step's page URL.
+    - Create a Suite Setup keyword that opens the browser and navigates to ${BASE_URL}.
+    - Create a Suite Teardown that calls Close All Browsers.
+    - Name the test case after the session name (or "Recorded Session" if blank).
+    - Output ONLY valid Robot Framework syntax — no prose, no markdown fences.
+""")
+
+
+def _build_user_message(steps: list[dict], record_id: str) -> str:
+    """Serialise step list to a compact JSON prompt."""
+    session_name = steps[0]["_session_name"] if steps else ""
+    simplified = []
+    for s in steps:
+        entry = {
+            "step":    s["step_no"],
+            "action":  s["action"],
+            "url":     s["page_url"],
+            "tag":     s.get("element_tag") or "",
+            "locator": s["_rf_locator"],
+        }
+        fname = (s.get("field_name") or "").strip()
+        if fname:
+            entry["field"] = fname
+
+        val = (s.get("field_value") or
+               s["raw_event"].get("value") or "")
+        if val:
+            entry["value"] = str(val)[:200]   # truncate very long values
+
+        key = s["raw_event"].get("key") or ""
+        if key:
+            entry["key"] = key
+
+        simplified.append(entry)
+
+    return (
+        f"Session name: {session_name or 'Recorded Session'}\n"
+        f"Record ID:    {record_id}\n\n"
+        f"Steps (JSON):\n{json.dumps(simplified, separators=(',', ':'))}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# LLM call
+# ---------------------------------------------------------------------------
+
+def call_llm(user_message: str) -> str:
+    """Send the prompt to the local Ollama server and stream the response token by token."""
+    full_prompt = f"{SYSTEM_PROMPT}\n\nUser:\n{user_message}"
+
+    print(f"[LLM] Sending {len(full_prompt)} chars to {OLLAMA_API} …", flush=True)
+
+    try:
+        response = requests.post(
+            f"{OLLAMA_API}/generate",
+            json={
+                "model": LLM_MODEL,
+                "prompt": full_prompt,
+                "stream": True,
+                "num_predict": LLM_MAX_TOKENS,
+            },
+            stream=True,
+            timeout=300,
+        )
+        response.raise_for_status()
+
+        parts: list[str] = []
+        print(flush=True)
+        for raw_line in response.iter_lines():
+            if not raw_line:
+                continue
+            chunk = json.loads(raw_line)
+            token = chunk.get("response", "")
+            if token:
+                print(token, end="", flush=True)
+                parts.append(token)
+            if chunk.get("done"):
+                break
+        print(flush=True)
+        return "".join(parts).strip()
+
+    except requests.exceptions.ConnectionError:
+        print(
+            f"[ERROR] Cannot connect to Ollama at {OLLAMA_API}\n"
+            f"        Make sure Ollama is running:\n"
+            f"        ollama pull {LLM_MODEL}\n"
+            f"        (or use: podman run -d -p 11434:11434 ollama/ollama)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except Exception as e:
+        print(f"[ERROR] LLM request failed: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def _print_sessions(sessions: list[dict]) -> None:
+    print(f"\n{'#':<4} {'Record ID':<38} {'Recorder':<20} {'Steps':<6} {'Started'}")
+    print("-" * 100)
+    for i, s in enumerate(sessions, 1):
+        print(
+            f"{i:<4} {str(s['record_id']):<38} "
+            f"{(s['recorder'] or ''):<20} "
+            f"{s['step_count']:<6} "
+            f"{str(s['started_at'])[:19]}"
+        )
+    print()
+
+
+def _interactive_pick(sessions: list[dict]) -> Optional[str]:
+    _print_sessions(sessions)
+    choice = input("Enter # or paste UUID (blank to cancel): ").strip()
+    if not choice:
+        return None
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(sessions):
+            return str(sessions[idx]["record_id"])
+        print("[ERROR] Number out of range.")
+        return None
+    # assume it's a UUID
+    return choice
+
+
+def main():
+    # Allow CLI overrides
+    global OLLAMA_API, LLM_MODEL, LLM_MAX_TOKENS
+    
+    parser = argparse.ArgumentParser(
+        description="Generate Robot Framework test suite from recordings using Ollama llama3.2."
+    )
+    parser.add_argument("--list",      action="store_true",
+                        help="List recent recording sessions and exit.")
+    parser.add_argument("--record-id", metavar="UUID",
+                        help="record_id (UUID) of the session to convert.")
+    parser.add_argument("--output",    metavar="FILE",
+                        help="Save generated .robot file to this path.")
+    parser.add_argument("--ollama-api", default=None,
+                        help=f"Override Ollama API URL (default: {OLLAMA_API})")
+    parser.add_argument("--model",     default=None,
+                        help=f"Override model name (default: {LLM_MODEL})")
+    parser.add_argument("--max-tokens", type=int, default=None,
+                        help=f"Override max output tokens (default: {LLM_MAX_TOKENS})")
+    args = parser.parse_args()
+
+    if args.ollama_api:
+        OLLAMA_API = args.ollama_api
+    if args.model:
+        LLM_MODEL = args.model
+    if args.max_tokens:
+        LLM_MAX_TOKENS = args.max_tokens
+
+    # --list
+    if args.list:
+        sessions = list_sessions()
+        if not sessions:
+            print("No recordings found.")
+        else:
+            _print_sessions(sessions)
+        return
+
+    # Resolve record_id
+    record_id = args.record_id
+    if not record_id:
+        sessions = list_sessions()
+        if not sessions:
+            print("No recordings found in the database.")
+            return
+        record_id = _interactive_pick(sessions)
+        if not record_id:
+            return
+
+    # Load steps
+    print(f"[DB] Loading steps for {record_id} …", flush=True)
+    steps = load_steps(record_id)
+    if not steps:
+        print(f"[ERROR] No steps found for record_id={record_id}")
+        sys.exit(1)
+    print(f"[DB] Loaded {len(steps)} step(s).", flush=True)
+
+    # Build prompt & call LLM
+    user_msg = _build_user_message(steps, record_id)
+    robot_text = call_llm(user_msg)
+
+    if args.output:
+        out_path = args.output
+        os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write(robot_text)
+        print(f"[SAVED] {out_path}")
+
+
+if __name__ == "__main__":
+    main()

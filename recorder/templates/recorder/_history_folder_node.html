@@ -1,0 +1,193 @@
+<div class="hist-folder-node"
+  id="{{ folder_node.dom_id }}"
+  data-tree-depth="{{ depth|default:0 }}"
+  data-folder-name="{{ folder_node.path }}">
+
+  <div class="folder-tree-header {% if depth|default:0 == 0 %}is-root{% endif %}">
+    <button class="btn btn-link text-start text-decoration-none p-0 d-flex align-items-center gap-2 flex-grow-1 group-toggle folder-tree-toggle"
+            data-bs-toggle="collapse"
+            data-bs-target="#{{ folder_node.collapse_id }}"
+            aria-expanded="false"
+            title="{{ folder_node.path|default:folder_node.display_name }}">
+      <span class="folder-tree-caret chevron-icon" aria-hidden="true"></span>
+      <span class="folder-tree-label">
+        {% if folder_node.is_recordings %}
+          <i class="bi bi-folder2 text-warning fs-6 folder-tree-icon"></i>
+          <span class="folder-tree-name">{{ folder_node.display_name }}</span>
+        {% elif folder_node.is_unfiled %}
+          <i class="bi bi-inbox text-muted fs-6"></i>
+          <span class="folder-tree-name text-muted">Unfiled</span>
+        {% else %}
+          <i class="bi bi-folder2 text-warning fs-6 folder-tree-icon"></i>
+          <span class="folder-tree-name">{{ folder_node.display_name }}</span>
+          {% if depth|default:0 > 0 %}
+          <span class="folder-tree-path">{{ folder_node.path }}</span>
+          {% endif %}
+        {% endif %}
+        <span class="badge folder-tree-badge">{{ folder_node.total_sessions }}</span>
+      </span>
+    </button>
+
+    {% if not folder_node.is_unfiled %}
+    <div class="folder-tree-actions">
+      <button type="button" class="btn btn-sm btn-outline-danger hist-clear-btn d-none"
+              data-folder="{{ folder_node.path }}"
+              data-bs-toggle="modal" data-bs-target="#clearHistoryModal"
+              title="Clear history for this folder">
+        <i class="bi bi-trash"></i>{% if depth|default:0 == 0 %} <span class="folder-action-label">Clear History</span>{% endif %}
+      </button>
+      {% if 'delete_folder' in visible_actions %}
+      <button type="button" class="btn btn-sm btn-outline-danger hist-del-folder-btn"
+              data-folder-name="{{ folder_node.path }}"
+              title="Delete folder &ldquo;{{ folder_node.display_name }}&rdquo;">
+        <i class="bi bi-folder-x"></i>{% if depth|default:0 == 0 %} <span class="folder-action-label">Delete folder</span>{% endif %}
+      </button>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if folder_node.children and folder_node.sessions or depth|default:0 == 2 and folder_node.sessions %}
+    <span class="folder-tree-table-label small text-muted fw-semibold ms-auto me-1">
+      <i class="bi bi-clock-history me-1"></i> Runs in {{ folder_node.display_name }}
+    </span>
+    {% endif %}
+  </div>
+
+  <div class="collapse folder-collapse" id="{{ folder_node.collapse_id }}">
+    {% if folder_node.sessions or not folder_node.children %}
+    <div class="folder-tree-table">
+      {% if folder_node.sessions %}
+      <div class="card shadow-sm">
+        <div class="table-responsive table-scroll">
+          <table class="table table-sm table-hover align-middle mb-0 mobile-stack-table">
+            <thead class="table-dark" style="position:sticky;top:0;z-index:1;">
+              <tr>
+                <th style="width:1%"><input type="checkbox" class="form-check-input hist-select-all" title="Select all"></th>
+                <th style="width:2rem">#</th>
+                <th>Filename</th>
+                <th>Run Date</th>
+                <th>Script Runner</th>
+                <th class="text-center text-success">Pass</th>
+                <th class="text-center text-danger">Fail</th>
+                <th class="text-center text-warning">Skip</th>
+                <th class="text-center">Result</th>
+                <th class="text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in folder_node.sessions %}
+              <tr>
+                <td class="mobile-compact-cell" data-label="Select"><input type="checkbox" class="form-check-input hist-row-check" value="{{ r.run_id }}"></td>
+                <td class="text-muted small mobile-compact-cell" data-label="#">{{ forloop.counter }}</td>
+                <td class="fw-semibold mobile-primary-cell" data-label="Filename">
+                  <div class="mobile-primary-title">
+                    {% if r.record_id %}
+                    <a href="{% url 'last_run' r.record_id %}" class="text-decoration-none">
+                      {{ r.record_name|default:"—" }}
+                    </a>
+                    {% else %}
+                      {{ r.record_name|default:"—" }}
+                    {% endif %}
+                  </div>
+                  <div class="mobile-primary-meta d-md-none">
+                    {% if r.run_date %}
+                      <span class="badge bg-light text-dark border">{{ r.run_date|date:"Y-m-d H:i" }}</span>
+                    {% elif r.run_at %}
+                      <span class="badge bg-light text-secondary border">{{ r.run_at|date:"Y-m-d" }}</span>
+                    {% endif %}
+                    <span class="badge bg-secondary">{{ r.runner|default:"—" }}</span>
+                  </div>
+                </td>
+                <td class="small" data-label="Run Date">
+                  {% if r.run_date %}
+                    <span class="badge bg-light text-dark border">{{ r.run_date|date:"Y-m-d H:i" }}</span>
+                  {% elif r.run_at %}
+                    <span class="badge bg-light text-secondary border">{{ r.run_at|date:"Y-m-d" }}</span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted" data-label="Script Runner">{{ r.runner|default:"—" }}</td>
+                <td class="text-center" data-label="Pass"><span class="badge bg-success">{{ r.passes }}</span></td>
+                <td class="text-center" data-label="Fail"><span class="badge bg-danger">{{ r.failures }}</span></td>
+                <td class="text-center" data-label="Skip"><span class="badge bg-warning text-dark">{{ r.skipped }}</span></td>
+                <td class="text-center" data-label="Result">
+                  {% if r.failures > 0 %}
+                    <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Fail</span>
+                  {% elif r.skipped > 0 %}
+                    <span class="badge bg-warning text-dark"><i class="bi bi-dash-circle"></i> Not Completed</span>
+                  {% else %}
+                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Pass</span>
+                  {% endif %}
+                </td>
+                <td class="text-center mobile-actions-cell" data-label="Actions">
+                  <div class="d-inline-flex gap-1 mobile-actions-wrap">
+                    <button class="btn btn-sm btn-outline-secondary hist-expand-btn"
+                            data-partial-url="{% url 'run_detail_partial' r.run_id %}"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#run-detail-{{ r.run_id }}"
+                            title="View details">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                    <a class="btn btn-sm btn-outline-success"
+                       href="{% url 'ai_locator_stats' %}?record_name={{ r.record_name|default:r.record_id|urlencode }}"
+                       title="Open Locator Stats for this record">
+                      <i class="bi bi-bar-chart-line"></i>
+                    </a>
+                    <div class="btn-group" role="group">
+                      <button type="button"
+                              class="btn btn-sm btn-outline-success dropdown-toggle hist-dl-toggle"
+                              data-bs-toggle="dropdown"
+                              aria-expanded="false"
+                              title="Download run results">
+                        <i class="bi bi-download"></i>
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end p-1" style="min-width:130px;">
+                        <li><a class="dropdown-item rounded-2 mb-1 fw-semibold" href="{% url 'download_run' r.run_id 'csv' %}" style="color:#198754;background:rgba(25,135,84,.07);">
+                          <i class="bi bi-filetype-csv me-2"></i>CSV</a></li>
+                        <li><a class="dropdown-item rounded-2 mb-1 fw-semibold" href="{% url 'download_run' r.run_id 'pdf' %}" style="color:#dc3545;background:rgba(220,53,69,.07);">
+                          <i class="bi bi-filetype-pdf me-2"></i>PDF</a></li>
+                        <li><a class="dropdown-item rounded-2 fw-semibold" href="{% url 'download_run' r.run_id 'doc' %}" style="color:#0d6efd;background:rgba(13,110,253,.07);">
+                          <i class="bi bi-filetype-docx me-2"></i>DOC</a></li>
+                      </ul>
+                    </div>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-danger hist-delete-run-btn"
+                            data-run-id="{{ r.run_id }}"
+                            data-record-name="{{ r.record_name|default:'—' }}"
+                            title="Delete this run">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr class="hist-detail-row mobile-detail-row">
+                <td colspan="10" class="p-0 border-0">
+                  <div class="collapse" id="run-detail-{{ r.run_id }}">
+                    <div class="p-3 bg-light border-top border-bottom">
+                      <div class="hist-detail-content text-muted small">
+                        <i class="bi bi-hourglass-split"></i> Loading&hellip;
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-muted small ps-2 mt-2 mb-1"><i class="bi bi-inbox me-1"></i> No runs in this folder.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if folder_node.children %}
+    <div class="folder-tree-children">
+      {% for folder_child in folder_node.children %}
+        {% include "recorder/_history_folder_node.html" with folder_node=folder_child depth=depth|add:1 %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>

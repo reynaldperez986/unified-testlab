@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot generator="Robot 4.1.3 (Python 3.13.0 on win32)" generated="20260330 13:25:48.051" rpa="false" schemaversion="2">
+<suite id="s1" name="Test" source="C:\web__automation\_test.robot">
+<kw name="Open Recorded Application" type="SETUP">
+<kw name="Create Webdriver" library="SeleniumLibrary">
+<arg>Chrome</arg>
+<arg>executable_path=C:/web__automation/webdrivers/chromedriver_114.0.5735.90.exe</arg>
+<doc>Creates an instance of Selenium WebDriver.</doc>
+<msg timestamp="20260330 13:25:48.251" level="INFO">Creating an instance of the Chrome WebDriver.</msg>
+<msg timestamp="20260330 13:25:48.252" level="INFO">Applicable driver not found; attempting to install with Selenium Manager (Beta)</msg>
+<msg timestamp="20260330 13:25:52.430" level="WARN">Unable to obtain driver using Selenium Manager: Selenium Manager failed for: C:\Python313\Lib\site-packages\selenium\webdriver\common\windows\selenium-manager.exe --browser chrome --output json.
+The chromedriver version cannot be discovered</msg>
+<msg timestamp="20260330 13:25:52.431" level="INFO">Cannot capture screenshot because no browser is open.</msg>
+<msg timestamp="20260330 13:25:52.435" level="FAIL">SeleniumManagerException: Message: Selenium Manager failed for: C:\Python313\Lib\site-packages\selenium\webdriver\common\windows\selenium-manager.exe --browser chrome --output json.
+The chromedriver version cannot be discovered
+</msg>
+<status status="FAIL" starttime="20260330 13:25:48.251" endtime="20260330 13:25:52.435"/>
+</kw>
+<kw name="Go To" library="SeleniumLibrary">
+<arg>${START_URL}</arg>
+<doc>Navigates the current browser window to the provided ``url``.</doc>
+<status status="NOT RUN" starttime="20260330 13:25:52.435" endtime="20260330 13:25:52.435"/>
+</kw>
+<kw name="Maximize Browser Window" library="SeleniumLibrary">
+<doc>Maximizes current browser window.</doc>
+<status status="NOT RUN" starttime="20260330 13:25:52.435" endtime="20260330 13:25:52.435"/>
+</kw>
+<kw name="Set Selenium Timeout" library="SeleniumLibrary">
+<arg>${DEFAULT_TIMEOUT}</arg>
+<doc>Sets the timeout that is used by various keywords.</doc>
+<status status="NOT RUN" starttime="20260330 13:25:52.435" endtime="20260330 13:25:52.435"/>
+</kw>
+<status status="FAIL" starttime="20260330 13:25:48.251" endtime="20260330 13:25:52.435"/>
+</kw>
+<test id="s1-t1" name="TC001 Enter Name">
+<doc>Generated from session_meta, steps, data, and locators for record_id 10a806e7-aa83-4112-b369-a0485ba1a215.</doc>
+<status status="FAIL" starttime="20260330 13:25:52.435" endtime="20260330 13:25:52.436">Parent suite setup failed:
+SeleniumManagerException: Message: Selenium Manager failed for: C:\Python313\Lib\site-packages\selenium\webdriver\common\windows\selenium-manager.exe --browser chrome --output json.
+The chromedriver version cannot be discovered
+</status>
+</test>
+<kw name="Close All Browsers" library="SeleniumLibrary" type="TEARDOWN">
+<doc>Closes all open browsers and resets the browser cache.</doc>
+<status status="PASS" starttime="20260330 13:25:52.436" endtime="20260330 13:25:52.437"/>
+</kw>
+<status status="FAIL" starttime="20260330 13:25:48.052" endtime="20260330 13:25:52.437">Suite setup failed:
+SeleniumManagerException: Message: Selenium Manager failed for: C:\Python313\Lib\site-packages\selenium\webdriver\common\windows\selenium-manager.exe --browser chrome --output json.
+The chromedriver version cannot be discovered
+</status>
+</suite>
+<statistics>
+<total>
+<stat pass="0" fail="1" skip="0">All Tests</stat>
+</total>
+<tag>
+</tag>
+<suite>
+<stat pass="0" fail="1" skip="0" id="s1" name="Test">Test</stat>
+</suite>
+</statistics>
+<errors>
+<msg timestamp="20260330 13:25:52.430" level="WARN">Unable to obtain driver using Selenium Manager: Selenium Manager failed for: C:\Python313\Lib\site-packages\selenium\webdriver\common\windows\selenium-manager.exe --browser chrome --output json.
+The chromedriver version cannot be discovered</msg>
+</errors>
+</robot>

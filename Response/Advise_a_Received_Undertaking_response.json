@@ -1,0 +1,9 @@
+{
+  "title": "INTERNAL_SERVER_ERROR",
+  "status": 500,
+  "type": "CORE-VALIDATION",
+  "details": [
+    "ERROR: [Line 31: Column 84] cvc-minLength-valid: Value '' with length = '0' is not facet-valid with respect to minLength '1' for type 'GWRReference'.",
+    "ERROR: [Line 31: Column 84] cvc-type.3.1.3: The value '' of element 'ns3:Reference' is not valid."
+  ]
+}

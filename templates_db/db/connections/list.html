@@ -1,0 +1,44 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 mb-md-4">
+    <h1 class="page-title h3 mb-0">Database Connections</h1>
+    {% if can_manage %}
+        <a class="btn btn-primary" href="/db-lab/connections/new/">New Connection</a>
+    {% endif %}
+</div>
+
+<section class="section-card">
+    <div class="table-responsive modern-table-wrap">
+        <table class="table modern-table align-middle mb-0">
+            <thead>
+                <tr><th>Name</th><th>Type</th><th>Host</th><th>Port</th><th>Database/Service</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for c in connections %}
+                <tr>
+                    <td>{{ c.name }}</td>
+                    <td><span class="chip">{{ c.db_type }}</span></td>
+                    <td>{{ c.host }}</td>
+                    <td>{{ c.port }}</td>
+                    <td>{{ c.database_name }} {{ c.service_name }}</td>
+                    <td>
+                        <a class="btn btn-sm btn-outline-primary btn-icon" href="/db-lab/connections/{{ c.id }}/" title="View" aria-label="View connection">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        {% if can_manage %}
+                            <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/connections/{{ c.id }}/edit/" title="Edit" aria-label="Edit connection">
+                                <i class="bi bi-pencil-square"></i>
+                            </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-muted">No connections found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+

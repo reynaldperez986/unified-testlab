@@ -1,0 +1,1013 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<style>
+/* ── Floating execution panel ── */
+#execFloatingPanel {
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    left: auto !important;
+    top: auto !important;
+    width: 460px;
+    max-width: calc(100vw - 32px);
+    max-height: 560px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 16px;
+    box-shadow: 0 16px 48px rgba(15,23,42,0.22), 0 4px 16px rgba(15,118,110,0.12);
+    z-index: 9500 !important;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#execFloatingPanel .exec-panel-titlebar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.85rem 0.65rem 1rem;
+    background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%);
+    color: #ffffff;
+    font-size: 0.82rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    cursor: grab;
+    user-select: none;
+    border-radius: 16px 16px 0 0;
+}
+#execFloatingPanel .exec-panel-titlebar:active { cursor: grabbing; }
+#execFloatingPanel .exec-panel-titlemeta { display: flex; flex-direction: column; gap: 0.1rem; }
+#execFloatingPanel .exec-panel-title { font-size: 0.86rem; font-weight: 700; }
+#execFloatingPanel .exec-panel-subtitle { font-size: 0.66rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; }
+#execFloatingPanel .exec-panel-close {
+    width: 28px; height: 28px; border: 0; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; background: rgba(255,255,255,0.15); cursor: pointer;
+    transition: background 0.15s;
+}
+#execFloatingPanel .exec-panel-close:hover { background: rgba(255,255,255,0.28); }
+#execFloatingPanel .exec-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+#execFloatingPanel .exec-progress-pill {
+    padding: 0.15rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(15,118,110,0.1);
+    color: #0f766e;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+#execFloatingPanel .exec-panel-progress { height: 4px; border-radius: 0; flex-shrink: 0; }
+#execFloatingPanel .exec-panel-list { overflow-y: auto; flex: 1; background: #fff; }
+#execFloatingPanel .exec-test-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    font-size: 0.85rem;
+    background: #fff;
+}
+#execFloatingPanel .exec-test-row:last-child { border-bottom: none; }
+#execFloatingPanel .exec-test-main { display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; }
+#execFloatingPanel .exec-test-side { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+#execFloatingPanel .exec-test-num {
+    width: 22px; height: 22px; border-radius: 999px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(15,118,110,0.08); color: #0f766e;
+    font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
+}
+#execFloatingPanel .exec-test-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: #0f172a; }
+#execFloatingPanel .exec-panel-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+    flex-shrink: 0;
+}
+</style>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <p class="text-muted mb-0">Manage your database test cases.</p>
+    <div class="d-flex gap-2">
+        {% if can_manage %}
+            <button type="button" class="btn btn-outline-primary" onclick="openProjectModal();">
+                <i class="bi bi-folder-plus"></i> Create Project
+            </button>
+            <a class="btn btn-primary" href="/db-lab/testcases/new/">New Test Case</a>
+        {% endif %}
+    </div>
+</div>
+
+<section class="section-card mb-3">
+    <div class="section-card-header">
+        <h2 class="section-title mb-0">Filters</h2>
+    </div>
+    <div class="p-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="field-label mb-1">Search</label>
+                <input class="form-control" type="text" name="search" value="{{ filters.search }}" placeholder="Search by test name">
+            </div>
+            <div class="col-md-3">
+                <label class="field-label mb-1">Type</label>
+                <select class="form-select" name="type">
+                    <option value="">All Types</option>
+                    {% for value, label in test_types %}
+                        <option value="{{ value }}" {% if filters.type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="field-label mb-1">Connection</label>
+                <select class="form-select" name="connection">
+                    <option value="">All Connections</option>
+                    {% for c in connections %}
+                        <option value="{{ c.id }}" {% if filters.connection == c.id|stringformat:'s' %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button class="btn btn-primary w-100" type="submit">Apply</button>
+                <a class="btn btn-outline-secondary w-100" href="/db-lab/testcases/">Clear</a>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="section-card">
+    <div class="section-card-header">
+        <h2 class="section-title mb-0">Project Hierarchy</h2>
+        <p class="small text-muted mb-0 mt-1">Drag folders and test files into another folder or root. Drag on top/bottom of a row to reorder within the same level using insert markers. Serial run follows this hierarchy order.</p>
+    </div>
+    <div class="p-3">
+        {% if can_manage %}
+        <div class="mb-3 pb-3 border-bottom">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn"><i class="bi bi-check-all"></i> Select All</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllBtn"><i class="bi bi-x"></i> Deselect All</button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="executeBtn" disabled onclick="document.getElementById('bulkExecuteDialog').showModal();"><i class="bi bi-play"></i> Execute Selected</button>
+            </div>
+            <div class="small text-muted mt-2"><span id="selectionCount">0</span> test case(s) selected</div>
+        </div>
+        {% endif %}
+
+        <ul class="test-tree-list" id="testTree" data-tree-move-url="/db-lab/testcases/tree/move/" data-can-manage="{{ can_manage|yesno:'1,0' }}">
+            {% for node in folder_tree %}
+                {% include "testcases/_tree_node.html" with node=node can_manage=can_manage %}
+            {% endfor %}
+
+            {% if root_tests %}
+            <li class="tree-folder-item tree-ungrouped-item">
+                <div class="tree-folder-head" aria-expanded="true" aria-controls="folderBodyUngrouped" onclick="if(!event.target.closest('[data-folder-checkbox]')){var _t=document.getElementById('folderBodyUngrouped');var _s=_t.classList.contains('show');bootstrap.Collapse.getOrCreateInstance(_t,{toggle:false}).toggle();this.setAttribute('aria-expanded',_s?'false':'true');return;}event.stopPropagation();">
+                    <div class="d-flex align-items-center gap-2 flex-grow-1">
+                        {% if can_manage %}
+                            <span onclick="event.stopPropagation(); event.stopImmediatePropagation();" style="position: relative; z-index: 10;">
+                                <input type="checkbox" class="form-check-input folder-select-checkbox" data-folder-checkbox data-folder-target="folderBodyUngrouped" onclick="event.stopPropagation(); event.stopImmediatePropagation();">
+                            </span>
+                        {% endif %}
+                        <i class="bi bi-chevron-down tree-folder-toggle"></i>
+                        <i class="bi bi-inboxes tree-folder-icon"></i>
+                        <span class="fw-semibold">Ungrouped</span>
+                        <span class="badge bg-secondary">{{ root_tests|length }}</span>
+                        {% if can_manage %}
+                        <span class="d-inline-flex gap-1" onclick="event.stopPropagation();">
+                            <form method="post" action="/db-lab/testcases/ungrouped/delete/" class="d-inline" id="deleteUngroupedForm">
+                                {% csrf_token %}
+                                <button type="button" class="btn folder-action-btn" title="Delete Ungrouped" onclick="openDeleteUngroupedModal();"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <ul class="tree-dropzone collapse show" id="folderBodyUngrouped" data-dropzone data-target-folder-id="">
+
+                    {% for t in root_tests %}
+                    <li class="tree-testcase-item" draggable="{{ can_manage|yesno:'true,false' }}" data-draggable-item data-item-type="testcase" data-item-id="{{ t.id }}">
+                        <div class="tree-testcase-card">
+                            <div class="d-flex align-items-center gap-2">
+                                {% if can_manage %}
+                                    <span class="tree-drag-handle" data-drag-handle title="Drag test case"><i class="bi bi-grip-vertical"></i></span>
+                                    <input type="checkbox" class="form-check-input test-case-checkbox" data-testcase-id="{{ t.id }}">
+                                {% endif %}
+                                <div>
+                                <div class="fw-semibold">{{ t.name }}</div>
+                                <div class="small text-muted">{{ t.connection.name }} | {{ t.test_type }}</div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                {% if t.is_active %}
+                                    <span class="status-pill status-pass">Active</span>
+                                {% else %}
+                                    <span class="status-pill status-fail">Inactive</span>
+                                {% endif %}
+                                <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/testcases/{{ t.id }}/" title="View" aria-label="View test case">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% if can_manage %}
+                                    <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/testcases/{{ t.id }}/edit/" title="Edit" aria-label="Edit test case">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </a>
+                                    <a class="btn btn-sm btn-success btn-icon" href="/db-lab/testcases/{{ t.id }}/run/" title="Run" aria-label="Run test case">
+                                        <i class="bi bi-play-fill"></i>
+                                    </a>
+                                    <form method="post" action="/db-lab/testcases/{{ t.id }}/duplicate/" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-info btn-icon" title="Duplicate" aria-label="Duplicate test case">
+                                            <i class="bi bi-files"></i>
+                                        </button>
+                                    </form>
+                                    <form method="post" action="/db-lab/testcases/{{ t.id }}/delete/" class="d-inline" onsubmit="return confirm('Delete test case {{ t.name|escapejs }}?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger btn-icon" title="Delete" aria-label="Delete test case">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </li>
+            {% endif %}
+
+            {% if not folder_tree and not root_tests %}
+                <li class="text-muted">No test cases or folders found.</li>
+            {% endif %}
+        </ul>
+    </div>
+</section>
+
+{% if can_manage %}
+<div class="modal fade" id="projectFolderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="/db-lab/testcases/folders/new/" id="projectFolderForm" novalidate>
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Create Project</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label" for="id_name">Project Name</label>
+                    {{ folder_form.name }}
+                    <div class="invalid-feedback" id="projectNameValidation">Project name is required.</div>
+                    <div class="form-text">New test cases can be created inside this project.</div>
+                    <input type="hidden" name="parent" value="">
+                    <input type="hidden" name="sort_order" value="0">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteUngroupedModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-trash me-2"></i>Delete Ungrouped Test Cases</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body py-4">
+                <p class="mb-0">Delete all ungrouped test cases?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="deleteUngroupedConfirmBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteProjectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-folder-x me-2"></i>Delete Project</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body py-4">
+                <p class="mb-0">Delete project <strong id="deleteProjectName"></strong>?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="deleteProjectConfirmBtn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="post" id="deleteProjectForm" class="d-none">
+    {% csrf_token %}
+</form>
+
+<!-- Bulk Execute Dialog (native HTML dialog - no backdrop issues) -->
+<dialog id="bulkExecuteDialog" style="border: none; border-radius: 12px; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 420px; width: 90%;">
+    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center;">
+        <h5 style="margin: 0; font-weight: 600;">Execute Selected Test Cases</h5>
+        <button type="button" onclick="document.getElementById('bulkExecuteDialog').close();" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+    </div>
+    <div style="padding: 1.5rem;">
+        <label style="font-weight: 600; margin-bottom: 0.75rem; display: block;">Execution Mode</label>
+        <div style="display: grid; gap: 0.5rem;">
+            <label id="serialLabel" style="display: block; padding: 0.75rem 1rem; border-radius: 8px; cursor: pointer; text-align: center; font-weight: 500; background: #0d6efd; color: #fff; border: 2px solid #0d6efd;" onclick="document.getElementById('modeSerial').checked=true; document.getElementById('serialLabel').style.background='#0d6efd'; document.getElementById('serialLabel').style.color='#fff'; document.getElementById('parallelLabel').style.background='#fff'; document.getElementById('parallelLabel').style.color='#0d6efd';">
+                <input type="radio" name="executionMode" id="modeSerial" value="serial" checked style="display:none;">
+                <i class="bi bi-play-fill"></i> Serial (Sequential)
+            </label>
+            <label id="parallelLabel" style="display: block; padding: 0.75rem 1rem; border-radius: 8px; cursor: pointer; text-align: center; font-weight: 500; background: #fff; color: #0d6efd; border: 2px solid #0d6efd;" onclick="document.getElementById('modeParallel').checked=true; document.getElementById('parallelLabel').style.background='#0d6efd'; document.getElementById('parallelLabel').style.color='#fff'; document.getElementById('serialLabel').style.background='#fff'; document.getElementById('serialLabel').style.color='#0d6efd';">
+                <input type="radio" name="executionMode" id="modeParallel" value="parallel" style="display:none;">
+                <i class="bi bi-lightning-fill"></i> Parallel (Concurrent)
+            </label>
+        </div>
+        <small style="color: #6c757d; display: block; margin-top: 0.75rem;">Serial: Run tests one by one. Parallel: Run tests simultaneously.</small>
+    </div>
+    <div style="padding: 1rem 1.5rem; border-top: 1px solid #dee2e6; display: flex; justify-content: flex-end; gap: 0.5rem;">
+        <button type="button" class="btn btn-secondary btn-lg" onclick="document.getElementById('bulkExecuteDialog').close();">Cancel</button>
+        <button type="button" class="btn btn-success btn-lg" id="bulkExecuteConfirmBtn">
+            <i class="bi bi-play-fill me-2"></i> Execute
+        </button>
+    </div>
+</dialog>
+
+<div class="toast-container position-fixed top-0 end-0 p-3" id="pageToastContainer" style="z-index: 1200;"></div>
+
+<!-- ── Floating execution panel ── -->
+<div id="execFloatingPanel" class="exec-floating-panel d-none">
+    <div class="exec-panel-titlebar">
+        <div class="exec-panel-titlemeta">
+            <span class="exec-panel-title"><i class="bi bi-terminal-fill me-1"></i> Execution Window</span>
+            <span class="exec-panel-subtitle">Live run monitor</span>
+        </div>
+        <button class="exec-panel-close" onclick="closeExecPanel()" title="Close" aria-label="Close execution window"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="exec-panel-header">
+        <div class="d-flex align-items-center gap-2 exec-panel-statusline">
+            <i class="bi bi-play-circle-fill text-success" id="execHeaderIcon"></i>
+            <span class="fw-semibold small">Executing Tests</span>
+            <span id="execProgressText" class="exec-progress-pill">0 / 0</span>
+        </div>
+        <div class="d-flex align-items-center gap-2 exec-panel-actions">
+            <div id="execGlobalControls" class="d-flex gap-1">
+                <button id="execGlobalPauseBtn" class="btn btn-sm btn-warning py-0 px-2" onclick="pauseExecution()" title="Pause after current test">
+                    <i class="bi bi-pause-fill"></i> Pause All
+                </button>
+                <button id="execGlobalContinueBtn" class="btn btn-sm btn-success py-0 px-2 d-none" onclick="continueExecution()" title="Resume execution">
+                    <i class="bi bi-play-fill"></i> Continue
+                </button>
+                <button id="execGlobalStopBtn" class="btn btn-sm btn-danger py-0 px-2" onclick="stopExecution()" title="Stop after current test">
+                    <i class="bi bi-stop-fill"></i> Stop All
+                </button>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="execCloseBtn" onclick="closeExecPanel()" title="Close" style="display:none">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    </div>
+    <div class="progress exec-panel-progress">
+        <div id="execProgressBar" class="progress-bar bg-success" role="progressbar" style="width:0%"></div>
+    </div>
+    <div id="execTestList" class="exec-panel-list"></div>
+    <div id="execPanelFooter" class="exec-panel-footer d-none">
+        <span id="execSummaryText" class="small"></span>
+        <button class="btn btn-sm btn-primary" onclick="closeExecPanelAndReload()">Done</button>
+    </div>
+</div>
+<script>
+    function openProjectModal() {
+        var modalEl = document.getElementById("projectFolderModal");
+        if (!modalEl) {
+            return;
+        }
+
+        if (modalEl.parentElement !== document.body) {
+            document.body.appendChild(modalEl);
+        }
+
+        var sidebarBackdrop = document.getElementById("sidebarBackdrop");
+        if (sidebarBackdrop) {
+            sidebarBackdrop.classList.remove("show");
+        }
+
+        document.querySelectorAll(".modal-backdrop").forEach(function (b) {
+            b.remove();
+        });
+
+        var createForm = document.getElementById("projectFolderForm");
+        var nameInput = createForm ? createForm.querySelector("#id_name") : null;
+        if (nameInput) {
+            nameInput.classList.remove("is-invalid");
+        }
+
+        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+
+    (function () {
+        var createForm = document.getElementById("projectFolderForm");
+        if (!createForm) {
+            return;
+        }
+        var nameInput = createForm.querySelector("#id_name");
+        if (!nameInput) {
+            return;
+        }
+
+        nameInput.setAttribute("maxlength", "150");
+
+        createForm.addEventListener("submit", function (evt) {
+            var value = (nameInput.value || "").trim();
+            nameInput.value = value;
+
+            if (!value) {
+                evt.preventDefault();
+                nameInput.classList.add("is-invalid");
+                return;
+            }
+
+            nameInput.classList.remove("is-invalid");
+        });
+
+        nameInput.addEventListener("input", function () {
+            if ((nameInput.value || "").trim()) {
+                nameInput.classList.remove("is-invalid");
+            }
+        });
+    })();
+
+    function openDeleteUngroupedModal() {
+        var modalEl = document.getElementById("deleteUngroupedModal");
+        if (!modalEl) {
+            return;
+        }
+        if (modalEl.parentElement !== document.body) {
+            document.body.appendChild(modalEl);
+        }
+
+        var confirmBtn = document.getElementById("deleteUngroupedConfirmBtn");
+        var form = document.getElementById("deleteUngroupedForm");
+        if (confirmBtn && form) {
+            confirmBtn.onclick = function () {
+                form.submit();
+            };
+        }
+
+        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+
+    function openDeleteProjectModal(projectId, projectName) {
+        var modalEl = document.getElementById("deleteProjectModal");
+        if (!modalEl) {
+            return;
+        }
+        if (modalEl.parentElement !== document.body) {
+            document.body.appendChild(modalEl);
+        }
+
+        var projectNameEl = document.getElementById("deleteProjectName");
+        if (projectNameEl) {
+            projectNameEl.textContent = projectName || "";
+        }
+
+        var confirmBtn = document.getElementById("deleteProjectConfirmBtn");
+        var form = document.getElementById("deleteProjectForm");
+        if (confirmBtn && form) {
+            form.setAttribute("action", "/db-lab/testcases/folders/" + projectId + "/delete/");
+            confirmBtn.onclick = function () {
+                form.submit();
+            };
+        }
+
+        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
+
+    (function () {
+        var modalIds = ["projectFolderModal", "deleteUngroupedModal", "deleteProjectModal"];
+        var executionWidget = document.getElementById("executionWidget");
+
+        modalIds.forEach(function (id) {
+            var modalEl = document.getElementById(id);
+            if (!modalEl) {
+                return;
+            }
+
+            if (modalEl.parentElement !== document.body) {
+                document.body.appendChild(modalEl);
+            }
+
+            modalEl.addEventListener("show.bs.modal", function () {
+                if (executionWidget) {
+                    executionWidget.classList.add("modal-open-hidden");
+                }
+            });
+            modalEl.addEventListener("hidden.bs.modal", function () {
+                if (executionWidget) {
+                    executionWidget.classList.remove("modal-open-hidden");
+                }
+            });
+        });
+    })();
+</script>
+<script>
+    function promptEditProject(projectId, currentName) {
+        var nextName = window.prompt("Edit project name", currentName || "");
+        if (nextName === null) {
+            return;
+        }
+        nextName = nextName.trim();
+        if (!nextName) {
+            return;
+        }
+
+        var formData = new FormData();
+        formData.append("name", nextName);
+        fetch("/db-lab/testcases/folders/" + projectId + "/edit/", {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            body: formData,
+            credentials: "same-origin",
+        }).then(function () {
+            window.location.reload();
+        });
+    }
+
+    (function () {
+        var tree = document.getElementById("testTree");
+        if (!tree) {
+            return;
+        }
+
+        var selectAllBtn = document.getElementById("selectAllBtn");
+        var deselectAllBtn = document.getElementById("deselectAllBtn");
+        var executeBtn = document.getElementById("executeBtn");
+        var selectionCount = document.getElementById("selectionCount");
+        var toastContainer = document.getElementById("pageToastContainer");
+
+        function showToast(message, level) {
+            if (!toastContainer) {
+                return;
+            }
+            var tone = level === "danger" ? "text-bg-danger" : "text-bg-success";
+            var wrapper = document.createElement("div");
+            wrapper.className = "toast align-items-center " + tone + " border-0";
+            wrapper.setAttribute("role", "alert");
+            wrapper.setAttribute("aria-live", "assertive");
+            wrapper.setAttribute("aria-atomic", "true");
+            wrapper.innerHTML =
+                '<div class="d-flex">' +
+                '<div class="toast-body">' + message + "</div>" +
+                '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
+                "</div>";
+            toastContainer.appendChild(wrapper);
+            var toast = new bootstrap.Toast(wrapper, { delay: 2400 });
+            wrapper.addEventListener("hidden.bs.toast", function () {
+                wrapper.remove();
+            });
+            toast.show();
+        }
+
+        function selectedIds() {
+            return Array.from(tree.querySelectorAll(".test-case-checkbox:checked")).map(function (cb) {
+                return cb.getAttribute("data-testcase-id");
+            });
+        }
+
+        function refreshSelectionUi() {
+            var count = selectedIds().length;
+            if (selectionCount) {
+                selectionCount.textContent = String(count);
+            }
+            var disabled = count === 0;
+            if (executeBtn) {
+                executeBtn.disabled = disabled;
+            }
+        }
+
+        function refreshFolderCheckboxes() {
+            tree.querySelectorAll("[data-folder-checkbox]").forEach(function (folderCb) {
+                var targetId = folderCb.getAttribute("data-folder-target");
+                var zone = targetId ? document.getElementById(targetId) : null;
+                if (!zone) {
+                    folderCb.checked = false;
+                    folderCb.indeterminate = false;
+                    return;
+                }
+                var testBoxes = zone.querySelectorAll(".test-case-checkbox");
+                var checkedCount = zone.querySelectorAll(".test-case-checkbox:checked").length;
+                if (!testBoxes.length) {
+                    folderCb.checked = false;
+                    folderCb.indeterminate = false;
+                    return;
+                }
+                folderCb.checked = checkedCount === testBoxes.length;
+                folderCb.indeterminate = checkedCount > 0 && checkedCount < testBoxes.length;
+            });
+        }
+
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener("click", function () {
+                tree.querySelectorAll(".test-case-checkbox").forEach(function (cb) {
+                    cb.checked = true;
+                });
+                refreshSelectionUi();
+                refreshFolderCheckboxes();
+            });
+        }
+
+        if (deselectAllBtn) {
+            deselectAllBtn.addEventListener("click", function () {
+                tree.querySelectorAll(".test-case-checkbox").forEach(function (cb) {
+                    cb.checked = false;
+                });
+                refreshSelectionUi();
+                refreshFolderCheckboxes();
+            });
+        }
+
+        tree.querySelectorAll("[data-folder-checkbox]").forEach(function (folderCb) {
+            folderCb.addEventListener("click", function (evt) {
+                evt.stopPropagation();
+            });
+            folderCb.addEventListener("change", function (evt) {
+                var targetId = evt.target.getAttribute("data-folder-target");
+                var zone = targetId ? document.getElementById(targetId) : null;
+                if (!zone) {
+                    return;
+                }
+                zone.querySelectorAll(".test-case-checkbox").forEach(function (cb) {
+                    cb.checked = evt.target.checked;
+                });
+                refreshSelectionUi();
+                refreshFolderCheckboxes();
+            });
+        });
+
+        tree.addEventListener("change", function (evt) {
+            if (evt.target && evt.target.classList.contains("test-case-checkbox")) {
+                refreshSelectionUi();
+                refreshFolderCheckboxes();
+            }
+        });
+
+        function runSelected(mode) {
+            var ids = selectedIds();
+            if (!ids.length) {
+                return;
+            }
+            // Close dialog and start the floating panel execution
+            var dlg = document.getElementById("bulkExecuteDialog");
+            if (dlg && dlg.open) dlg.close();
+            executeBulkTests(ids, mode);
+        }
+
+        // Handle the bulk execute confirm button click
+        document.addEventListener("click", function(evt) {
+            if (evt.target && evt.target.id === "bulkExecuteConfirmBtn") {
+                var selectedMode = document.querySelector("input[name='executionMode']:checked");
+                if (selectedMode) {
+                    runSelected(selectedMode.value);
+                }
+            }
+        });
+
+        // Intercept individual Run buttons → open floating panel instead of navigating
+        document.addEventListener("click", function(evt) {
+            var btn = evt.target.closest('a.btn-success.btn-icon[href*="/run/"]');
+            if (!btn) return;
+            var match = btn.getAttribute('href').match(/\/testcases\/(\d+)\/run\//);
+            if (!match) return;
+            evt.preventDefault();
+            executeBulkTests([match[1]], 'serial');
+        });
+
+        refreshSelectionUi();
+        refreshFolderCheckboxes();
+    })();
+</script>
+
+<script>
+/* ── Floating Execution Panel Logic ── */
+var _execState = { paused: false, stopped: false, skipped: {} };
+var _execMode = 'serial';
+
+function _sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+function _getCsrfToken() {
+    return (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+}
+
+function _statusBadge(status) {
+    if (status === 'running')  return '<span class="badge bg-primary">Running\u2026</span>';
+    if (status === 'PASS')     return '<span class="badge bg-success">Pass</span>';
+    if (status === 'FAIL')     return '<span class="badge bg-danger">Fail</span>';
+    if (status === 'skipped')  return '<span class="badge bg-secondary">Skipped</span>';
+    if (status === 'pending')  return '<span class="badge bg-light text-dark border">Pending</span>';
+    return '<span class="badge bg-warning text-dark">Error</span>';
+}
+
+function buildExecPanel(tests) {
+    var list = document.getElementById('execTestList');
+    var html = '';
+    for (var i = 0; i < tests.length; i++) {
+        html += '<div class="exec-test-row" id="execRow_' + i + '">' +
+            '<div class="exec-test-main">' +
+                '<span class="exec-test-num">' + (i + 1) + '</span>' +
+                '<span class="exec-test-name" title="' + tests[i].name + '">' + tests[i].name + '</span>' +
+            '</div>' +
+            '<div class="exec-test-side">' +
+                '<span id="execBadge_' + i + '">' + _statusBadge('pending') + '</span>' +
+                '<span id="execRowBtns_' + i + '" class="d-inline-flex gap-1 ms-1">' +
+                '<button class="btn btn-sm btn-outline-secondary py-0 px-1 exec-skip-btn" id="execSkip_' + i + '" onclick="skipExecTest(' + i + ')" title="Skip" style="font-size:0.7rem"><i class="bi bi-skip-forward-fill"></i></button>' +
+                '</span>' +
+            '</div>' +
+            '</div>';
+    }
+    list.innerHTML = html;
+
+    document.getElementById('execProgressText').textContent = '0 / ' + tests.length;
+    document.getElementById('execProgressBar').style.width = '0%';
+    document.getElementById('execPanelFooter').classList.add('d-none');
+    document.getElementById('execCloseBtn').style.display = 'none';
+    document.getElementById('execGlobalControls').classList.remove('d-none');
+    document.getElementById('execGlobalPauseBtn').classList.remove('d-none');
+    document.getElementById('execGlobalContinueBtn').classList.add('d-none');
+    document.getElementById('execGlobalStopBtn').disabled = false;
+    document.getElementById('execHeaderIcon').className = 'bi bi-play-circle-fill text-success';
+    document.getElementById('execFloatingPanel').classList.remove('d-none');
+}
+
+function updateExecRow(i, status) {
+    var badge = document.getElementById('execBadge_' + i);
+    var btnArea = document.getElementById('execRowBtns_' + i);
+    if (badge) badge.innerHTML = _statusBadge(status);
+
+    if (!btnArea) return;
+    if (status === 'running' && _execMode === 'serial') {
+        btnArea.innerHTML =
+            '<button class="btn btn-sm btn-outline-warning py-0 px-1" onclick="pauseExecution()" id="execPauseBtn" title="Pause after this test"><i class="bi bi-pause-fill"></i></button>' +
+            '<button class="btn btn-sm btn-outline-success py-0 px-1 d-none" onclick="continueExecution()" id="execContinueBtn" title="Continue"><i class="bi bi-play-fill"></i></button>' +
+            '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="stopExecution()" id="execStopBtn" title="Stop after this test"><i class="bi bi-stop-fill"></i></button>';
+        if (_execState.paused) {
+            var pb = document.getElementById('execPauseBtn');
+            var cb = document.getElementById('execContinueBtn');
+            if (pb) pb.classList.add('d-none');
+            if (cb) cb.classList.remove('d-none');
+        }
+    } else {
+        btnArea.innerHTML = '';
+    }
+
+    var row = document.getElementById('execRow_' + i);
+    if (row && status === 'running') row.scrollIntoView({ block: 'nearest' });
+}
+
+function updateExecProgress(done, total) {
+    document.getElementById('execProgressText').textContent = done + ' / ' + total;
+    document.getElementById('execProgressBar').style.width = Math.round(done / total * 100) + '%';
+}
+
+function finishExecPanel(passed, failed, errors) {
+    document.getElementById('execGlobalControls').classList.add('d-none');
+    document.getElementById('execCloseBtn').style.display = '';
+    document.getElementById('execHeaderIcon').className = 'bi bi-check-circle-fill text-success';
+
+    var footer = document.getElementById('execPanelFooter');
+    footer.classList.remove('d-none');
+
+    var total = passed + failed + errors;
+    var colour = passed === total ? 'text-success' : (errors > 0 ? 'text-warning' : 'text-danger');
+    document.getElementById('execSummaryText').innerHTML =
+        '<span class="' + colour + ' fw-semibold">Done</span> &nbsp;' +
+        '<span class="text-success">\u2713 ' + passed + '</span> &nbsp;' +
+        '<span class="text-danger">\u2717 ' + failed + '</span> &nbsp;' +
+        '<span class="text-warning">\u26A0 ' + errors + '</span>';
+}
+
+function pauseExecution() {
+    _execState.paused = true;
+    var gp = document.getElementById('execGlobalPauseBtn');
+    var gc = document.getElementById('execGlobalContinueBtn');
+    if (gp) gp.classList.add('d-none');
+    if (gc) gc.classList.remove('d-none');
+}
+
+function continueExecution() {
+    _execState.paused = false;
+    var gc = document.getElementById('execGlobalContinueBtn');
+    var gp = document.getElementById('execGlobalPauseBtn');
+    if (gc) gc.classList.add('d-none');
+    if (gp) gp.classList.remove('d-none');
+}
+
+function stopExecution() {
+    _execState.stopped = true;
+    _execState.paused = false;
+    // Hide run controls immediately and give visual feedback
+    document.getElementById('execGlobalControls').classList.add('d-none');
+    document.getElementById('execCloseBtn').style.display = '';
+    document.getElementById('execHeaderIcon').className = 'bi bi-stop-circle-fill text-danger';
+}
+
+function skipExecTest(i) {
+    _execState.skipped[i] = true;
+    updateExecRow(i, 'skipped');
+    if (_execState.paused) {
+        continueExecution();
+    }
+}
+
+function _showRowControls(i, state) {
+    var btnArea = document.getElementById('execRowBtns_' + i);
+    var badgeEl = document.getElementById('execBadge_' + i);
+    if (!btnArea) return;
+    if (state === 'paused') {
+        if (badgeEl) badgeEl.innerHTML = '<span class="badge bg-warning text-dark"><i class="bi bi-pause-fill"></i> Paused</span>';
+        btnArea.innerHTML =
+            '<button class="btn btn-sm btn-outline-success py-0 px-1" onclick="continueExecution()" id="execContinueBtn" title="Continue"><i class="bi bi-play-fill"></i></button>' +
+            '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="stopExecution()" id="execStopBtn" title="Stop"><i class="bi bi-stop-fill"></i></button>';
+    } else {
+        if (badgeEl) badgeEl.innerHTML = _statusBadge('pending');
+        btnArea.innerHTML = '<button class="btn btn-sm btn-outline-secondary py-0 px-1 exec-skip-btn" onclick="skipExecTest(' + i + ')" title="Skip" style="font-size:0.7rem"><i class="bi bi-skip-forward-fill"></i></button>';
+    }
+}
+
+function closeExecPanel() {
+    document.getElementById('execFloatingPanel').classList.add('d-none');
+}
+
+function closeExecPanelAndReload() {
+    closeExecPanel();
+    location.reload();
+}
+
+// ── Draggable floating panel ──
+(function() {
+    var panel = document.getElementById('execFloatingPanel');
+    var header = panel ? panel.querySelector('.exec-panel-titlebar') : null;
+    if (!panel || !header) return;
+    var isDragging = false, startX, startY, startLeft, startTop;
+
+    header.addEventListener('mousedown', function(e) {
+        if (e.target.closest('button')) return;
+        isDragging = true;
+        var rect = panel.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = rect.left;
+        startTop = rect.top;
+        panel.style.transition = 'none';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        var newLeft = startLeft + (e.clientX - startX);
+        var newTop = startTop + (e.clientY - startY);
+        // Keep within viewport
+        newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - 100));
+        newTop = Math.max(0, Math.min(newTop, window.innerHeight - 50));
+        panel.style.left = newLeft + 'px';
+        panel.style.top = newTop + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+    });
+
+    document.addEventListener('mouseup', function() {
+        if (isDragging) {
+            isDragging = false;
+            panel.style.transition = '';
+        }
+    });
+})();
+
+async function executeBulkTests(ids, mode) {
+    _execMode = mode;
+    _execState = { paused: false, stopped: false, skipped: {} };
+
+    // Gather test case names from the tree
+    var tests = [];
+    for (var idx = 0; idx < ids.length; idx++) {
+        var cb = document.querySelector('.test-case-checkbox[data-testcase-id="' + ids[idx] + '"]');
+        var name = '#' + ids[idx];
+        if (cb) {
+            var card = cb.closest('.tree-testcase-card');
+            if (card) {
+                var nameEl = card.querySelector('.fw-semibold');
+                if (nameEl) name = nameEl.textContent.trim();
+            }
+        }
+        tests.push({ id: ids[idx], name: name });
+    }
+
+    buildExecPanel(tests);
+
+    var passed = 0, failed = 0, errors = 0;
+
+    if (mode === 'parallel') {
+        // Pause/continue/stop are serial-only controls
+        document.getElementById('execGlobalControls').classList.add('d-none');
+
+        var done = 0;
+        var total = tests.length;
+
+        var promises = tests.map(function(test, i) {
+            return (async function() {
+                updateExecRow(i, 'running');
+                try {
+                    var res = await fetch('/db-lab/testcases/execute-ajax/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrfToken() },
+                        body: JSON.stringify({ test_case_id: parseInt(test.id) })
+                    }).then(function(r) { return r.json(); });
+
+                    var status = res.result_status || 'ERROR';
+                    updateExecRow(i, status);
+                    if (status === 'PASS') passed++;
+                    else if (status === 'FAIL') failed++;
+                    else errors++;
+                } catch(e) {
+                    updateExecRow(i, 'ERROR');
+                    errors++;
+                } finally {
+                    done++;
+                    updateExecProgress(done, total);
+                }
+            })();
+        });
+
+        await Promise.all(promises);
+        finishExecPanel(passed, failed, errors);
+        return;
+    }
+
+    // Serial mode
+    for (var i = 0; i < tests.length; i++) {
+        if (_execState.skipped[i]) continue;
+
+        // If paused between tests, show paused state and wait
+        if (_execState.paused && !_execState.stopped) {
+            _showRowControls(i, 'paused');
+            while (_execState.paused && !_execState.stopped) {
+                await _sleep(150);
+            }
+            if (!_execState.stopped && !_execState.skipped[i]) {
+                _showRowControls(i, 'pending');
+            }
+        }
+
+        if (_execState.stopped) {
+            for (var j = i; j < tests.length; j++) {
+                if (!_execState.skipped[j]) updateExecRow(j, 'skipped');
+            }
+            break;
+        }
+
+        if (_execState.skipped[i]) continue;
+
+        updateExecRow(i, 'running');
+
+        try {
+            var res = await fetch('/db-lab/testcases/execute-ajax/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _getCsrfToken() },
+                body: JSON.stringify({ test_case_id: parseInt(tests[i].id) })
+            }).then(function(r) { return r.json(); });
+
+            var status = res.result_status || 'ERROR';
+            updateExecRow(i, status);
+            if (status === 'PASS') passed++;
+            else if (status === 'FAIL') failed++;
+            else errors++;
+        } catch(e) {
+            updateExecRow(i, 'ERROR');
+            errors++;
+        }
+
+        updateExecProgress(i + 1, tests.length);
+    }
+
+    finishExecPanel(passed, failed, errors);
+}
+</script>
+{% endif %}
+{% endblock %}
+

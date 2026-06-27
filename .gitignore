@@ -1,0 +1,10 @@
+# Logs
+*.log
+
+# Screenshots
+*.png
+logs/screenshots/
+
+# Python cache
+__pycache__/
+*.py[cod]

@@ -1,0 +1,32 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<section class="form-shell mx-auto">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="page-title h3 mb-0">{{ title }}</h1>
+        <a class="btn btn-outline-secondary" href="/db-lab/connections/">Back</a>
+    </div>
+    <form method="post" class="section-card form-card">
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="field-wrap">
+                <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}
+                    <small class="field-help">{{ field.help_text }}</small>
+                {% endif %}
+                {% for error in field.errors %}
+                    <small class="field-error">{{ error }}</small>
+                {% endfor %}
+            </div>
+        {% endfor %}
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            {% if is_edit and connection %}
+                <button class="btn btn-outline-primary" type="submit" formaction="/db-lab/connections/{{ connection.id }}/test/" formmethod="post">Test Connection</button>
+            {% endif %}
+            <button class="btn btn-primary" type="submit">Save Connection</button>
+        </div>
+    </form>
+</section>
+{% endblock %}
+

@@ -1,0 +1,503 @@
+<form style="display:none">{% csrf_token %}</form>
+<style>
+  .wfai-shell { display: grid; gap: 1rem; }
+  .wfai-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.25rem; flex-wrap: wrap; }
+  .wfai-hero-copy { display: grid; gap: .45rem; align-content: start; }
+  .wfai-kicker { display: inline-flex; align-items: center; gap: .5rem; padding: .35rem .75rem; border-radius: 999px; background: rgba(31,111,182,0.12); color: #1f6fb6; font-size: .78rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; justify-self: start; margin: 0; }
+  .wfai-meta-row { display: flex; gap: .65rem; flex-wrap: wrap; margin-top: .9rem; }
+  .wfai-badge { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .8rem; border-radius: 999px; background: rgba(23,50,79,0.06); border: 1px solid rgba(31,111,182,0.12); color: #36516d; font-size: .79rem; font-weight: 700; }
+  .wfai-badge strong { color: #17324f; font-weight: 800; }
+  .wfai-badge.is-active { background: rgba(31,111,182,0.12); color: #1f6fb6; }
+  .wfai-stat { display: inline-flex; flex-direction: column; min-width: 10rem; padding: .9rem 1rem; border-radius: 1rem; border: 1px solid rgba(31,111,182,0.28); background: linear-gradient(135deg,#1f6fb6 0%,#2d87d4 60%,#56a3e6 100%); box-shadow: 0 8px 20px rgba(20,80,160,0.22), 0 1px 4px rgba(20,80,160,0.12); }
+  .wfai-stat-label { font-size: .75rem; color: rgba(255,255,255,0.75); text-transform: uppercase; letter-spacing: .06em; margin-bottom: .2rem; }
+  .wfai-stat-value { font-size: 1.1rem; font-weight: 800; color: #fff; }
+
+  /* Tabs */
+  .wfai-tabs .nav-link { font-weight: 700; font-size: .84rem; border-radius: 999px; padding: .45rem 1.1rem; color: #46627f; }
+  .wfai-tabs .nav-link.active { background: #17324f; color: #fff; border-color: #17324f; }
+  .wfai-tabs .nav-link:not(.active):hover { background: rgba(31,111,182,0.08); }
+
+  /* Grid & Panels */
+  .wfai-grid { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(320px,.95fr); gap: 1rem; }
+  .wfai-panel { border-radius: 1.35rem; border: 1px solid rgba(31,111,182,0.1); background: linear-gradient(180deg,rgba(255,255,255,0.84),rgba(245,249,253,0.96)); box-shadow: 0 18px 34px rgba(20,52,87,0.08); overflow: hidden; }
+  .wfai-panel-body { padding: 1rem; }
+  .wfai-panel-title { display: flex; align-items: center; gap: .55rem; margin-bottom: .85rem; color: #17324f; font-size: .92rem; font-weight: 800; }
+  .wfai-query { min-height: 140px; resize: vertical; }
+  .wfai-config-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .8rem; margin-bottom: .8rem; }
+  .wfai-actions { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .9rem; }
+
+  /* Rebuild button — header placement */
+  .wfai-header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: .6rem; }
+  .wfai-rebuild-btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .55rem 1.25rem;
+    border-radius: 999px;
+    font-size: .83rem; font-weight: 700; letter-spacing: .01em;
+    color: #fff;
+    background: linear-gradient(135deg, #1a5fa0 0%, #1f6fb6 55%, #3a8fd4 100%);
+    border: none;
+    box-shadow: 0 4px 14px rgba(20,80,160,.35), 0 1px 3px rgba(20,80,160,.2);
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+    white-space: nowrap;
+  }
+  .wfai-rebuild-btn:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 6px 20px rgba(20,80,160,.45), 0 2px 5px rgba(20,80,160,.25);
+    transform: translateY(-1px);
+    color: #fff;
+  }
+  .wfai-rebuild-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(20,80,160,.3);
+    filter: brightness(.95);
+  }
+  .wfai-rebuild-btn .bi { font-size: .9rem; }
+
+  /* Ask Assistant button */
+  .wfai-send-btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .55rem 1.25rem;
+    border-radius: 999px;
+    font-size: .83rem; font-weight: 700; letter-spacing: .01em;
+    color: #fff;
+    background: linear-gradient(135deg, #1a5fa0 0%, #1f6fb6 55%, #3a8fd4 100%);
+    border: none;
+    box-shadow: 0 4px 14px rgba(20,80,160,.35), 0 1px 3px rgba(20,80,160,.2);
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  }
+  .wfai-send-btn:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 6px 20px rgba(20,80,160,.45), 0 2px 5px rgba(20,80,160,.25);
+    transform: translateY(-1px);
+    color: #fff;
+  }
+  .wfai-send-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(20,80,160,.3);
+    filter: brightness(.95);
+  }
+  .wfai-send-btn .bi { font-size: .9rem; }
+
+  /* Banner */
+  .wfai-banner { display: none; align-items: center; justify-content: space-between; gap: .8rem; padding: .85rem 1rem; border-radius: 1rem; border: 1px solid rgba(31,111,182,0.18); background: linear-gradient(180deg,rgba(31,111,182,0.12),rgba(210,230,246,0.55)); color: #17324f; }
+  .wfai-banner.is-visible { display: flex; }
+  .wfai-banner-copy { display: grid; gap: .18rem; flex: 1 1 auto; }
+  .wfai-banner-title { font-size: .84rem; font-weight: 800; color: #17324f; }
+  .wfai-banner-text { font-size: .8rem; color: #46627f; }
+  .wfai-banner-progress { position: relative; width: 100%; height: 6px; margin-top: .45rem; border-radius: 999px; background: rgba(23,50,79,0.14); overflow: hidden; }
+  .wfai-banner-progress-bar { position: absolute; inset: 0 auto 0 0; width: 0%; border-radius: inherit; background: linear-gradient(90deg,#1f6fb6,#56a3e6); transition: width .35s ease; overflow: hidden; }
+  .wfai-banner-progress-bar.is-running::after { content:''; position: absolute; inset: 0; background: linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.18) 35%,rgba(255,255,255,0.48) 50%,rgba(255,255,255,0.18) 65%,transparent 100%); transform: translateX(-100%); animation: wfaiShimmer 1.6s linear infinite; }
+  @keyframes wfaiShimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  .wfai-banner-pill { display: inline-flex; align-items: center; gap: .35rem; padding: .42rem .7rem; border-radius: 999px; background: rgba(255,255,255,0.7); border: 1px solid rgba(31,111,182,0.14); font-size: .78rem; font-weight: 800; white-space: nowrap; }
+
+  /* Toast */
+  .wfai-toast-wrap { position: fixed; right: 1rem; bottom: 1rem; z-index: 1095; }
+
+  /* Answer / output */
+  .wfai-answer { min-height: 200px; max-height: 55vh; overflow-y: auto; border-radius: 1rem; border: 1px solid rgba(31,111,182,0.12); background: linear-gradient(180deg,rgba(255,255,255,0.92),rgba(243,248,252,0.9)); padding: 1rem; color: #17324f; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .wfai-answer.is-empty { display: flex; align-items: center; justify-content: center; text-align: center; color: #60758b; }
+  .wfai-status { margin-top: .8rem; font-size: .85rem; color: #60758b; }
+  .wfai-status.is-error { color: #b02a37; }
+
+  /* Sources / search results */
+  .wfai-sources { display: grid; gap: .8rem; }
+  .wfai-source-card { padding: .9rem; border-radius: 1rem; background: linear-gradient(180deg,rgba(255,255,255,0.94),rgba(243,248,252,0.9)); border: 1px solid rgba(31,111,182,0.1); }
+  .wfai-source-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .45rem; }
+  .wfai-source-name { font-weight: 800; color: #17324f; }
+  .wfai-source-count { padding: .26rem .55rem; border-radius: 999px; background: rgba(31,111,182,0.1); color: #1f6fb6; font-size: .74rem; font-weight: 800; }
+  .wfai-source-list { display: grid; gap: .45rem; }
+  .wfai-source-item { font-size: .8rem; color: #5f748a; padding: .55rem .65rem; border-radius: .85rem; background: rgba(31,111,182,0.06); overflow-wrap: anywhere; }
+
+  /* Fine-tune cards */
+  .wfai-ft-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 1rem; }
+  .wfai-ft-card { padding: 1rem; border-radius: 1rem; border: 1px solid rgba(31,111,182,0.12); background: rgba(255,255,255,0.72); }
+  .wfai-ft-card h6 { font-weight: 800; color: #17324f; margin-bottom: .65rem; }
+  .wfai-ft-badge { display: inline-flex; align-items: center; gap: .35rem; padding: .32rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+  .wfai-ft-badge.is-ok { background: rgba(25,135,84,0.12); color: #198754; }
+  .wfai-ft-badge.is-missing { background: rgba(176,42,55,0.10); color: #b02a37; }
+  .wfai-ft-badge.is-running { background: rgba(13,110,253,0.10); color: #0d6efd; }
+  .wfai-next-steps { margin-top: 1rem; padding: 1rem; border-radius: 1rem; border: 1px solid rgba(31,111,182,0.12); background: rgba(255,255,255,0.78); display: none; }
+  .wfai-next-steps.is-visible { display: block; }
+  .wfai-next-steps-title { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; color: #17324f; font-size: .92rem; font-weight: 800; }
+  .wfai-next-steps-list { margin: 0; padding-left: 1.1rem; color: #5f748a; font-size: .84rem; }
+  .wfai-next-steps-list li + li { margin-top: .35rem; }
+  .wfai-next-steps-code { margin-top: .75rem; padding: .85rem 1rem; border-radius: .85rem; background: #17324f; color: #eef6ff; font-size: .8rem; line-height: 1.55; white-space: pre-wrap; overflow-x: auto; }
+  .wfai-train-log { margin-top: .75rem; max-height: 320px; overflow: auto; padding: .85rem 1rem; border-radius: .85rem; background: #0f1f31; color: #dfeeff; font-size: .79rem; line-height: 1.55; white-space: pre-wrap; }
+  .wfai-divider { margin: 1rem 0; border: 0; border-top: 1px solid rgba(31,111,182,0.12); }
+  .wfai-inline-note { font-size: .78rem; color: #60758b; }
+  .wfai-summary {
+    min-height: 120px;
+    border-radius: 1rem;
+    border: 1px solid rgba(31,111,182,0.12);
+    background: linear-gradient(180deg,rgba(255,255,255,0.92),rgba(243,248,252,0.9));
+    padding: 1rem;
+    color: #17324f;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .wfai-summary.is-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #60758b;
+  }
+
+  /* Responsive */
+  @media (max-width: 991.98px) { .wfai-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 767.98px) { .wfai-config-grid { grid-template-columns: 1fr; } .wfai-stat { width: 100%; } }
+
+  /* ── Themed inputs & controls ─────────────────────────────────────────── */
+  .wfai-shell .form-control,
+  .wfai-shell .form-select {
+    border-radius: .75rem;
+    border: 1.5px solid rgba(31,111,182,0.22);
+    background: rgba(255,255,255,0.9);
+    color: #17324f;
+    font-size: .82rem;
+    padding: .38rem .75rem;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .wfai-shell .form-control:focus,
+  .wfai-shell .form-select:focus {
+    border-color: #1f6fb6;
+    box-shadow: 0 0 0 3px rgba(31,111,182,0.16);
+    outline: none;
+  }
+  .wfai-shell .form-control::placeholder { color: #90a8bf; }
+  .wfai-shell textarea.form-control { padding: .55rem .75rem; }
+
+  /* ── Color-only overrides — size comes from global .btn ──────────────── */
+  .wfai-shell .btn-outline-primary {
+    border: 1.5px solid #1f6fb6;
+    color: #1f6fb6;
+    background: rgba(31,111,182,0.06);
+  }
+  .wfai-shell .btn-outline-primary:hover { background: rgba(31,111,182,0.14); color: #1a5fa0; transform: translateY(-1px); }
+  .wfai-shell .btn-outline-secondary {
+    border: 1.5px solid rgba(31,111,182,0.22);
+    color: #46627f;
+    background: rgba(31,111,182,0.05);
+  }
+  .wfai-shell .btn-outline-secondary:hover { background: rgba(31,111,182,0.12); color: #1f6fb6; transform: translateY(-1px); }
+  .wfai-shell .btn-outline-success {
+    border: 1.5px solid rgba(25,135,84,0.4);
+    color: #198754;
+    background: rgba(25,135,84,0.06);
+  }
+  .wfai-shell .btn-outline-success:hover { background: rgba(25,135,84,0.14); transform: translateY(-1px); }
+</style>
+
+<div class="wfai-shell">
+  <!-- ═══════════════════════════════════ Hero ═══════════ -->
+  <div class="page-header-shell">
+    <div class="wfai-hero">
+      <div class="wfai-hero-copy">
+        <h1 class="page-title"><i class="bi bi-robot"></i> AI RAG</h1>
+        <div class="wfai-kicker"><i class="bi bi-cpu"></i> Local RAG + Fine-tune Assistant</div>
+        <div class="wfai-meta-row">
+          <div class="wfai-badge" id="wfaiIndexedBadge"><i class="bi bi-database"></i> Indexed docs <strong id="wfaiIndexedCount">{{ rag_status.indexed_documents|default:0 }}</strong></div>
+          <div class="wfai-badge" id="wfaiRebuildBadge"><i class="bi bi-clock-history"></i> Last rebuild <strong id="wfaiLastRebuild">{{ rag_status.last_finished_at|default:"Never" }}</strong></div>
+          <div class="wfai-badge" id="wfaiFtBadge">
+            <i class="bi bi-stars"></i> Fine-tuned
+            <strong class="text-muted" id="wfaiFtHeaderStatus"><i class="bi bi-hourglass-split"></i> checking…</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wfai-header-actions">
+      <div class="wfai-stat">
+        <span class="wfai-stat-label">Model</span>
+        <span class="wfai-stat-value" id="wfaiModelStat">{{ ollama_model }}</span>
+      </div>
+      <button type="button" class="btn wfai-rebuild-btn" id="wfaiRebuildBtn">
+        <i class="bi bi-arrow-clockwise"></i> Rebuild RAG Index
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════ Rebuild banner ═════════ -->
+  <div class="wfai-banner{% if rag_status.is_active %} is-visible{% endif %}" id="wfaiRebuildBanner">
+    <div class="wfai-banner-copy">
+      <div class="wfai-banner-title">RAG rebuild in progress</div>
+      <div class="wfai-banner-text" id="wfaiRebuildBannerText">Rebuild refresh all data. Queries remain available while the rebuild runs in the background.</div>
+      <div class="wfai-banner-progress" aria-hidden="true">
+        <div class="wfai-banner-progress-bar" id="wfaiProgressBar"></div>
+      </div>
+    </div>
+    <div class="wfai-banner-pill"><i class="bi bi-hourglass-split"></i> Done <strong id="wfaiCompletedCount">0</strong>/<span id="wfaiTargetCount">0</span> <span id="wfaiProgressPercent">0%</span> <span id="wfaiElapsedTime"></span></div>
+  </div>
+
+  <!-- ═══════════════════════════════ Toast ══════════════ -->
+  <div class="wfai-toast-wrap">
+    <div id="wfaiToast" class="toast align-items-center text-bg-success border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="2600">
+      <div class="d-flex">
+        <div class="toast-body fw-semibold" id="wfaiToastBody">Done.</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════ Rebuild confirm modal ══ -->
+  <div class="modal fade" id="wfaiRebuildModal" tabindex="-1" aria-labelledby="wfaiRebuildModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-danger bg-opacity-10">
+          <h5 class="modal-title" id="wfaiRebuildModalLabel"><i class="bi bi-arrow-clockwise"></i> Rebuild RAG Index</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">This will <strong>clear all data</strong> in <code>ai_rag_document</code> and <code>ai_rag_document_staging</code>, then rebuild from scratch using the latest <strong>steps</strong>, <strong>ai_workflow</strong>, and <strong>ai_databank</strong>.</p>
+          <p class="text-muted small mb-0">Rebuild refresh all data. Queries remain available while the rebuild runs in the background.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="wfaiRebuildConfirmBtn"><i class="bi bi-arrow-clockwise"></i> Rebuild</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════ Tabs ═══════════════ -->
+  <ul class="nav nav-pills wfai-tabs" role="tablist">
+    <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" href="#tabAsk" role="tab"><i class="bi bi-chat-dots"></i> Ask</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tabSearch" role="tab"><i class="bi bi-search"></i> Search</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tabGenerate" role="tab"><i class="bi bi-code-slash"></i> Generate</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tabFinetune" role="tab"><i class="bi bi-mortarboard"></i> Fine-tune</a></li>
+  </ul>
+
+  <div class="tab-content">
+
+    <!-- ═══════════════════ Tab: Ask ═════════════════════ -->
+    <div class="tab-pane fade show active" id="tabAsk" role="tabpanel">
+      <div class="wfai-grid">
+        <div class="wfai-panel">
+          <div class="wfai-panel-body">
+            <div class="wfai-panel-title"><i class="bi bi-send-check"></i> Ask Workflow Assistant</div>
+            <div class="wfai-config-grid">
+              <div>
+                <label for="wfaiApiInput" class="form-label small text-muted mb-1">Ollama API</label>
+                <input id="wfaiApiInput" class="form-control" value="{{ ollama_api }}">
+              </div>
+              <div>
+                <label for="wfaiModelInput" class="form-label small text-muted mb-1">Model</label>
+                <input id="wfaiModelInput" class="form-control" value="{{ ollama_model }}">
+              </div>
+            </div>
+            <label for="wfaiPromptInput" class="form-label small text-muted mb-1">Question</label>
+            <textarea id="wfaiPromptInput" class="form-control wfai-query" placeholder="Example: Which workflow contains the Login and Dashboard pages, and what steps or locators are available for the login action?"></textarea>
+            <div class="wfai-actions">
+              <button type="button" class="btn wfai-send-btn" id="wfaiSendBtn"><i class="bi bi-stars"></i> Test RAG</button>
+            </div>
+            <div class="wfai-status" id="wfaiStatus">The assistant searches <code>steps</code>, <code>ai_workflow</code>, and <code>ai_databank</code>, then feeds the matched context to your local Ollama endpoint.</div>
+          </div>
+        </div>
+        <div class="wfai-panel">
+          <div class="wfai-panel-body">
+            <div class="wfai-panel-title"><i class="bi bi-chat-square-text"></i> Assistant Answer</div>
+            <div class="wfai-answer is-empty" id="wfaiAnswer">Ask a question to see the synthesized response from local Llama3.</div>
+          </div>
+        </div>
+      </div>
+      <div class="wfai-panel mt-3">
+        <div class="wfai-panel-body">
+          <div class="wfai-panel-title"><i class="bi bi-diagram-3"></i> Retrieved Sources</div>
+          <div class="wfai-sources">
+            <div class="wfai-source-card">
+              <div class="wfai-source-head"><span class="wfai-source-name">Recorded Steps</span><span class="wfai-source-count" id="wfaiStepsCount">0</span></div>
+              <div class="wfai-source-list" id="wfaiStepsList"><div class="wfai-source-item">No step context loaded yet.</div></div>
+            </div>
+            <div class="wfai-source-card">
+              <div class="wfai-source-head"><span class="wfai-source-name">Saved Workflows</span><span class="wfai-source-count" id="wfaiWorkflowsCount">0</span></div>
+              <div class="wfai-source-list" id="wfaiWorkflowsList"><div class="wfai-source-item">No workflow context loaded yet.</div></div>
+            </div>
+            <div class="wfai-source-card">
+              <div class="wfai-source-head"><span class="wfai-source-name">AI Databank</span><span class="wfai-source-count" id="wfaiDatabankCount">0</span></div>
+              <div class="wfai-source-list" id="wfaiDatabankList"><div class="wfai-source-item">No databank context loaded yet.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ Tab: Search ══════════════════ -->
+    <div class="tab-pane fade" id="tabSearch" role="tabpanel">
+      <div class="wfai-grid">
+        <div class="wfai-panel">
+          <div class="wfai-panel-body">
+            <div class="wfai-panel-title"><i class="bi bi-search"></i> Search RAG Documents</div>
+            <label for="wfaiSearchInput" class="form-label small text-muted mb-1">Search query</label>
+            <textarea id="wfaiSearchInput" class="form-control" rows="3" placeholder="Enter keywords or a natural-language question to find matching documents..."></textarea>
+            <div class="wfai-config-grid mt-2">
+              <div>
+                <label for="wfaiSearchTopK" class="form-label small text-muted mb-1">Max results</label>
+                <input id="wfaiSearchTopK" type="number" class="form-control" value="10" min="1" max="50">
+              </div>
+            </div>
+            <div class="wfai-actions">
+              <button type="button" class="btn btn-primary" id="wfaiSearchBtn"><i class="bi bi-search"></i> Search</button>
+            </div>
+            <div class="wfai-status" id="wfaiSearchStatus">Hybrid vector + keyword search across all indexed documents.</div>
+          </div>
+        </div>
+        <div class="wfai-panel">
+          <div class="wfai-panel-body">
+            <div class="wfai-panel-title"><i class="bi bi-list-ul"></i> Search Results <span class="wfai-source-count ms-2" id="wfaiSearchResultCount">0</span></div>
+            <div class="wfai-source-list" id="wfaiSearchResults"><div class="wfai-source-item">Run a search to see matching documents.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ Tab: Generate ════════════════ -->
+    <div class="tab-pane fade" id="tabGenerate" role="tabpanel">
+      <div class="wfai-grid">
+        <div class="wfai-panel">
+          <div class="wfai-panel-body">
+            <div class="wfai-panel-title"><i class="bi bi-code-slash"></i> Generate Test Script</div>
+            <div class="wfai-config-grid">
+              <div>
+                <label for="wfaiGenModel" class="form-label small text-muted mb-1">Model</label>
+                <input id="wfaiGenModel" class="form-control" value="{{ ollama_model }}">
+              </div>
+            </div>
+            <label for="wfaiGenPrompt" class="form-label small text-muted mb-1">Describe the test</label>
+            <textarea id="wfaiGenPrompt" class="form-control wfai-query" placeholder="Example: Login to https://example.com with user admin, verify the Dashboard heading is visible, then log out."></textarea>
+            <div class="wfai-actions">
+              <button type="button" class="btn btn-primary" id="wfaiGenBtn"><i class="bi bi-play-circle"></i> Generate</button>
+            </div>
+            <div class="wfai-status" id="wfaiGenStatus">Uses the selected Ollama model to generate a Robot Framework test script.</div>
+
+            <hr class="wfai-divider">
+
+            <div class="wfai-panel-title mb-2"><i class="bi bi-diagram-3"></i> Create Test Case From Saved Workflow</div>
+            <div class="wfai-config-grid">
+              <div>
+                <label for="wfaiWorkflowName" class="form-label small text-muted mb-1">Saved workflow</label>
+                <input id="wfaiWorkflowName" class="form-control" list="wfaiWorkflowNameList" placeholder="Select or type a workflow name">
+                <datalist id="wfaiWorkflowNameList">
+                  {% for workflow_name in workflow_names %}
+                  <option value="{{ workflow_name }}"></option>
+                  {% endfor %}
+                </datalist>
+              </div>
+              <div>
+                <label for="wfaiCaseName" class="form-label small text-muted mb-1">New test case name</label>
+                <input id="wfaiCaseName" class="form-control" placeholder="Example: Login Dashboard Generated">
+              </div>
+              <div>
+                <label for="wfaiCaseFolder" class="form-label small text-muted mb-1">Project folder</label>
+                <input id="wfaiCaseFolder" class="form-control" placeholder="Example: Project001/Sub001/End001">
+              </div>
+              <div>
+                <label for="wfaiCaseMaxSteps" class="form-label small text-muted mb-1">Max steps per page</label>
+                <input id="wfaiCaseMaxSteps" type="number" class="form-control" value="8" min="1" max="25">
+              </div>
+            </div>
+            <div class="wfai-actions mt-2">
+              <button type="button" class="btn btn-outline-success" id="wfaiCreateCaseBtn"><i class="bi bi-database-add"></i> Create Test Case In PSQL</button>
+            </div>
+            <div class="wfai-inline-note">This uses ai_workflow page order and ai_databank element relationships to create steps, data, locators, and session_meta rows.</div>
+            <div class="wfai-status" id="wfaiCreateCaseStatus">Choose a saved workflow to generate a deterministic test case in PostgreSQL.</div>
+            <div class="wfai-summary is-empty mt-3" id="wfaiCreateCaseOutput">The created test case summary will appear here.</div>
+          </div>
+        </div>
+        <div class="wfai-panel">
+          <div class="wfai-panel-body">
+            <div class="wfai-panel-title"><i class="bi bi-file-earmark-code"></i> Generated Script</div>
+            <div class="wfai-answer is-empty" id="wfaiGenOutput">Describe a test to see the generated .robot script.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ Tab: Fine-tune ═══════════════ -->
+    <div class="tab-pane fade" id="tabFinetune" role="tabpanel">
+      <div class="wfai-panel">
+        <div class="wfai-panel-body">
+          <div class="wfai-panel-title"><i class="bi bi-mortarboard"></i> Fine-tune &amp; Manage Models</div>
+          <p class="text-muted small mb-3">Build a JSONL training dataset from the RAG index, create a custom Ollama model with a domain-specific system prompt, or refresh model status.</p>
+
+          <div class="wfai-ft-grid">
+            <!-- Card: Dataset -->
+            <div class="wfai-ft-card">
+              <h6><i class="bi bi-filetype-json"></i> Training Dataset</h6>
+              <p class="small text-muted mb-2">Export all indexed documents as an instruction/output JSONL file.</p>
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="wfaiFtDatasetBtn"><i class="bi bi-download"></i> Build Dataset</button>
+                <input type="file" class="form-control form-control-sm" id="wfaiFtUploadFile" accept=".json,.jsonl" style="max-width: 220px;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="wfaiFtUploadBtn"><i class="bi bi-upload"></i> Upload finetune.json</button>
+              </div>
+              <div class="wfai-status mt-2" id="wfaiFtDatasetStatus"></div>
+              <div class="wfai-status mt-2" id="wfaiFtUploadStatus"></div>
+            </div>
+
+            <div class="wfai-ft-card">
+              <h6><i class="bi bi-cpu"></i> Train LoRA</h6>
+              <div class="wfai-config-grid mb-2">
+                <div>
+                  <label for="wfaiTrainBaseModel" class="form-label small text-muted mb-1">Training model</label>
+                  <select id="wfaiTrainBaseModel" class="form-select form-select-sm">
+                    <option value="{{ ollama_model }}">{{ ollama_model }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label small text-muted mb-1">Output model name</label>
+                  <input class="form-control form-control-sm" value="{{ ft_model }}" id="wfaiTrainOutputName" disabled>
+                </div>
+              </div>
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="wfaiTrainBtn"><i class="bi bi-play-circle"></i> Start Training</button>
+                <span class="wfai-ft-badge is-missing" id="wfaiTrainStateBadge"><i class="bi bi-hourglass-split"></i> idle</span>
+              </div>
+              <div class="wfai-status mt-2" id="wfaiTrainStatus">Upload a dataset, choose the training model, then start background training.</div>
+            </div>
+
+            <!-- Card: Create Model -->
+            <div class="wfai-ft-card">
+              <h6><i class="bi bi-box-seam"></i> Create Custom Model</h6>
+              <div class="wfai-config-grid mb-2">
+                <div>
+                  <label for="wfaiFtBaseModel" class="form-label small text-muted mb-1">Base model</label>
+                  <input id="wfaiFtBaseModel" class="form-control form-control-sm" value="{{ ollama_model }}">
+                </div>
+                <div>
+                  <label for="wfaiFtName" class="form-label small text-muted mb-1">New model name</label>
+                  <input id="wfaiFtName" class="form-control form-control-sm" value="{{ ft_model }}">
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-success" id="wfaiFtCreateBtn"><i class="bi bi-lightning-charge"></i> Create Model</button>
+              <div class="wfai-status mt-2" id="wfaiFtCreateStatus"></div>
+            </div>
+
+            <!-- Card: Model Status -->
+            <div class="wfai-ft-card">
+              <h6><i class="bi bi-info-circle"></i> Model Status</h6>
+              <div id="wfaiFtStatusBadge" class="mb-2">
+                <span class="wfai-ft-badge is-missing"><i class="bi bi-hourglass-split"></i> checking…</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="wfaiFtRefreshBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+              <div class="small text-muted mt-2 d-flex flex-wrap gap-1" id="wfaiFtModelList">
+                <span class="text-muted"><i class="bi bi-hourglass-split"></i> loading…</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="wfai-next-steps" id="wfaiFtNextSteps">
+            <div class="wfai-next-steps-title"><i class="bi bi-list-check"></i> Next steps</div>
+            <ol class="wfai-next-steps-list" id="wfaiFtNextStepsList"></ol>
+            <div class="wfai-next-steps-code" id="wfaiFtNextStepsCode"></div>
+          </div>
+
+          <div class="wfai-next-steps is-visible">
+            <div class="wfai-next-steps-title"><i class="bi bi-terminal"></i> Training Progress</div>
+            <div class="small text-muted" id="wfaiTrainMeta">No training job started yet.</div>
+            <pre class="wfai-train-log" id="wfaiTrainLog">No training logs yet.</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

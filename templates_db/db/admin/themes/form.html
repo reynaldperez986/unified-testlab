@@ -1,0 +1,98 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<section class="form-shell testcase-shell mx-auto">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="page-title h3 mb-0">{{ title }}</h1>
+        <a class="btn btn-outline-secondary" href="/db-lab/administration/themes/">Back</a>
+    </div>
+
+    <form method="post" class="section-card form-card">
+        {% csrf_token %}
+        <div class="section-card-header">
+            <h2 class="section-title mb-0">Theme Palette</h2>
+        </div>
+
+        <div class="theme-editor-grid">
+            <div>
+                <div class="field-wrap">
+                    <label class="field-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+                    {{ form.name }}
+                    {% for error in form.name.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="color-grid">
+                    {% for field in form %}
+                        {% if field.name != 'name' and field.name != 'is_default' %}
+                        <div class="field-wrap mb-2">
+                            <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% for error in field.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <div class="field-wrap">
+                    <label class="field-toggle" for="{{ form.is_default.id_for_label }}">
+                        {{ form.is_default }}
+                        <span>Set as default theme</span>
+                    </label>
+                    {% for error in form.is_default.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+            </div>
+
+            <aside class="theme-preview" id="themePreview">
+                <div class="theme-preview-sidebar" id="previewSidebar">Sidebar</div>
+                <div class="theme-preview-surface" id="previewSurface">
+                    <div class="theme-preview-chip" id="previewPrimary">Primary</div>
+                    <div class="theme-preview-chip" id="previewAccent">Accent</div>
+                    <p class="mb-0" id="previewText">Preview text and contrast.</p>
+                </div>
+            </aside>
+        </div>
+
+        <div class="d-flex justify-content-end mt-3">
+            <button class="btn btn-primary" type="submit">Save Theme</button>
+        </div>
+    </form>
+</section>
+
+<script>
+    (function () {
+        const mappings = {
+            primary: document.getElementById("id_primary_color"),
+            accent: document.getElementById("id_accent_color"),
+            background: document.getElementById("id_background_color"),
+            surface: document.getElementById("id_surface_color"),
+            text: document.getElementById("id_text_color"),
+            sidebarStart: document.getElementById("id_sidebar_start_color"),
+            sidebarEnd: document.getElementById("id_sidebar_end_color")
+        };
+
+        const previewSidebar = document.getElementById("previewSidebar");
+        const previewSurface = document.getElementById("previewSurface");
+        const previewPrimary = document.getElementById("previewPrimary");
+        const previewAccent = document.getElementById("previewAccent");
+        const previewText = document.getElementById("previewText");
+
+        function applyPreview() {
+            if (!previewSidebar || !mappings.primary || !mappings.accent || !mappings.background || !mappings.surface || !mappings.text || !mappings.sidebarStart || !mappings.sidebarEnd) return;
+            previewSidebar.style.background = `linear-gradient(135deg, ${mappings.sidebarStart.value}, ${mappings.sidebarEnd.value})`;
+            previewSurface.style.background = mappings.surface.value;
+            previewText.style.color = mappings.text.value;
+            previewPrimary.style.background = mappings.primary.value;
+            previewAccent.style.background = mappings.accent.value;
+            document.getElementById("themePreview").style.background = mappings.background.value;
+        }
+
+        Object.values(mappings).forEach((el) => {
+            if (!el) return;
+            el.addEventListener("input", applyPreview);
+        });
+
+        applyPreview();
+    })();
+</script>
+{% endblock %}
+

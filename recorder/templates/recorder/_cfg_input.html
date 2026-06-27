@@ -1,0 +1,30 @@
+{% if s.input_type == "checkbox" %}
+<div class="form-check form-switch mb-0">
+  <input class="form-check-input cfg-checkbox" type="checkbox"
+         name="{{ s.key }}" id="cfg_{{ s.key }}" role="switch"
+         {% if s.value == "true" %}checked{% endif %}>
+  <label class="form-check-label small text-muted" for="cfg_{{ s.key }}">
+    <span class="cfg-bool-label">{% if s.value == "true" %}Enabled{% else %}Disabled{% endif %}</span>
+  </label>
+</div>
+{% elif s.input_type == "number" %}
+<input type="number" class="form-control form-control-sm cfg-number-input" style="max-width:110px"
+       name="{{ s.key }}" value="{{ s.value }}" min="0">
+{% elif s.input_type == "select" %}
+<select class="form-select form-select-sm" name="{{ s.key }}">
+  {% for opt in s.options %}
+  <option value="{{ opt.value }}" {% if opt.value == s.value %}selected{% endif %}>{{ opt.label }}</option>
+  {% endfor %}
+</select>
+{% if s.hint %}
+<div class="text-muted mt-1" style="font-size:.74rem">{{ s.hint|safe }}</div>
+{% endif %}
+{% elif s.input_type == "textarea" %}
+<textarea class="form-control form-control-sm font-monospace cfg-textarea-input"
+          name="{{ s.key }}" rows="5"
+          placeholder="--window-size=1920,1080&#10;--disable-gpu&#10;--no-sandbox"
+          style="resize:vertical;font-size:.82rem;overflow-y:auto;max-height:200px">{{ s.value }}</textarea>
+{% else %}
+<input type="text" class="form-control form-control-sm"
+       name="{{ s.key }}" value="{{ s.value }}">
+{% endif %}

@@ -1,0 +1,75 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<section class="form-shell mx-auto">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="page-title h3 mb-0">View Connection</h1>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary" href="/db-lab/connections/">Back</a>
+            {% if can_manage %}
+                <a class="btn btn-primary" href="/db-lab/connections/{{ connection.id }}/edit/">Edit</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <section class="section-card form-card">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Name</div>
+                    <div>{{ connection.name }}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Database Type</div>
+                    <div><span class="chip">{{ connection.db_type }}</span></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Host</div>
+                    <div>{{ connection.host }}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Port</div>
+                    <div>{{ connection.port }}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Database Name</div>
+                    <div>{{ connection.database_name|default:"-" }}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Service Name</div>
+                    <div>{{ connection.service_name|default:"-" }}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Username</div>
+                    <div>{{ connection.username }}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Password</div>
+                    <div>********</div>
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="field-wrap mb-0">
+                    <div class="field-label">Options JSON</div>
+                    <div>{{ connection.options_json|default:"-" }}</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</section>
+{% endblock %}
+

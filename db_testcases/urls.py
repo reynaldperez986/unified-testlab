@@ -1,0 +1,60 @@
+app_name = 'db'
+
+from django.contrib.auth import views as auth_views
+from django.urls import path
+
+from . import views
+
+
+urlpatterns = [
+    path("login/", auth_views.LoginView.as_view(template_name="db/auth/login.html"), name="login"),
+    path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+    path("", views.dashboard, name="dashboard"),
+    path("connections/", views.connection_list, name="connection_list"),
+    path("connections/<int:pk>/", views.connection_detail, name="connection_detail"),
+    path("connections/new/", views.connection_create, name="connection_create"),
+    path("connections/<int:pk>/edit/", views.connection_edit, name="connection_edit"),
+    path("connections/<int:pk>/test/", views.connection_test, name="connection_test"),
+    path("testcases/", views.testcase_list, name="testcase_list"),
+    path("testcases/new/", views.testcase_create, name="testcase_create"),
+    path("testcases/<int:pk>/", views.testcase_detail, name="testcase_detail"),
+    path("testcases/folders/new/", views.project_folder_create, name="project_folder_create"),
+    path("testcases/folders/<int:pk>/edit/", views.project_folder_edit, name="project_folder_edit"),
+    path("testcases/folders/<int:pk>/duplicate/", views.project_folder_duplicate, name="project_folder_duplicate"),
+    path("testcases/folders/<int:pk>/delete/", views.project_folder_delete, name="project_folder_delete"),
+    path("testcases/ungrouped/delete/", views.ungrouped_delete, name="ungrouped_delete"),
+    path("testcases/tree/move/", views.testcase_tree_move, name="testcase_tree_move"),
+    path("testcases/<int:pk>/edit/", views.testcase_edit, name="testcase_edit"),
+    path("testcases/<int:pk>/duplicate/", views.testcase_duplicate, name="testcase_duplicate"),
+    path("testcases/<int:pk>/delete/", views.testcase_delete, name="testcase_delete"),
+    path("testcases/<int:pk>/run/", views.testcase_run, name="testcase_run"),
+    path("testcases/run-all/", views.testcase_run_all, name="testcase_run_all"),
+    path("testcases/run-all/start/", views.testcase_run_all_start, name="testcase_run_all_start"),
+    path("testcases/run-selected/start/", views.testcase_run_selected_start, name="testcase_run_selected_start"),
+    path("testcases/execute-ajax/", views.testcase_execute_ajax, name="testcase_execute_ajax"),
+    path("executions/", views.execution_list, name="execution_list"),
+    path("executions/<int:pk>/actual/csv/", views.execution_actual_csv, name="execution_actual_csv"),
+    path("executions/<int:pk>/actual/json/", views.execution_actual_json, name="execution_actual_json"),
+    path("executions/<int:pk>/report/pdf/", views.execution_report_pdf, name="execution_report_pdf"),
+    path("executions/<int:pk>/report/csv/", views.execution_report_csv, name="execution_report_csv"),
+    path("executions/<int:pk>/report/doc/", views.execution_report_doc, name="execution_report_doc"),
+    path("executions/<int:pk>/", views.execution_detail, name="execution_detail"),
+    path("executions/live/state/", views.execution_live_state, name="execution_live_state"),
+    path("executions/live/run/<str:run_id>/pause/", views.execution_live_run_pause, name="execution_live_run_pause"),
+    path("executions/live/run/<str:run_id>/stop/", views.execution_live_run_stop, name="execution_live_run_stop"),
+    path("executions/live/job/<str:job_id>/pause/", views.execution_live_job_pause, name="execution_live_job_pause"),
+    path("executions/live/job/<str:job_id>/stop/", views.execution_live_job_stop, name="execution_live_job_stop"),
+    path("executions/export/csv/", views.execution_export_csv, name="execution_export_csv"),
+    path("executions/export/excel/", views.execution_export_excel, name="execution_export_excel"),
+    path("administration/users/", views.admin_user_list, name="admin_user_list"),
+    path("administration/users/<int:pk>/edit/", views.admin_user_edit, name="admin_user_edit"),
+    path("administration/themes/", views.admin_theme_list, name="admin_theme_list"),
+    path("administration/themes/new/", views.admin_theme_create, name="admin_theme_create"),
+    path("administration/themes/<int:pk>/edit/", views.admin_theme_edit, name="admin_theme_edit"),
+    path("administration/themes/<int:pk>/set-default/", views.admin_theme_set_default, name="admin_theme_set_default"),
+    path("administration/themes/<int:pk>/apply-me/", views.admin_theme_apply_me, name="admin_theme_apply_me"),
+    path("administration/audit-logs/", views.audit_log_list, name="audit_log_list"),
+    path("administration/audit-logs/<int:pk>/", views.audit_log_detail, name="audit_log_detail"),
+]
+
+

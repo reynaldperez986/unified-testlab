@@ -1,0 +1,171 @@
+{% extends 'api/base.html' %}
+
+{% block title %}Edit Endpoint - API TestLab{% endblock %}
+{% block page_title %}Edit Endpoint: {{ endpoint.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .payload-editor {
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.8rem;
+        line-height: 1.4;
+        tab-size: 2;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <span class="method-badge method-{{ endpoint.http_method }}">{{ endpoint.http_method }}</span>
+                    {{ endpoint.name }}
+                </h6>
+                <code>{{ endpoint.endpoint_path }}</code>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">{{ endpoint.description|default:"No description" }}</p>
+                <p class="small"><strong>Module:</strong> <a href="{% url 'api:module_detail' endpoint.module.pk %}">{{ endpoint.module.name }}</a></p>
+            </div>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <!-- Headers -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-list-ul"></i> Request Headers</h6>
+                    <button type="button" class="btn btn-sm btn-outline-info" onclick="formatJson('id_headers')">
+                        <i class="bi bi-code-slash"></i> Format JSON
+                    </button>
+                </div>
+                <div class="card-body">
+                    <textarea id="id_headers" name="headers" class="form-control payload-editor"
+                              rows="8" placeholder='{"Content-Type": "application/json", "Accept": "application/json"}'>{{ endpoint.headers }}</textarea>
+                    <div class="form-text">JSON object of default headers for this endpoint. Will be merged with test case headers on execution.</div>
+                </div>
+            </div>
+
+            <!-- Default Payload -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-braces"></i> Default Payload (Request Body)</h6>
+                    <div class="d-flex gap-2">
+                        {% if endpoint.request_body %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadRawBody()" title="Copy the original imported request body into the editor">
+                            <i class="bi bi-arrow-down-circle"></i> Load Raw Body
+                        </button>
+                        {% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-info" onclick="formatJson('id_default_payload')">
+                            <i class="bi bi-code-slash"></i> Format JSON
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <textarea id="id_default_payload" name="default_payload" class="form-control payload-editor"
+                              rows="25" placeholder='Paste or type the default JSON payload here...'>{{ endpoint.default_payload }}</textarea>
+                    <div class="form-text">This payload will auto-populate the Request Body when this endpoint is selected in Test Case creation.</div>
+                </div>
+            </div>
+
+            <!-- Upload Payload File -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-upload"></i> Upload Payload from File</h6>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">Upload a JSON file to replace the default payload above.</p>
+                    <div class="input-group">
+                        <input type="file" id="payload_file_input" class="form-control" accept=".json">
+                        <button type="button" class="btn btn-outline-primary" onclick="loadPayloadFile()">
+                            <i class="bi bi-file-earmark-arrow-up"></i> Load into Editor
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Expected Responses -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-reply"></i> Expected Responses (by Status Code)</h6>
+                    <button type="button" class="btn btn-sm btn-outline-info" onclick="formatJson('id_expected_responses')">
+                        <i class="bi bi-code-slash"></i> Format JSON
+                    </button>
+                </div>
+                <div class="card-body">
+                    <textarea id="id_expected_responses" name="expected_responses" class="form-control payload-editor"
+                              rows="15" placeholder='{"201": {...}, "400": {...}, "500": {...}}'>{{ endpoint.expected_responses }}</textarea>
+                    <div class="form-text">
+                        JSON object mapping HTTP status codes to sample response bodies. Example:<br>
+                        <code>{"201": {"id": "...", "status": "COMPLETED"}, "400": {"title": "Error", "status": 400}}</code>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> Save Endpoint
+                </button>
+                <a href="{% url 'api:module_detail' endpoint.module.pk %}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const RAW_BODY = "{{ endpoint.request_body|default:''|escapejs }}";
+
+function loadRawBody() {
+    const ta = document.getElementById('id_default_payload');
+    let raw = RAW_BODY;
+    try {
+        raw = JSON.stringify(JSON.parse(raw), null, 2);
+    } catch (e) { /* leave as-is if not JSON */ }
+    ta.value = raw;
+    ta.focus();
+}
+
+// Auto-populate if default_payload is empty and raw body exists
+(function () {
+    const ta = document.getElementById('id_default_payload');
+    if (RAW_BODY && !ta.value.trim()) {
+        loadRawBody();
+    }
+})();
+
+function formatJson(textareaId) {
+    const ta = document.getElementById(textareaId);
+    try {
+        const obj = JSON.parse(ta.value);
+        ta.value = JSON.stringify(obj, null, 2);
+    } catch (e) {
+        alert('Invalid JSON: ' + e.message);
+    }
+}
+
+function loadPayloadFile() {
+    const fileInput = document.getElementById('payload_file_input');
+    if (!fileInput.files.length) {
+        alert('Please select a file first.');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const obj = JSON.parse(e.target.result);
+            document.getElementById('id_default_payload').value = JSON.stringify(obj, null, 2);
+        } catch (err) {
+            alert('Invalid JSON file: ' + err.message);
+        }
+    };
+    reader.readAsText(fileInput.files[0]);
+}
+</script>
+{% endblock %}
+
+

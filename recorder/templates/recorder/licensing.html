@@ -1,0 +1,186 @@
+{% extends "recorder/base.html" %}
+{% block title %}Licensing{% endblock %}
+
+{% block content %}
+<div class="page-header-shell">
+  <div>
+    <h4 class="page-title fw-bold mb-1"><i class="bi bi-key"></i> Licensing</h4>
+    <div class="page-header-meta">Review plan details, seat utilization, ownership, and renewal metadata for the local platform.</div>
+  </div>
+  {% if user.is_superuser %}
+  <a href="{% url 'configuration' %}" class="btn btn-primary btn-sm">
+    <i class="bi bi-sliders me-1"></i>Manage License Settings
+  </a>
+  {% endif %}
+</div>
+
+<style>
+  .license-hero-card {
+    border: 1px solid rgba(31, 111, 182, 0.12);
+    border-radius: 1.25rem;
+    background: linear-gradient(135deg, rgba(13,110,253,.1), rgba(25,135,84,.08));
+    box-shadow: 0 18px 34px rgba(20, 52, 87, 0.08);
+  }
+  .license-stat-card {
+    border-radius: 1rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    height: 100%;
+  }
+  .license-key-block {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: .88rem;
+    padding: .85rem 1rem;
+    border-radius: .9rem;
+    background: rgba(15, 23, 42, 0.06);
+    word-break: break-all;
+  }
+  .license-progress {
+    height: .85rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+  .license-progress-bar {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #198754, #0d6efd);
+  }
+  .license-meta-label {
+    font-size: .74rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: .28rem;
+  }
+  .license-meta-value {
+    font-weight: 600;
+    color: #1f2937;
+    word-break: break-word;
+  }
+  html.ui-dark .license-hero-card {
+    background: linear-gradient(135deg, rgba(13,110,253,.18), rgba(25,135,84,.14));
+    border-color: rgba(148, 163, 184, 0.18);
+  }
+  html.ui-dark .license-stat-card {
+    border-color: rgba(148, 163, 184, 0.14);
+  }
+  html.ui-dark .license-key-block {
+    background: rgba(255,255,255,.06);
+    color: #e5e7eb;
+  }
+  html.ui-dark .license-meta-label {
+    color: #9ca3af;
+  }
+  html.ui-dark .license-meta-value {
+    color: #f3f4f6;
+  }
+  @media (max-width: 576px) {
+    .license-hero-card .card-body { padding: 1.2rem !important; }
+    .license-hero-card h2 { font-size: 1.25rem; }
+    .license-key-block { font-size: .76rem; padding: .65rem .8rem; }
+    .license-meta-label { font-size: .68rem; }
+    .license-meta-value { font-size: .88rem; }
+  }
+</style>
+
+<div class="card license-hero-card mb-4">
+  <div class="card-body p-4 p-lg-5">
+    <div class="row g-4 align-items-center">
+      <div class="col-12 col-lg-7">
+        <span class="badge rounded-pill text-bg-light border mb-3">{{ license_plan|default:"Plan not set" }}</span>
+        <h2 class="fw-bold mb-2">{{ license_product_name|default:"WebConX Automation" }}</h2>
+        <p class="text-muted mb-4">Use this page to keep the local environment aligned with your active product entitlement and internal support ownership.</p>
+        <div class="license-key-block">{{ license_key|default:"No license key configured yet." }}</div>
+      </div>
+      <div class="col-12 col-lg-5">
+        <div class="row g-3">
+          <div class="col-6">
+            <div class="card license-stat-card shadow-sm">
+              <div class="card-body">
+                <div class="license-meta-label">Status</div>
+                <div class="fs-5 fw-bold">{{ license_status|default:"Unknown" }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="card license-stat-card shadow-sm">
+              <div class="card-body">
+                <div class="license-meta-label">Seats Used</div>
+                <div class="fs-5 fw-bold">{{ license_seats_used }} / {{ license_seats_total }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="card license-stat-card shadow-sm">
+              <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+                  <div class="license-meta-label mb-0">Seat Utilization</div>
+                  <div class="small text-muted">{{ license_utilization_pct }}%</div>
+                </div>
+                <div class="license-progress">
+                  <div class="license-progress-bar" style="width: {{ license_utilization_pct }}%;"></div>
+                </div>
+                <div class="small text-muted mt-2">{{ license_seats_available }} seat{{ license_seats_available|pluralize }} available</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-12 col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-card-checklist me-2"></i>License Details</div>
+      <div class="card-body">
+        <div class="row g-4">
+          <div class="col-12 col-md-6">
+            <div class="license-meta-label">Licensed To</div>
+            <div class="license-meta-value">{{ license_owner|default:"Not configured" }}</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="license-meta-label">Support Email</div>
+            <div class="license-meta-value">{{ license_contact_email|default:"Not configured" }}</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="license-meta-label">Valid From</div>
+            <div class="license-meta-value">{{ license_valid_from|default:"Not configured" }}</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="license-meta-label">Valid Until</div>
+            <div class="license-meta-value">{{ license_valid_until|default:"Not configured" }}</div>
+          </div>
+          <div class="col-12">
+            <div class="license-meta-label">Notes</div>
+            <div class="license-meta-value">{{ license_notes|default:"No license notes available."|linebreaksbr }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header fw-semibold"><i class="bi bi-lightning-charge me-2"></i>Quick Access</div>
+      <div class="card-body d-grid gap-3">
+        <a href="{% url 'dashboard' %}" class="btn btn-outline-primary text-start">
+          <i class="bi bi-speedometer2 me-2"></i>Back to Dashboard
+        </a>
+        <a href="{% url 'ai_databank_flow' %}" class="btn btn-outline-primary text-start">
+          <i class="bi bi-diagram-3 me-2"></i>Open AI Flow
+        </a>
+        {% if user.is_superuser %}
+        <a href="{% url 'tenant_list' %}" class="btn btn-outline-secondary text-start">
+          <i class="bi bi-buildings me-2"></i>Manage Tenants
+        </a>
+        <a href="{% url 'configuration' %}" class="btn btn-outline-dark text-start">
+          <i class="bi bi-gear me-2"></i>Edit License Configuration
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

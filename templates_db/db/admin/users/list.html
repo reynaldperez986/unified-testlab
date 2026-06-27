@@ -1,0 +1,51 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 mb-md-4">
+    <h1 class="page-title h3 mb-0">Administration - Users</h1>
+</div>
+
+<section class="section-card">
+    <div class="table-responsive modern-table-wrap">
+        <table class="table modern-table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Active</th>
+                    <th>Staff</th>
+                    <th>Groups</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>{{ u.username }}</td>
+                    <td>{{ u.get_full_name|default:"-" }}</td>
+                    <td>{{ u.email|default:"-" }}</td>
+                    <td>{{ u.is_active }}</td>
+                    <td>{{ u.is_staff }}</td>
+                    <td>
+                        {% for g in u.groups.all %}
+                            <span class="chip">{{ g.name }}</span>
+                        {% empty %}
+                            <span class="text-muted">-</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/administration/users/{{ u.id }}/edit/" title="Edit" aria-label="Edit user">
+                            <i class="bi bi-pencil-square"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-muted">No users found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+

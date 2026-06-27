@@ -1,0 +1,1332 @@
+<style>
+  .als-shell {
+    display: grid;
+    gap: 1rem;
+  }
+  .als-hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .als-hero-copy {
+    display: grid;
+    gap: .45rem;
+    align-content: start;
+  }
+  .als-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .35rem .75rem;
+    border-radius: 999px;
+    background: rgba(23, 132, 114, 0.12);
+    color: #178472;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    justify-self: start;
+    margin: 0;
+  }
+  .als-subtitle {
+    max-width: 62rem;
+    margin: .15rem 0 0;
+    color: #5f748a;
+    font-size: .96rem;
+    line-height: 1.6;
+  }
+  .als-hero-metrics {
+    display: flex;
+    gap: .8rem;
+    flex-wrap: wrap;
+  }
+  .als-metric {
+    display: inline-flex;
+    flex-direction: column;
+    min-width: 8rem;
+    padding: .9rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(23, 132, 114, 0.16);
+    background: rgba(255, 255, 255, 0.76);
+    box-shadow: 0 14px 24px rgba(20, 52, 87, 0.08);
+  }
+  .als-metric-label {
+    font-size: .75rem;
+    color: #60758b;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: .2rem;
+  }
+  .als-metric-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #17324f;
+    line-height: 1.1;
+  }
+  .als-metric-text {
+    font-size: .78rem;
+    color: #60758b;
+    margin-top: .18rem;
+  }
+  .als-panel {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(23, 132, 114, 0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.84), rgba(244,250,248,0.96));
+    box-shadow: 0 18px 34px rgba(20, 52, 87, 0.08);
+    overflow: hidden;
+  }
+  .als-toolbar {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+  }
+  .als-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: .9rem;
+  }
+  .als-block {
+    grid-column: span 12;
+    padding: 1rem;
+    border-radius: 1.1rem;
+    border: 1px solid rgba(23, 132, 114, 0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(241,248,246,0.9));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+  }
+  .als-block-title {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin-bottom: .8rem;
+    color: #17324f;
+    font-size: .92rem;
+    font-weight: 800;
+  }
+  .als-block-title i {
+    color: #178472;
+  }
+  .als-top-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: .9rem;
+  }
+  .als-block-danger {
+    border-color: rgba(220, 53, 69, 0.18);
+    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,245,245,0.9));
+  }
+  .als-block-danger .als-block-title { color: #b02a37; }
+  .als-block-danger .als-chart-filter-input { border-color: rgba(220,53,69,.22); }
+  .als-block-danger .als-chart-filter-input:focus { border-color: rgba(220,53,69,.55); box-shadow: 0 0 0 3px rgba(220,53,69,.08); }
+  .als-failed-msg {
+    max-width: 28rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #b02a37;
+    font-size: .8rem;
+  }
+  .als-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: .55rem;
+    flex-wrap: wrap;
+    margin-top: .95rem;
+  }
+  .als-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    min-height: 2.2rem;
+    padding: .42rem .78rem;
+    border-radius: .8rem;
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .01em;
+    box-shadow: 0 10px 18px rgba(20, 52, 87, 0.08);
+  }
+  .als-btn.btn-primary {
+    background: linear-gradient(135deg, #178472, #13695b);
+    border-color: #13695b;
+  }
+  .als-btn.btn-outline-secondary {
+    background: rgba(255,255,255,0.88);
+    border-color: rgba(23, 132, 114, 0.16);
+    color: #4f6479;
+  }
+  .als-filter-note,
+  .als-muted {
+    color: #60758b;
+  }
+  .als-badge-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+  }
+  .als-preset-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .55rem;
+  }
+  .als-preset-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 4.2rem;
+    padding: .48rem .8rem;
+    border-radius: 999px;
+    border: 1px solid rgba(23, 132, 114, 0.16);
+    background: rgba(255,255,255,0.82);
+    color: #4f6479;
+    font-size: .78rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .als-preset-pill.is-active {
+    background: linear-gradient(135deg, #178472, #13695b);
+    color: #fff;
+    box-shadow: 0 10px 18px rgba(19, 105, 91, 0.2);
+  }
+  .als-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .45rem .7rem;
+    border-radius: 999px;
+    background: rgba(23, 132, 114, 0.1);
+    color: #15695c;
+    font-size: .78rem;
+    font-weight: 700;
+  }
+  .als-chart-grid {
+    display: grid;
+    gap: 1rem;
+    max-height: 540px;
+    overflow-y: auto;
+    padding-right: .25rem;
+    scroll-padding-top: .5rem;
+  }
+  .als-chart-grid::-webkit-scrollbar { width: 6px; }
+  .als-chart-grid::-webkit-scrollbar-track { background: transparent; }
+  .als-chart-grid::-webkit-scrollbar-thumb { background: rgba(23,132,114,.28); border-radius: 999px; }
+  .als-chart-filter {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: .6rem;
+  }
+  .als-chart-filter-input {
+    flex: 1;
+    height: 2rem;
+    padding: 0 .75rem;
+    border: 1px solid rgba(23,132,114,.25);
+    border-radius: .5rem;
+    font-size: .83rem;
+    background: #fff;
+    color: #17324f;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .als-chart-filter-input:focus { border-color: rgba(23,132,114,.6); box-shadow: 0 0 0 3px rgba(23,132,114,.08); }
+  .als-chart-filter-input::placeholder { color: #9db5c4; }
+  .als-chart-filter-clear {
+    display: none;
+    background: none;
+    border: none;
+    padding: 0 .3rem;
+    color: #9db5c4;
+    font-size: 1rem;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .als-chart-filter-clear:hover { color: #e74c3c; }
+  .als-chart-filter-count {
+    font-size: .78rem;
+    color: #60758b;
+    white-space: nowrap;
+  }
+  .als-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+  }
+  .als-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    color: #4f6479;
+    font-size: .8rem;
+    font-weight: 700;
+  }
+  .als-legend-swatch {
+    width: .8rem;
+    height: .8rem;
+    border-radius: 999px;
+    display: inline-block;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55);
+  }
+  .als-chart-record {
+    display: grid;
+    gap: .45rem;
+    padding: .85rem .95rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(23, 132, 114, 0.1);
+    background: rgba(255,255,255,0.78);
+  }
+  .als-chart-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+  .als-chart-name {
+    font-weight: 800;
+    color: #17324f;
+  }
+  .als-chart-total {
+    color: #60758b;
+    font-size: .8rem;
+    font-weight: 700;
+  }
+  .als-chart-bar {
+    display: flex;
+    min-height: 1rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(23, 132, 114, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(23, 132, 114, 0.06);
+  }
+  .als-chart-segment {
+    min-width: .35rem;
+  }
+  .als-chart-breakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem .75rem;
+  }
+  .als-outcome-wrap {
+    display: grid;
+    gap: .35rem;
+  }
+  .als-outcome-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .6rem;
+    flex-wrap: wrap;
+  }
+  .als-outcome-label {
+    color: #60758b;
+    font-size: .76rem;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+  }
+  .als-outcome-total {
+    color: #60758b;
+    font-size: .76rem;
+    font-weight: 700;
+  }
+  .als-outcome-bar {
+    display: flex;
+    min-height: .45rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(71, 85, 105, 0.1);
+  }
+  .als-outcome-segment {
+    min-width: .3rem;
+  }
+  .als-outcome-breakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem .75rem;
+  }
+  .als-outcome-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    color: #4f6479;
+    font-size: .74rem;
+    font-weight: 700;
+  }
+  .als-chart-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    color: #4f6479;
+    font-size: .78rem;
+    font-weight: 700;
+  }
+  .als-table-wrap {
+    max-height: calc(100vh - 19rem);
+    overflow: auto;
+    padding: .35rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(23, 132, 114, 0.08);
+    background: linear-gradient(180deg, rgba(255,255,255,0.5), rgba(240,246,251,0.7));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.48);
+  }
+  .als-table {
+    --bs-table-bg: transparent;
+  }
+  .als-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: rgba(238, 248, 245, 0.96);
+    color: #35526d;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-bottom-width: 1px;
+  }
+  .als-table tbody td {
+    background: rgba(255, 255, 255, 0.86);
+    vertical-align: top;
+  }
+  .als-table tbody tr td:first-child {
+    border-top-left-radius: .9rem;
+    border-bottom-left-radius: .9rem;
+  }
+  .als-table tbody tr td:last-child {
+    border-top-right-radius: .9rem;
+    border-bottom-right-radius: .9rem;
+  }
+  .als-locator {
+    max-width: 30rem;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    color: #4f6479;
+    font-size: .82rem;
+    line-height: 1.45;
+  }
+  .als-url {
+    color: #60758b;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .als-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+  @media (min-width: 992px) {
+    .als-block.is-wide {
+      grid-column: span 8;
+    }
+    .als-block.is-narrow {
+      grid-column: span 4;
+    }
+    .als-block.is-half {
+      grid-column: span 6;
+    }
+    .als-top-grid > .als-block.is-wide,
+    .als-top-grid > .als-block.is-half,
+    .als-top-grid > .als-block {
+      grid-column: span 12;
+    }
+  }
+  @media (max-width: 991.98px) {
+    .als-hero {
+      align-items: flex-start;
+    }
+    .als-hero-copy {
+      width: 100%;
+    }
+    .als-hero-metrics {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: .5rem;
+      gap: .65rem;
+      scrollbar-width: none;
+      width: 100%;
+    }
+    .als-hero-metrics::-webkit-scrollbar { display: none; }
+    .als-metric {
+      min-width: 9rem;
+      flex-shrink: 0;
+    }
+    .als-top-grid {
+      gap: .8rem;
+    }
+    .als-table-wrap {
+      max-height: none;
+    }
+  }
+  @media (max-width: 767.98px) {
+    .als-shell {
+      gap: .85rem;
+    }
+    .als-subtitle {
+      font-size: .9rem;
+    }
+    .als-toolbar {
+      padding: .7rem;
+    }
+    .als-block {
+      padding: .8rem;
+      border-radius: 1rem;
+    }
+    .als-block-title {
+      font-size: .88rem;
+      margin-bottom: .7rem;
+    }
+    .als-preset-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .als-preset-pill {
+      width: 100%;
+      min-width: 0;
+    }
+    .als-form-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .5rem;
+    }
+    .als-btn {
+      width: 100%;
+      min-height: 2.05rem;
+      padding: .42rem .65rem;
+      font-size: .75rem;
+      border-radius: .75rem;
+      box-shadow: 0 8px 14px rgba(20, 52, 87, 0.06);
+    }
+    .als-table-wrap {
+      padding: .2rem;
+      border-radius: .9rem;
+    }
+    .als-table,
+    .als-table tbody,
+    .als-table tr,
+    .als-table td {
+      display: block;
+      width: 100%;
+    }
+    .als-table thead {
+      display: none;
+    }
+    .als-table tbody {
+      display: grid;
+      gap: .9rem;
+    }
+    .als-table tbody tr {
+      display: grid;
+      gap: .65rem;
+      padding: .8rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(23, 132, 114, 0.12);
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(244,248,252,0.92));
+      box-shadow: 0 14px 24px rgba(20, 52, 87, 0.08);
+    }
+    .als-table tbody td {
+      padding: .15rem 0;
+      border: 0;
+      background: transparent;
+      min-width: 0 !important;
+      width: 100% !important;
+    }
+    .als-table tbody td::before {
+      content: attr(data-label);
+      display: block;
+      margin-bottom: .35rem;
+      color: #60758b;
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .als-table tbody tr td:first-child,
+    .als-table tbody tr td:last-child {
+      border-radius: 0;
+    }
+  }
+  @media (max-width: 479.98px) {
+    .als-preset-grid,
+    .als-form-actions {
+      grid-template-columns: 1fr;
+    }
+    .als-hero-metrics {
+      gap: .6rem;
+    }
+  }
+  /* ── transitions & hover interactions ───────────────── */
+  .als-btn,
+  .als-preset-pill {
+    transition: transform .13s ease, box-shadow .13s ease, background .15s ease, border-color .13s ease, color .13s ease;
+  }
+  .als-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 24px rgba(20, 52, 87, 0.14);
+  }
+  .als-preset-pill:not(.is-active):hover {
+    background: rgba(23, 132, 114, 0.08);
+    border-color: rgba(23, 132, 114, 0.28);
+    color: #178472;
+  }
+  .als-chart-record {
+    transition: box-shadow .2s ease;
+  }
+  .als-chart-record:hover {
+    box-shadow: 0 18px 34px rgba(20, 52, 87, 0.12);
+  }
+  /* ── form controls ───────────────────────────────────── */
+  .als-shell .form-control,
+  .als-shell .form-select {
+    border-radius: .7rem;
+    border-color: rgba(23, 132, 114, 0.2);
+    font-size: .88rem;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .als-shell .form-control:focus,
+  .als-shell .form-select:focus {
+    border-color: #178472;
+    box-shadow: 0 0 0 .22rem rgba(23, 132, 114, 0.18);
+  }
+  .als-filter-section-label {
+    font-size: .71rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #60758b;
+  }
+  /* ── strategy progress bars ──────────────────────────── */
+  .als-strategy-list {
+    display: grid;
+    gap: .65rem;
+  }
+  .als-strategy-row {
+    display: grid;
+    gap: .3rem;
+  }
+  .als-strategy-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: .5rem;
+    font-size: .85rem;
+  }
+  .als-strategy-name {
+    font-weight: 700;
+    color: #17324f;
+  }
+  .als-strategy-count {
+    color: #178472;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    font-size: .88rem;
+    flex-shrink: 0;
+  }
+  .als-strategy-bar-wrap {
+    height: .45rem;
+    border-radius: 999px;
+    background: rgba(23, 132, 114, 0.1);
+    overflow: hidden;
+  }
+  .als-strategy-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #178472, #13695b);
+    transition: width .5s cubic-bezier(.22,.61,.36,1);
+    min-width: .3rem;
+  }
+  /* ── strategy totals info strip ──────────────────────── */
+  .als-info-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.5rem;
+    margin-top: .9rem;
+    padding-top: .9rem;
+    border-top: 1px solid rgba(23, 132, 114, 0.1);
+  }
+  .als-info-kv {
+    display: flex;
+    gap: .35rem;
+    align-items: baseline;
+  }
+  .als-info-key {
+    font-size: .71rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #60758b;
+  }
+  .als-info-val {
+    font-weight: 700;
+    color: #17324f;
+    font-size: .85rem;
+  }
+  /* ── empty states ────────────────────────────────────── */
+  .als-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .55rem;
+    padding: 2.5rem 1.25rem;
+    color: #60758b;
+    text-align: center;
+  }
+  .als-empty-icon {
+    font-size: 2.2rem;
+    opacity: .4;
+    color: #178472;
+  }
+  .als-empty-text {
+    font-size: .88rem;
+    max-width: 22rem;
+    line-height: 1.6;
+  }
+  /* ── pagination ──────────────────────────────────────── */
+  .als-pagination {
+    padding: .85rem 1.25rem;
+  }
+  .als-pagination .btn-group {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    flex-wrap: wrap;
+  }
+  .als-pagination .btn {
+    border-radius: 999px !important;
+    font-size: .8rem;
+    font-weight: 700;
+    border-color: rgba(23, 132, 114, 0.22);
+    color: #178472;
+    padding: .38rem .9rem;
+    transition: background .13s ease, border-color .13s ease;
+  }
+  .als-pagination .btn:hover {
+    background: rgba(23, 132, 114, 0.08);
+    border-color: rgba(23, 132, 114, 0.4);
+  }
+  .als-pagination .page-gap {
+    color: #5f7b76;
+    font-size: .82rem;
+    padding: 0 .15rem;
+  }
+  .als-pagination .page-number.is-active {
+    background: #178472;
+    border-color: #178472;
+    color: #fff;
+    cursor: default;
+  }
+  /* ── table row hover ─────────────────────────────────── */
+  .als-table tbody tr {
+    transition: background .12s ease;
+  }
+  .als-table tbody tr:hover td {
+    background: linear-gradient(180deg, rgba(231,247,244,0.95), rgba(225,244,240,0.9));
+  }
+</style>
+
+<div class="als-shell">
+  <div class="page-header-shell">
+    <div class="als-hero">
+      <div class="als-hero-copy">
+        <h1 class="page-title"><i class="bi bi-bar-chart-line"></i> Locator Stats</h1>
+        <div class="als-kicker"><i class="bi bi-activity"></i> Replay Usage Analytics</div>
+        <p class="als-subtitle">Inspect successful runtime locator usage from replay, play, and play again runs. Record names come from session_meta, so you can filter counts by the business-facing test name instead of working from raw record_id values.</p>
+      </div>
+      <div class="als-hero-metrics">
+        <div class="als-metric">
+          <span class="als-metric-label">Filtered Hits</span>
+          <span class="als-metric-value">{{ total_hits }}</span>
+          <span class="als-metric-text">Successful locator resolutions in scope</span>
+        </div>
+        <div class="als-metric">
+          <span class="als-metric-label">Records</span>
+          <span class="als-metric-value">{{ total_records }}</span>
+          <span class="als-metric-text">Distinct record names in scope</span>
+        </div>
+        <div class="als-metric">
+          <span class="als-metric-label">Top Strategy</span>
+          <span class="als-metric-value">{{ top_strategy|default:"-" }}</span>
+          <span class="als-metric-text">Most-used successful locator strategy</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 als-panel">
+    <div class="card-body p-0">
+      <div class="als-toolbar">
+          <div class="als-block">
+            <form method="get">
+              <div class="als-block-title"><i class="bi bi-funnel"></i> Filter Locator Stats</div>
+              <div class="row g-2 align-items-end">
+                <div class="col-12 col-lg-3">
+                  <label for="locatorStatsSearch" class="form-label small text-muted mb-1">Search</label>
+                  <input id="locatorStatsSearch" name="q" value="{{ query }}" class="form-control" placeholder="Search by record name, strategy, locator, action, URL, or record ID">
+                </div>
+                <div class="col-12 col-lg-3">
+                  <label for="locatorStatsRecordName" class="form-label small text-muted mb-1">Record Name</label>
+                  <select id="locatorStatsRecordName" name="record_name" class="form-select">
+                    <option value="">All record names</option>
+                    {% for record_name_option in available_record_names %}
+                    <option value="{{ record_name_option }}"{% if record_name_option == selected_record_name %} selected{% endif %}>{{ record_name_option }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-12 col-lg-2">
+                  <label for="locatorStatsStrategy" class="form-label small text-muted mb-1">Strategy</label>
+                  <select id="locatorStatsStrategy" name="strategy" class="form-select">
+                    <option value="">All strategies</option>
+                    {% for strategy_option in available_strategies %}
+                    <option value="{{ strategy_option }}"{% if strategy_option == selected_strategy %} selected{% endif %}>{{ strategy_option }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-6 col-lg-2">
+                  <label for="locatorStatsDateFrom" class="form-label small text-muted mb-1">From</label>
+                  <input id="locatorStatsDateFrom" name="date_from" type="date" value="{{ date_from }}" class="form-control">
+                </div>
+                <div class="col-6 col-lg-2">
+                  <label for="locatorStatsDateTo" class="form-label small text-muted mb-1">To</label>
+                  <input id="locatorStatsDateTo" name="date_to" type="date" value="{{ date_to }}" class="form-control">
+                </div>
+              </div>
+              <div class="mt-3 d-grid gap-2">
+                <div class="als-filter-section-label">Quick presets</div>
+                <div class="als-preset-grid">
+                  <a href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset=today" class="als-preset-pill{% if selected_preset == 'today' %} is-active{% endif %}">Today</a>
+                  <a href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset=7d" class="als-preset-pill{% if selected_preset == '7d' %} is-active{% endif %}">7D</a>
+                  <a href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset=30d" class="als-preset-pill{% if selected_preset == '30d' %} is-active{% endif %}">30D</a>
+                  <a href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset=this_month" class="als-preset-pill{% if selected_preset == 'this_month' %} is-active{% endif %}">This Month</a>
+                </div>
+              </div>
+              <div class="als-form-actions">
+                <button type="submit" class="btn btn-primary btn-sm als-btn"><i class="bi bi-search"></i> Apply Filters</button>
+                <a href="{% url 'ai_locator_stats' %}" class="btn btn-outline-secondary btn-sm als-btn"><i class="bi bi-arrow-counterclockwise"></i> Reset</a>
+              </div>
+            </form>
+          </div>
+
+          <div class="als-block">
+            <div class="als-block-title"><i class="bi bi-collection"></i> Record Counts</div>
+            <div class="als-chart-filter">
+              <input id="alsRecordsFilter" type="text" class="als-chart-filter-input" placeholder="Filter by record name…" autocomplete="off">
+              <button id="alsRecordsFilterClear" class="als-chart-filter-clear" title="Clear filter" aria-label="Clear filter">&times;</button>
+              <span id="alsRecordsFilterCount" class="als-chart-filter-count"></span>
+            </div>
+            <div class="als-table-wrap">
+              <table class="table table-sm align-middle mb-0 als-table">
+                <thead>
+                  <tr>
+                    <th>Record Name</th>
+                    <th>Hits</th>
+                    <th>Runs</th>
+                    <th>Steps</th>
+                    <th>Last Used</th>
+                  </tr>
+                </thead>
+                <tbody id="alsRecordsTableBody">
+                  {% for item in summary_items %}
+                  <tr>
+                    <td data-label="Record Name">
+                      <div class="fw-semibold">{{ item.record_name }}</div>
+                      <div class="small als-muted">{{ item.record_id }}</div>
+                    </td>
+                    <td data-label="Hits">{{ item.total_hits }}</td>
+                    <td data-label="Runs">{{ item.total_runs }}</td>
+                    <td data-label="Steps">{{ item.unique_steps }}</td>
+                    <td data-label="Last Used">{{ item.last_used|date:"Y-m-d H:i"|default:"-" }}</td>
+                  </tr>
+                  {% empty %}
+                  <tr>
+                    <td colspan="5">
+                      <div class="als-empty">
+                        <i class="bi bi-collection als-empty-icon"></i>
+                        <div class="als-empty-text">No locator-stat rows found for the current filter.</div>
+                      </div>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="als-block">
+            <div class="als-block-title"><i class="bi bi-signpost-split"></i> Strategy Totals</div>
+            {% if strategy_items %}
+            <div class="als-strategy-list" id="als-strategy-list">
+              {% for item in strategy_items %}
+              <div class="als-strategy-row" data-hits="{{ item.total_hits }}">
+                <div class="als-strategy-label">
+                  <span class="als-strategy-name">{{ item.strategy }}</span>
+                  <span class="als-strategy-count">{{ item.total_hits }}</span>
+                </div>
+                <div class="als-strategy-bar-wrap">
+                  <div class="als-strategy-bar-fill"></div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            <script>
+            (function () {
+              var rows = document.querySelectorAll('#als-strategy-list .als-strategy-row');
+              var maxHits = 0;
+              rows.forEach(function (r) { maxHits = Math.max(maxHits, parseInt(r.dataset.hits) || 0); });
+              if (!maxHits) maxHits = 1;
+              rows.forEach(function (r) {
+                var pct = Math.max(4, Math.round((parseInt(r.dataset.hits) || 0) / maxHits * 100));
+                r.querySelector('.als-strategy-bar-fill').style.width = pct + '%';
+              });
+            })();
+            </script>
+            {% else %}
+            <div class="als-empty">
+              <i class="bi bi-bar-chart als-empty-icon"></i>
+              <div class="als-empty-text">No successful locator usage has been captured yet.</div>
+            </div>
+            {% endif %}
+            <div class="als-info-strip">
+              <div class="als-info-kv">
+                <span class="als-info-key">Last Hit</span>
+                <span class="als-info-val">{% if last_used %}{{ last_used|date:"Y-m-d H:i" }}{% else %}&mdash;{% endif %}</span>
+              </div>
+              <div class="als-info-kv">
+                <span class="als-info-key">Default Range</span>
+                <span class="als-info-val">Last 30 days</span>
+              </div>
+            </div>
+          </div>
+
+        <div class="als-block">
+          <div class="als-block-title"><i class="bi bi-bar-chart-steps"></i> Strategy Distribution by Record Name</div>
+          {% if chart_records %}
+          <div class="als-chart-filter">
+            <input id="alsChartFilter" type="text" class="als-chart-filter-input" placeholder="Filter by record name…" autocomplete="off">
+            <button id="alsChartFilterClear" class="als-chart-filter-clear" title="Clear filter" aria-label="Clear filter">&times;</button>
+            <span id="alsChartFilterCount" class="als-chart-filter-count"></span>
+          </div>
+          <div class="als-chart-grid" id="alsChartGrid">
+            <div class="als-chart-legend" id="alsChartLegend">
+              {% for item in chart_legend_items %}
+              <span class="als-legend-item"><span class="als-legend-swatch" style="background: {{ item.color }};"></span>{{ item.strategy }}</span>
+              {% endfor %}
+            </div>
+            {% for item in chart_records %}
+            <div class="als-chart-record">
+              <div class="als-chart-head">
+                <div class="als-chart-name">{{ item.record_name }}</div>
+                <div class="als-chart-total">{{ item.total_hits }} successful hits</div>
+              </div>
+              <div class="als-chart-bar" aria-label="Strategy distribution for {{ item.record_name }}">
+                {% for segment in item.segments %}
+                <span class="als-chart-segment" style="width: {{ segment.pct }}%; background: {{ segment.color }};" title="{{ segment.strategy }}: {{ segment.hits }} hits ({{ segment.pct }}%)"></span>
+                {% endfor %}
+              </div>
+              <div class="als-chart-breakdown">
+                {% for segment in item.segments %}
+                <span class="als-chart-pill"><span class="als-legend-swatch" style="background: {{ segment.color }};"></span>{{ segment.strategy }} {{ segment.hits }}</span>
+                {% endfor %}
+              </div>
+              <div class="als-outcome-wrap">
+                <div class="als-outcome-head">
+                  <div class="als-outcome-label">Run Outcome Overlay</div>
+                  <div class="als-outcome-total">{{ item.run_overlay.total_runs }} runs</div>
+                </div>
+                {% if item.run_overlay.segments %}
+                <div class="als-outcome-bar" aria-label="Run outcomes for {{ item.record_name }}">
+                  {% for outcome in item.run_overlay.segments %}
+                  <span class="als-outcome-segment" style="width: {{ outcome.pct }}%; background: {{ outcome.color }};" title="{{ outcome.label }}: {{ outcome.count }} runs ({{ outcome.pct }}%)"></span>
+                  {% endfor %}
+                </div>
+                <div class="als-outcome-breakdown">
+                  {% for outcome in item.run_overlay.segments %}
+                  <span class="als-outcome-pill"><span class="als-legend-swatch" style="background: {{ outcome.color }};"></span>{{ outcome.label }} {{ outcome.count }}</span>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <div class="small als-muted">No run outcomes matched the current date range for this record.</div>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="als-empty">
+            <i class="bi bi-bar-chart-steps als-empty-icon"></i>
+            <div class="als-empty-text">No chart data yet. Run some replay sessions and they&rsquo;ll appear here.</div>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="als-block">
+          <div class="als-block-title"><i class="bi bi-clock-history"></i> Recent Successful Locator Hits</div>
+          <div class="als-chart-filter">
+            <input id="alsHitsFilter" type="text" class="als-chart-filter-input" placeholder="Filter by record, strategy, locator, URL…" autocomplete="off">
+            <button id="alsHitsFilterClear" class="als-chart-filter-clear" title="Clear filter" aria-label="Clear filter">&times;</button>
+            <span id="alsHitsFilterCount" class="als-chart-filter-count"></span>
+          </div>
+          <div class="als-table-wrap">
+            <table class="table table-hover align-middle als-table">
+              <thead>
+                <tr>
+                  <th>Created</th>
+                  <th>Record</th>
+                  <th>Run / Step</th>
+                  <th>Action</th>
+                  <th>Strategy</th>
+                  <th>Locator</th>
+                  <th>Page URL</th>
+                  <th>Runner</th>
+                </tr>
+              </thead>
+              <tbody id="alsHitsTableBody">
+                {% for item in page_obj %}
+                <tr>
+                  <td data-label="Created">{{ item.created_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+                  <td data-label="Record">
+                    <div class="fw-semibold">{{ item.record_name }}</div>
+                    <div class="small als-muted">{{ item.record_id }}</div>
+                  </td>
+                  <td data-label="Run / Step">
+                    <div class="fw-semibold">Step {{ item.step_no }}</div>
+                    <div class="small als-muted">{{ item.run_id|default:"-" }}</div>
+                  </td>
+                  <td data-label="Action">{{ item.action|default:"-" }}</td>
+                  <td data-label="Strategy">
+                    <span class="badge text-bg-success-subtle border border-success-subtle text-success-emphasis">{{ item.strategy }}</span>
+                    <div class="small als-muted">Rank {{ item.locator_rank|default:"-" }}{% if item.is_primary %} • primary{% endif %}</div>
+                  </td>
+                  <td data-label="Locator"><div class="als-locator">{{ item.locator }}</div></td>
+                  <td data-label="Page URL"><div class="small als-url">{{ item.page_url|default:"-" }}</div></td>
+                  <td data-label="Runner">{{ item.runner|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="8">
+                    <div class="als-empty">
+                      <i class="bi bi-clock-history als-empty-icon"></i>
+                      <div class="als-empty-text">No successful locator usage has been recorded for the current filter.</div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="card-footer als-pagination">
+      <div class="small als-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+      <div class="btn-group">
+        {% if page_obj.has_previous %}
+        <a class="btn btn-outline-secondary btn-sm" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a>
+        {% endif %}
+        {% if page_obj.number|add:"-3" > 1 %}
+        <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&page=1">1</a>
+        {% if page_obj.number|add:"-3" > 2 %}
+        <span class="page-gap">...</span>
+        {% endif %}
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+        {% if num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}
+        {% if num == page_obj.number %}
+        <span class="btn btn-secondary btn-sm page-number is-active">{{ num }}</span>
+        {% else %}
+        <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&page={{ num }}">{{ num }}</a>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+        {% if page_obj.number|add:"3" < page_obj.paginator.num_pages %}
+        {% if page_obj.number|add:"3" < page_obj.paginator.num_pages|add:"-1" %}
+        <span class="page-gap">...</span>
+        {% endif %}
+        <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&page={{ page_obj.paginator.num_pages }}">{{ page_obj.paginator.num_pages }}</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+        <a class="btn btn-outline-secondary btn-sm" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&page={{ page_obj.next_page_number }}">Next</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card-body p-0">
+      <div class="als-toolbar">
+        <div class="als-block als-block-danger">
+          <div class="als-block-title"><i class="bi bi-exclamation-triangle"></i> Recent Failed Locator Hits</div>
+          <div class="als-chart-filter">
+            <input id="alsFailedFilter" type="text" class="als-chart-filter-input" placeholder="Filter by record, strategy, locator, message, URL…" autocomplete="off">
+            <button id="alsFailedFilterClear" class="als-chart-filter-clear" title="Clear filter" aria-label="Clear filter">&times;</button>
+            <span id="alsFailedFilterCount" class="als-chart-filter-count"></span>
+          </div>
+          <div class="als-table-wrap">
+            <table class="table table-hover align-middle als-table">
+              <thead>
+                <tr>
+                  <th>Run Date</th>
+                  <th>Record</th>
+                  <th>Run / Step</th>
+                  <th>Action</th>
+                  <th>Strategy</th>
+                  <th>Locator</th>
+                  <th>Message</th>
+                  <th>Page URL</th>
+                  <th>Runner</th>
+                </tr>
+              </thead>
+              <tbody id="alsFailedTableBody">
+                {% for item in failed_page_obj %}
+                <tr>
+                  <td data-label="Run Date">{{ item.run_date|date:"Y-m-d H:i:s"|default:"-" }}</td>
+                  <td data-label="Record">
+                    <div class="fw-semibold">{{ item.record_name }}</div>
+                    <div class="small als-muted">{{ item.record_id }}</div>
+                  </td>
+                  <td data-label="Run / Step">
+                    <div class="fw-semibold">Step {{ item.step_no }}</div>
+                    <div class="small als-muted">{{ item.run_id|default:"-" }}</div>
+                  </td>
+                  <td data-label="Action">{{ item.action|default:"-" }}</td>
+                  <td data-label="Strategy">
+                    {% if item.strategy and item.strategy != 'unknown' %}
+                    <span class="badge text-bg-danger-subtle border border-danger-subtle text-danger-emphasis">{{ item.strategy }}</span>
+                    {% if item.locator_rank %}<div class="small als-muted">Rank {{ item.locator_rank }}{% if item.is_primary %} &bull; primary{% endif %}</div>{% endif %}
+                    {% else %}
+                    <span class="als-muted small">-</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="Locator"><div class="als-locator">{{ item.locator|default:"-" }}</div></td>
+                  <td data-label="Message"><div class="als-failed-msg" title="{{ item.message }}">{{ item.message|default:"-" }}</div></td>
+                  <td data-label="Page URL"><div class="small als-url">{{ item.page_url|default:"-" }}</div></td>
+                  <td data-label="Runner">{{ item.runner|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="9">
+                    <div class="als-empty">
+                      <i class="bi bi-check2-circle als-empty-icon" style="color:#198754;"></i>
+                      <div class="als-empty-text">No failed steps found for the current filter.</div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if failed_page_obj.paginator.num_pages > 1 %}
+    <div class="card-footer als-pagination">
+      <div class="small als-muted">Page {{ failed_page_obj.number }} of {{ failed_page_obj.paginator.num_pages }}</div>
+      <div class="btn-group">
+        {% if failed_page_obj.has_previous %}
+        <a class="btn btn-outline-secondary btn-sm" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&failed_page={{ failed_page_obj.previous_page_number }}">Previous</a>
+        {% endif %}
+        {% if failed_page_obj.number|add:"-3" > 1 %}
+        <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&failed_page=1">1</a>
+        {% if failed_page_obj.number|add:"-3" > 2 %}
+        <span class="page-gap">...</span>
+        {% endif %}
+        {% endif %}
+        {% for num in failed_page_obj.paginator.page_range %}
+        {% if num >= failed_page_obj.number|add:"-2" and num <= failed_page_obj.number|add:"2" %}
+        {% if num == failed_page_obj.number %}
+        <span class="btn btn-secondary btn-sm page-number is-active">{{ num }}</span>
+        {% else %}
+        <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&failed_page={{ num }}">{{ num }}</a>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+        {% if failed_page_obj.number|add:"3" < failed_page_obj.paginator.num_pages %}
+        {% if failed_page_obj.number|add:"3" < failed_page_obj.paginator.num_pages|add:"-1" %}
+        <span class="page-gap">...</span>
+        {% endif %}
+        <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&failed_page={{ failed_page_obj.paginator.num_pages }}">{{ failed_page_obj.paginator.num_pages }}</a>
+        {% endif %}
+        {% if failed_page_obj.has_next %}
+        <a class="btn btn-outline-secondary btn-sm" href="?q={{ query|urlencode }}&record_name={{ selected_record_name|urlencode }}&strategy={{ selected_strategy|urlencode }}&preset={{ selected_preset|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&failed_page={{ failed_page_obj.next_page_number }}">Next</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+/* ── Record Counts table filter ── */
+(function () {
+  var input   = document.getElementById('alsRecordsFilter');
+  var clearBtn= document.getElementById('alsRecordsFilterClear');
+  var counter = document.getElementById('alsRecordsFilterCount');
+  var tbody   = document.getElementById('alsRecordsTableBody');
+  if (!input || !tbody) return;
+
+  var allRows = Array.from(tbody.querySelectorAll('tr')).filter(function (r) { return r.querySelector('td[data-label]'); });
+  var total   = allRows.length;
+
+  function updateCount(visible) {
+    counter.textContent = input.value.trim() ? (visible + ' / ' + total + ' shown') : (total + ' records');
+  }
+
+  function applyFilter() {
+    var term = input.value.trim().toLowerCase();
+    var visible = 0;
+    allRows.forEach(function (row) {
+      var name = (row.querySelector('td[data-label="Record Name"] .fw-semibold') || row).textContent.toLowerCase();
+      var show = !term || name.indexOf(term) !== -1;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    clearBtn.style.display = term ? 'inline-block' : 'none';
+    updateCount(visible);
+  }
+
+  input.addEventListener('input', applyFilter);
+  clearBtn.addEventListener('click', function () { input.value = ''; applyFilter(); input.focus(); });
+  updateCount(total);
+})();
+
+/* ── Strategy Distribution filter ── */
+(function () {
+  var input   = document.getElementById('alsChartFilter');
+  var clearBtn= document.getElementById('alsChartFilterClear');
+  var counter = document.getElementById('alsChartFilterCount');
+  var grid    = document.getElementById('alsChartGrid');
+  if (!input || !grid) return;
+
+  var legend  = document.getElementById('alsChartLegend');
+  var cards   = Array.from(grid.querySelectorAll('.als-chart-record'));
+  var total   = cards.length;
+
+  function updateCount(visible) {
+    counter.textContent = input.value.trim() ? (visible + ' / ' + total + ' shown') : (total + ' records');
+  }
+
+  function applyFilter() {
+    var term = input.value.trim().toLowerCase();
+    var visible = 0;
+    cards.forEach(function (card) {
+      var name = (card.querySelector('.als-chart-name') || card).textContent.toLowerCase();
+      var show = !term || name.indexOf(term) !== -1;
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    clearBtn.style.display = term ? 'inline-block' : 'none';
+    updateCount(visible);
+    if (legend) grid.insertBefore(legend, grid.firstChild);
+  }
+
+  input.addEventListener('input', applyFilter);
+  clearBtn.addEventListener('click', function () { input.value = ''; applyFilter(); input.focus(); });
+  updateCount(total);
+})();
+
+/* ── Failed Hits table filter ── */
+(function () {
+  var input   = document.getElementById('alsFailedFilter');
+  var clearBtn= document.getElementById('alsFailedFilterClear');
+  var counter = document.getElementById('alsFailedFilterCount');
+  var tbody   = document.getElementById('alsFailedTableBody');
+  if (!input || !tbody) return;
+
+  var allRows = Array.from(tbody.querySelectorAll('tr')).filter(function (r) { return r.querySelector('td[data-label]'); });
+  var total   = allRows.length;
+
+  function updateCount(visible) {
+    counter.textContent = input.value.trim() ? (visible + ' / ' + total + ' shown') : (total + ' rows');
+  }
+
+  function applyFilter() {
+    var term = input.value.trim().toLowerCase();
+    var visible = 0;
+    allRows.forEach(function (row) {
+      var text = row.textContent.toLowerCase();
+      var show = !term || text.indexOf(term) !== -1;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    clearBtn.style.display = term ? 'inline-block' : 'none';
+    updateCount(visible);
+  }
+
+  input.addEventListener('input', applyFilter);
+  clearBtn.addEventListener('click', function () { input.value = ''; applyFilter(); input.focus(); });
+  updateCount(total);
+})();
+
+/* ── Failed Hits table filter ── */
+(function () {
+  var input   = document.getElementById('alsFailedFilter');
+  var clearBtn= document.getElementById('alsFailedFilterClear');
+  var counter = document.getElementById('alsFailedFilterCount');
+  var tbody   = document.getElementById('alsFailedTableBody');
+  if (!input || !tbody) return;
+
+  var allRows = Array.from(tbody.querySelectorAll('tr')).filter(function (r) { return r.querySelector('td[data-label]'); });
+  var total   = allRows.length;
+
+  function updateCount(visible) {
+    counter.textContent = input.value.trim() ? (visible + ' / ' + total + ' shown') : (total + ' rows');
+  }
+
+  function applyFilter() {
+    var term = input.value.trim().toLowerCase();
+    var visible = 0;
+    allRows.forEach(function (row) {
+      var text = row.textContent.toLowerCase();
+      var show = !term || text.indexOf(term) !== -1;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    clearBtn.style.display = term ? 'inline-block' : 'none';
+    updateCount(visible);
+  }
+
+  input.addEventListener('input', applyFilter);
+  clearBtn.addEventListener('click', function () { input.value = ''; applyFilter(); input.focus(); });
+  updateCount(total);
+})();
+
+/* ── Recent Hits table filter ── */
+(function () {
+  var input   = document.getElementById('alsHitsFilter');
+  var clearBtn= document.getElementById('alsHitsFilterClear');
+  var counter = document.getElementById('alsHitsFilterCount');
+  var tbody   = document.getElementById('alsHitsTableBody');
+  if (!input || !tbody) return;
+
+  var allRows = Array.from(tbody.querySelectorAll('tr[data-label], tr:has(td[data-label])'));
+  // Fallback: grab all <tr> that are data rows (have at least one td)
+  if (!allRows.length) allRows = Array.from(tbody.querySelectorAll('tr')).filter(function(r){ return r.querySelector('td[data-label]'); });
+  var total   = allRows.length;
+
+  function updateCount(visible) {
+    counter.textContent = input.value.trim() ? (visible + ' / ' + total + ' shown') : (total + ' rows');
+  }
+
+  function applyFilter() {
+    var term = input.value.trim().toLowerCase();
+    var visible = 0;
+    allRows.forEach(function (row) {
+      var text = row.textContent.toLowerCase();
+      var show = !term || text.indexOf(term) !== -1;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    clearBtn.style.display = term ? 'inline-block' : 'none';
+    updateCount(visible);
+  }
+
+  input.addEventListener('input', applyFilter);
+  clearBtn.addEventListener('click', function () { input.value = ''; applyFilter(); input.focus(); });
+  updateCount(total);
+})();
+</script>

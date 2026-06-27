@@ -1,0 +1,344 @@
+{% extends 'api/base.html' %}
+
+{% block title %}{{ title }} - API TestLab{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Environment Name *</label>
+                        {{ form.name }}
+                        {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Base URL *</label>
+                        {{ form.base_url }}
+                        {% if form.base_url.errors %}<div class="text-danger small">{{ form.base_url.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        {{ form.description }}
+                    </div>
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+                    {% endif %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Authentication Type</label>
+                            {{ form.auth_type }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check mt-4">
+                                {{ form.is_active }}
+                                <label class="form-check-label">Active</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="basic-fields" style="display:none;">
+                        <div class="col-md-6">
+                            <label class="form-label">Username</label>
+                            {{ form.basic_username }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Password</label>
+                            {{ form.basic_password }}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="digest-fields" style="display:none;">
+                        <div class="col-md-6">
+                            <label class="form-label">Username</label>
+                            {{ form.digest_username }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Password</label>
+                            {{ form.digest_password }}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="bearer-fields" style="display:none;">
+                        <div class="col-12">
+                            <label class="form-label">Token</label>
+                            {{ form.bearer_token }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Add authorization data to</label>
+                            {{ form.bearer_add_to }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Header Prefix</label>
+                            {{ form.bearer_header_prefix }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Query Param Name</label>
+                            {{ form.bearer_query_param_name }}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="api-key-fields" style="display:none;">
+                        <div class="col-md-4">
+                            <label class="form-label">Key</label>
+                            {{ form.api_key_name }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Value</label>
+                            {{ form.api_key_value }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Add to</label>
+                            {{ form.api_key_add_to }}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="oauth2-fields" style="display:none;">
+                        <div class="col-md-6">
+                            <label class="form-label">Add authorization data to</label>
+                            {{ form.oauth2_add_to }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Header Prefix</label>
+                            {{ form.oauth2_header_prefix }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Client ID</label>
+                            {{ form.oauth2_client_id }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Client Secret</label>
+                            {{ form.oauth2_client_secret }}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Access Token URL</label>
+                            {{ form.oauth2_token_url }}
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <label class="form-label mb-0">Current Token</label>
+                                {% if form.instance.pk %}
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="getNewTokenBtn" onclick="getNewAccessToken({{ form.instance.pk }})">
+                                    <i class="bi bi-arrow-clockwise"></i> Get New Access Token
+                                </button>
+                                {% endif %}
+                            </div>
+                            {{ form.oauth2_current_token }}
+                            <div class="form-text">Auto generated when you save with OAuth 2.0 selected.</div>
+                            <div id="oauth2TokenResult" class="mt-2"></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="oauth1-fields" style="display:none;">
+                        <div class="col-md-4">
+                            <label class="form-label">Consumer Key</label>
+                            {{ form.oauth1_consumer_key }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Consumer Secret</label>
+                            {{ form.oauth1_consumer_secret }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Signature Method</label>
+                            {{ form.oauth1_signature_method }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Token</label>
+                            {{ form.oauth1_token }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Token Secret</label>
+                            {{ form.oauth1_token_secret }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Add authorization data to</label>
+                            {{ form.oauth1_add_to }}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="awsv4-fields" style="display:none;">
+                        <div class="col-md-4">
+                            <label class="form-label">Access Key</label>
+                            {{ form.awsv4_access_key }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Secret Key</label>
+                            {{ form.awsv4_secret_key }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Session Token</label>
+                            {{ form.awsv4_session_token }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Region</label>
+                            {{ form.awsv4_region }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Service</label>
+                            {{ form.awsv4_service }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Add authorization data to</label>
+                            {{ form.awsv4_add_to }}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3" id="ntlm-fields" style="display:none;">
+                        <div class="col-md-6">
+                            <label class="form-label">Username (DOMAIN\\user or user@domain)</label>
+                            {{ form.ntlm_username }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Password</label>
+                            {{ form.ntlm_password }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Auth Credentials (JSON)</label>
+                        {{ form.auth_credentials }}
+                        <div class="form-text">Managed automatically from the selected auth fields above.</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg"></i> Save
+                        </button>
+                        <a href="{% url 'api:environment_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const authType = document.getElementById('id_auth_type');
+    const oauth2Fields = document.getElementById('oauth2-fields');
+    const basicFields = document.getElementById('basic-fields');
+    const digestFields = document.getElementById('digest-fields');
+    const bearerFields = document.getElementById('bearer-fields');
+    const apiKeyFields = document.getElementById('api-key-fields');
+    const oauth1Fields = document.getElementById('oauth1-fields');
+    const awsV4Fields = document.getElementById('awsv4-fields');
+    const ntlmFields = document.getElementById('ntlm-fields');
+    const authCredsWrapper = document.getElementById('id_auth_credentials')?.closest('.mb-3');
+
+    function toggleAuthSections() {
+        const value = authType ? authType.value : 'none';
+        if (oauth2Fields) oauth2Fields.style.display = value === 'oauth2' ? '' : 'none';
+        if (basicFields) basicFields.style.display = value === 'basic' ? '' : 'none';
+        if (digestFields) digestFields.style.display = value === 'digest' ? '' : 'none';
+        if (bearerFields) bearerFields.style.display = value === 'bearer' ? '' : 'none';
+        if (apiKeyFields) apiKeyFields.style.display = value === 'api_key' ? '' : 'none';
+        if (oauth1Fields) oauth1Fields.style.display = value === 'oauth1' ? '' : 'none';
+        if (awsV4Fields) awsV4Fields.style.display = value === 'awsv4' ? '' : 'none';
+        if (ntlmFields) ntlmFields.style.display = value === 'ntlm' ? '' : 'none';
+        if (authCredsWrapper) authCredsWrapper.style.display = 'none';
+    }
+
+    function getCsrfToken() {
+        const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        return tokenInput ? tokenInput.value : '';
+    }
+
+    function renderTokenResult(type, message) {
+        const box = document.getElementById('oauth2TokenResult');
+        if (!box) return;
+        box.innerHTML = `<div class="alert alert-${type} py-2 mb-0" role="alert">${message}</div>`;
+    }
+
+    window.getNewAccessToken = function(envId) {
+        const authTypeInput = document.getElementById('id_auth_type');
+        if (!authTypeInput || authTypeInput.value !== 'oauth2') {
+            renderTokenResult('warning', 'Select OAuth 2.0 authentication type first.');
+            return;
+        }
+
+        const addTo = document.getElementById('id_oauth2_add_to')?.value || 'request_headers';
+        const clientId = (document.getElementById('id_oauth2_client_id')?.value || '').trim();
+        const clientSecret = (document.getElementById('id_oauth2_client_secret')?.value || '').trim();
+        const tokenUrl = (document.getElementById('id_oauth2_token_url')?.value || '').trim();
+        const headerPrefix = (document.getElementById('id_oauth2_header_prefix')?.value || 'Bearer').trim() || 'Bearer';
+
+        if (!clientId || !clientSecret || !tokenUrl) {
+            renderTokenResult('warning', 'Client ID, Client Secret, and Access Token URL are required.');
+            return;
+        }
+
+        const btn = document.getElementById('getNewTokenBtn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Fetching...';
+        }
+
+        renderTokenResult('info', 'Fetching new access token...');
+
+        const tokenUrlTemplate = "{% url 'api:environment_get_new_access_token' 0 %}";
+        const endpoint = tokenUrlTemplate.replace('/0/oauth2/new-token/', `/${envId}/oauth2/new-token/`);
+
+        fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                add_to: addTo,
+                client_id: clientId,
+                client_secret: clientSecret,
+                token_url: tokenUrl,
+                header_prefix: headerPrefix,
+            }),
+        })
+        .then(async (r) => {
+            const contentType = r.headers.get('content-type') || '';
+            if (!contentType.toLowerCase().includes('application/json')) {
+                const txt = (await r.text()).slice(0, 120);
+                throw new Error(`Unexpected response (${r.status}). ${txt}`);
+            }
+            return r.json();
+        })
+        .then(data => {
+            if (!data.ok) {
+                renderTokenResult('danger', data.error || data.message || 'Unable to fetch access token.');
+                return;
+            }
+
+            const tokenField = document.getElementById('id_oauth2_current_token');
+            if (tokenField) tokenField.value = data.token || '';
+
+            const authCredsField = document.getElementById('id_auth_credentials');
+            if (authCredsField && data.auth_credentials) {
+                authCredsField.value = JSON.stringify(data.auth_credentials, null, 2);
+            }
+
+            renderTokenResult('success', data.message || 'New access token fetched successfully.');
+        })
+        .catch(err => {
+            renderTokenResult('danger', `Token fetch failed: ${err}`);
+        })
+        .finally(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Get New Access Token';
+            }
+        });
+    };
+
+    if (authType) {
+        authType.addEventListener('change', toggleAuthSections);
+        toggleAuthSections();
+    }
+});
+</script>
+{% endblock %}
+
+
+

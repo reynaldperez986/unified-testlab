@@ -1,0 +1,47 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 mb-md-4">
+    <h1 class="page-title h3 mb-0">Run All Active Tests - Summary</h1>
+    <a class="btn btn-outline-secondary" href="/db-lab/testcases/">Back to Test Cases</a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <article class="metric-card h-100"><div class="metric-label">Total</div><div class="metric-value">{{ summary.total }}</div></article>
+    </div>
+    <div class="col-6 col-md-3">
+        <article class="metric-card h-100"><div class="metric-label text-success">Pass</div><div class="metric-value">{{ summary.pass }}</div></article>
+    </div>
+    <div class="col-6 col-md-3">
+        <article class="metric-card h-100"><div class="metric-label text-warning">Fail</div><div class="metric-value">{{ summary.fail }}</div></article>
+    </div>
+    <div class="col-6 col-md-3">
+        <article class="metric-card h-100"><div class="metric-label text-danger">Error</div><div class="metric-value">{{ summary.error }}</div></article>
+    </div>
+</div>
+
+<section class="section-card">
+    <div class="table-responsive modern-table-wrap">
+        <table class="table modern-table align-middle mb-0">
+            <thead>
+                <tr><th>Test Case</th><th>Connection</th><th>Status</th><th>Actual</th><th>Details</th></tr>
+            </thead>
+            <tbody>
+                {% for item in results %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.connection }}</td>
+                    <td><span class="status-pill status-{{ item.status|lower }}">{{ item.status }}</span></td>
+                    <td>{{ item.actual|default:"-" }}</td>
+                    <td>{{ item.details|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-muted">No active test cases found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+

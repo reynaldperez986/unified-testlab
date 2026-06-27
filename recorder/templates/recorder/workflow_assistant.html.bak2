@@ -1,0 +1,899 @@
+{% extends "recorder/base.html" %}
+
+{% block title %}Workflow AI{% endblock %}
+
+{% block content %}
+<form style="display:none">{% csrf_token %}</form>
+<style>
+  .wfai-shell {
+    display: grid;
+    gap: 1rem;
+  }
+  .wfai-hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .wfai-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .35rem .75rem;
+    border-radius: 999px;
+    background: rgba(31, 111, 182, 0.12);
+    color: #1f6fb6;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    margin-bottom: .7rem;
+  }
+  .wfai-subtitle {
+    max-width: 60rem;
+    margin: .6rem 0 0;
+    color: #5f748a;
+    font-size: .96rem;
+    line-height: 1.6;
+  }
+  .wfai-meta-row {
+    display: flex;
+    gap: .65rem;
+    flex-wrap: wrap;
+    margin-top: .9rem;
+  }
+  .wfai-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .5rem .8rem;
+    border-radius: 999px;
+    background: rgba(23, 50, 79, 0.06);
+    border: 1px solid rgba(31, 111, 182, 0.12);
+    color: #36516d;
+    font-size: .79rem;
+    font-weight: 700;
+  }
+  .wfai-badge strong {
+    color: #17324f;
+    font-weight: 800;
+  }
+  .wfai-badge.is-active {
+    background: rgba(31, 111, 182, 0.12);
+    color: #1f6fb6;
+  }
+  .wfai-stat {
+    display: inline-flex;
+    flex-direction: column;
+    min-width: 10rem;
+    padding: .9rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(31, 111, 182, 0.14);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 14px 24px rgba(20, 52, 87, 0.08);
+  }
+  .wfai-stat-label {
+    font-size: .75rem;
+    color: #60758b;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: .2rem;
+  }
+  .wfai-stat-value {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #17324f;
+  }
+  .wfai-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(320px, .95fr);
+    gap: 1rem;
+  }
+  .wfai-panel {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(31, 111, 182, 0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.84), rgba(245,249,253,0.96));
+    box-shadow: 0 18px 34px rgba(20, 52, 87, 0.08);
+    overflow: hidden;
+  }
+  .wfai-panel-body {
+    padding: 1rem;
+  }
+  .wfai-panel-title {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin-bottom: .85rem;
+    color: #17324f;
+    font-size: .92rem;
+    font-weight: 800;
+  }
+  .wfai-query {
+    min-height: 180px;
+    resize: vertical;
+  }
+  .wfai-config-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .8rem;
+    margin-bottom: .8rem;
+  }
+  .wfai-actions {
+    display: flex;
+    gap: .75rem;
+    flex-wrap: wrap;
+    margin-top: .9rem;
+  }
+  .wfai-danger-note {
+    margin-top: .65rem;
+    font-size: .78rem;
+    color: #8a5a19;
+  }
+  .wfai-banner {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: .8rem;
+    padding: .85rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(31, 111, 182, 0.18);
+    background: linear-gradient(180deg, rgba(31,111,182,0.12), rgba(210,230,246,0.55));
+    color: #17324f;
+  }
+  .wfai-banner.is-visible {
+    display: flex;
+  }
+  .wfai-banner-copy {
+    display: grid;
+    gap: .18rem;
+    flex: 1 1 auto;
+  }
+  .wfai-banner-title {
+    font-size: .84rem;
+    font-weight: 800;
+    color: #17324f;
+  }
+  .wfai-banner-text {
+    font-size: .8rem;
+    color: #46627f;
+  }
+  .wfai-banner-progress {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    margin-top: .45rem;
+    border-radius: 999px;
+    background: rgba(23, 50, 79, 0.14);
+    overflow: hidden;
+  }
+  .wfai-banner-progress-bar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #1f6fb6, #56a3e6);
+    transition: width .35s ease;
+    overflow: hidden;
+  }
+  .wfai-banner-progress-bar.is-running::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 35%, rgba(255,255,255,0.48) 50%, rgba(255,255,255,0.18) 65%, transparent 100%);
+    transform: translateX(-100%);
+    animation: wfaiShimmer 1.6s linear infinite;
+  }
+  @keyframes wfaiShimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  .wfai-banner-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .42rem .7rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.7);
+    border: 1px solid rgba(31, 111, 182, 0.14);
+    font-size: .78rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .wfai-toast-wrap {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1095;
+  }
+  .wfai-answer {
+    min-height: 260px;
+    border-radius: 1rem;
+    border: 1px solid rgba(31, 111, 182, 0.12);
+    background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(243,248,252,0.9));
+    padding: 1rem;
+    color: #17324f;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .wfai-answer.is-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #60758b;
+  }
+  .wfai-status {
+    margin-top: .8rem;
+    font-size: .85rem;
+    color: #60758b;
+  }
+  .wfai-status.is-error {
+    color: #b02a37;
+  }
+  .wfai-sources {
+    display: grid;
+    gap: .8rem;
+  }
+  .wfai-source-card {
+    padding: .9rem;
+    border-radius: 1rem;
+    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(243,248,252,0.9));
+    border: 1px solid rgba(31, 111, 182, 0.1);
+  }
+  .wfai-source-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    margin-bottom: .45rem;
+  }
+  .wfai-source-name {
+    font-weight: 800;
+    color: #17324f;
+  }
+  .wfai-source-count {
+    padding: .26rem .55rem;
+    border-radius: 999px;
+    background: rgba(31, 111, 182, 0.1);
+    color: #1f6fb6;
+    font-size: .74rem;
+    font-weight: 800;
+  }
+  .wfai-source-list {
+    display: grid;
+    gap: .45rem;
+  }
+  .wfai-source-item {
+    font-size: .8rem;
+    color: #5f748a;
+    padding: .55rem .65rem;
+    border-radius: .85rem;
+    background: rgba(31, 111, 182, 0.06);
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 991.98px) {
+    .wfai-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 767.98px) {
+    .wfai-config-grid {
+      grid-template-columns: 1fr;
+    }
+    .wfai-stat {
+      width: 100%;
+    }
+  }
+</style>
+
+<div class="wfai-shell">
+  <div class="page-header-shell">
+    <div class="wfai-hero">
+      <div>
+        <div class="wfai-kicker"><i class="bi bi-cpu"></i> Local RAG Assistant</div>
+        <h1 class="page-title"><i class="bi bi-robot"></i> Workflow AI</h1>
+        <p class="wfai-subtitle">Ask questions about recorded steps, saved AI workflows, and databank objects. The assistant retrieves matching PostgreSQL context and sends that evidence to your local Ollama Llama3 endpoint.</p>
+        <div class="wfai-meta-row">
+          <div class="wfai-badge" id="wfaiIndexedBadge"><i class="bi bi-database"></i> Indexed docs <strong id="wfaiIndexedCount">{{ rag_status.indexed_documents|default:0 }}</strong></div>
+          <div class="wfai-badge" id="wfaiRebuildBadge"><i class="bi bi-clock-history"></i> Last rebuild <strong id="wfaiLastRebuild">{{ rag_status.last_finished_at|default:"Never" }}</strong></div>
+        </div>
+      </div>
+      <div class="wfai-stat">
+        <span class="wfai-stat-label">Model</span>
+        <span class="wfai-stat-value" id="wfaiModelStat">{{ ollama_model }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wfai-banner{% if rag_status.is_active %} is-visible{% endif %}" id="wfaiRebuildBanner">
+    <div class="wfai-banner-copy">
+      <div class="wfai-banner-title">RAG rebuild in progress</div>
+      <div class="wfai-banner-text" id="wfaiRebuildBannerText">Live queries continue using the current index until the staged rebuild swaps in.</div>
+      <div class="wfai-banner-progress" aria-hidden="true">
+        <div class="wfai-banner-progress-bar" id="wfaiProgressBar"></div>
+      </div>
+    </div>
+    <div class="wfai-banner-pill"><i class="bi bi-hourglass-split"></i> Done <strong id="wfaiCompletedCount">0</strong>/<span id="wfaiTargetCount">0</span> <span id="wfaiProgressPercent">0%</span> <span id="wfaiElapsedTime">0s</span></div>
+  </div>
+
+  <div class="wfai-toast-wrap">
+    <div id="wfaiRebuildToast" class="toast align-items-center text-bg-success border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="2600">
+      <div class="d-flex">
+        <div class="toast-body fw-semibold" id="wfaiRebuildToastBody">RAG rebuild completed.</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="wfai-grid">
+    <div class="wfai-panel">
+      <div class="wfai-panel-body">
+        <div class="wfai-panel-title"><i class="bi bi-send-check"></i> Ask Workflow Assistant</div>
+        <div class="wfai-config-grid">
+          <div>
+            <label for="wfaiApiInput" class="form-label small text-muted mb-1">Ollama API</label>
+            <input id="wfaiApiInput" class="form-control" value="{{ ollama_api }}">
+          </div>
+          <div>
+            <label for="wfaiModelInput" class="form-label small text-muted mb-1">Model</label>
+            <input id="wfaiModelInput" class="form-control" value="{{ ollama_model }}">
+          </div>
+        </div>
+        <label for="wfaiPromptInput" class="form-label small text-muted mb-1">Question</label>
+        <textarea id="wfaiPromptInput" class="form-control wfai-query" placeholder="Example: Which workflow contains the Login and Dashboard pages, and what steps or locators are available for the login action?"></textarea>
+        <div class="wfai-actions">
+          <button type="button" class="btn btn-primary" id="wfaiSendBtn"><i class="bi bi-stars"></i> Ask Assistant</button>
+          <button type="button" class="btn btn-outline-secondary" id="wfaiExampleBtn">Load Example</button>
+          <button type="button" class="btn btn-outline-danger" id="wfaiRebuildBtn"><i class="bi bi-arrow-clockwise"></i> Rebuild RAG Index</button>
+        </div>
+        <div class="wfai-danger-note">Builds a staged copy from <strong>steps</strong>, <strong>ai_workflow</strong>, and <strong>ai_databank</strong>, then swaps it into <strong>ai_rag_document</strong> when ready.</div>
+        <div class="wfai-status" id="wfaiStatus">The assistant searches `steps`, `ai_workflow`, and `ai_databank`, then feeds the matched context to your local Ollama endpoint.</div>
+      </div>
+    </div>
+
+    <div class="wfai-panel">
+      <div class="wfai-panel-body">
+        <div class="wfai-panel-title"><i class="bi bi-chat-square-text"></i> Assistant Answer</div>
+        <div class="wfai-answer is-empty" id="wfaiAnswer">Ask a question to see the synthesized response from local Llama3.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wfai-panel">
+    <div class="wfai-panel-body">
+      <div class="wfai-panel-title"><i class="bi bi-diagram-3"></i> Retrieved Sources</div>
+      <div class="wfai-sources">
+        <div class="wfai-source-card">
+          <div class="wfai-source-head">
+            <span class="wfai-source-name">Recorded Steps</span>
+            <span class="wfai-source-count" id="wfaiStepsCount">0</span>
+          </div>
+          <div class="wfai-source-list" id="wfaiStepsList">
+            <div class="wfai-source-item">No step context loaded yet.</div>
+          </div>
+        </div>
+        <div class="wfai-source-card">
+          <div class="wfai-source-head">
+            <span class="wfai-source-name">Saved Workflows</span>
+            <span class="wfai-source-count" id="wfaiWorkflowsCount">0</span>
+          </div>
+          <div class="wfai-source-list" id="wfaiWorkflowsList">
+            <div class="wfai-source-item">No workflow context loaded yet.</div>
+          </div>
+        </div>
+        <div class="wfai-source-card">
+          <div class="wfai-source-head">
+            <span class="wfai-source-name">AI Databank</span>
+            <span class="wfai-source-count" id="wfaiDatabankCount">0</span>
+          </div>
+          <div class="wfai-source-list" id="wfaiDatabankList">
+            <div class="wfai-source-item">No databank context loaded yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var promptInput = document.getElementById('wfaiPromptInput');
+  var apiInput = document.getElementById('wfaiApiInput');
+  var modelInput = document.getElementById('wfaiModelInput');
+  var sendBtn = document.getElementById('wfaiSendBtn');
+  var exampleBtn = document.getElementById('wfaiExampleBtn');
+  var rebuildBtn = document.getElementById('wfaiRebuildBtn');
+  var answerEl = document.getElementById('wfaiAnswer');
+  var statusEl = document.getElementById('wfaiStatus');
+  var modelStat = document.getElementById('wfaiModelStat');
+  var indexedBadge = document.getElementById('wfaiIndexedBadge');
+  var rebuildBadge = document.getElementById('wfaiRebuildBadge');
+  var indexedCountEl = document.getElementById('wfaiIndexedCount');
+  var lastRebuildEl = document.getElementById('wfaiLastRebuild');
+  var rebuildBanner = document.getElementById('wfaiRebuildBanner');
+  var rebuildBannerText = document.getElementById('wfaiRebuildBannerText');
+  var progressBarEl = document.getElementById('wfaiProgressBar');
+  var completedCountEl = document.getElementById('wfaiCompletedCount');
+  var targetCountEl = document.getElementById('wfaiTargetCount');
+  var progressPercentEl = document.getElementById('wfaiProgressPercent');
+  var elapsedTimeEl = document.getElementById('wfaiElapsedTime');
+  var rebuildToastEl = document.getElementById('wfaiRebuildToast');
+  var rebuildToastBodyEl = document.getElementById('wfaiRebuildToastBody');
+  var statusPollTimer = null;
+  var queryBusy = false;
+  var rebuildBusy = false;
+  var lastObservedSyncStatus = '{{ rag_status.status|default:"idle"|escapejs }}' || 'idle';
+
+  function getCsrf() {
+    var m = document.cookie.match(/(?:^|; )csrftoken[^=]*=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : ((document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '');
+  }
+
+  function setStatus(text, isError) {
+    statusEl.textContent = text;
+    statusEl.classList.toggle('is-error', !!isError);
+  }
+
+  function formatTimestamp(value) {
+    if (!value) {
+      return 'Never';
+    }
+    var date = new Date(value);
+    if (isNaN(date.getTime())) {
+      return String(value);
+    }
+    return date.toLocaleString();
+  }
+
+  function formatProgressPercent(sync) {
+    if (!sync || !sync.is_active) {
+      return '100%';
+    }
+    var target = typeof sync.target_documents === 'number' ? sync.target_documents : 0;
+    var pending = typeof sync.pending_documents === 'number' ? sync.pending_documents : 0;
+    if (!target) {
+      return '0%';
+    }
+    var complete = Math.max(0, target - pending);
+    return String(Math.round((complete / target) * 100)) + '%';
+  }
+
+  function getCompletedCount(sync) {
+    if (!sync || !sync.is_active) {
+      var idx = sync && typeof sync.indexed_documents === 'number' ? sync.indexed_documents : 0;
+      return idx;
+    }
+    var target = typeof sync.target_documents === 'number' ? sync.target_documents : 0;
+    var pending = typeof sync.pending_documents === 'number' ? sync.pending_documents : 0;
+    return Math.max(0, target - pending);
+  }
+
+  function getTargetCount(sync) {
+    if (!sync || !sync.is_active) {
+      return sync && typeof sync.indexed_documents === 'number' ? sync.indexed_documents : 0;
+    }
+    return typeof sync.target_documents === 'number' ? sync.target_documents : 0;
+  }
+
+  function formatElapsedTime(sync) {
+    if (!sync || !sync.is_active) {
+      return '';
+    }
+    var value = sync.last_started_at;
+    if (!value) {
+      return '0s';
+    }
+    var startedAt = new Date(value);
+    if (isNaN(startedAt.getTime())) {
+      return '0s';
+    }
+    var elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+    var minutes = Math.floor(elapsedSeconds / 60);
+    var seconds = elapsedSeconds % 60;
+    if (minutes <= 0) {
+      return seconds + 's';
+    }
+    return minutes + 'm ' + seconds + 's';
+  }
+
+  function showRebuildToast(sync) {
+    if (!rebuildToastEl || !rebuildToastBodyEl || typeof bootstrap === 'undefined' || !bootstrap.Toast) {
+      return;
+    }
+    var indexedDocs = sync && typeof sync.indexed_documents === 'number' ? sync.indexed_documents : 0;
+    rebuildToastBodyEl.textContent = 'RAG rebuild complete. Live index swapped with ' + indexedDocs + ' indexed docs.';
+    bootstrap.Toast.getOrCreateInstance(rebuildToastEl).show();
+  }
+
+  function updateSyncBadge(sync) {
+    var data = sync && typeof sync === 'object' ? sync : {};
+    if (indexedCountEl) {
+      indexedCountEl.textContent = String(typeof data.indexed_documents === 'number' ? data.indexed_documents : 0);
+    }
+    if (lastRebuildEl) {
+      lastRebuildEl.textContent = formatTimestamp(data.last_finished_at);
+    }
+    if (indexedBadge) {
+      indexedBadge.classList.toggle('is-active', !!data.is_active);
+    }
+    if (rebuildBadge) {
+      rebuildBadge.classList.toggle('is-active', !!data.is_active);
+    }
+    /* Only update banner / progress elements when is_active is explicitly present
+       (i.e. from pollSyncStatus or initialSyncState, NOT from the query response). */
+    var hasBannerData = 'is_active' in data;
+    if (hasBannerData) {
+      var isActive = !!data.is_active;
+      if (completedCountEl) {
+        completedCountEl.textContent = String(getCompletedCount(data));
+      }
+      if (targetCountEl) {
+        targetCountEl.textContent = String(getTargetCount(data));
+      }
+      if (progressPercentEl) {
+        progressPercentEl.textContent = formatProgressPercent(data);
+      }
+      if (progressBarEl) {
+        progressBarEl.style.width = isActive ? formatProgressPercent(data) : '0%';
+        progressBarEl.classList.toggle('is-running', data.status === 'running');
+      }
+      if (elapsedTimeEl) {
+        elapsedTimeEl.textContent = formatElapsedTime(data);
+      }
+      if (rebuildBanner) {
+        rebuildBanner.classList.toggle('is-visible', isActive);
+      }
+      if (rebuildBannerText) {
+        if (data.status === 'queued') {
+          rebuildBannerText.textContent = 'The staged rebuild is queued. Live queries will keep using the current index until the rebuild starts.';
+        } else if (data.status === 'running') {
+          rebuildBannerText.textContent = 'The staged rebuild is embedding documents in the background. Live queries continue using the current index until the final swap.';
+        } else {
+          rebuildBannerText.textContent = 'Live queries continue using the current index until the staged rebuild swaps in.';
+        }
+      }
+    }
+  }
+
+  function buildStatusMessage(data) {
+    var parts = [];
+    var timings = data && data.timings && typeof data.timings === 'object' ? data.timings : {};
+    var sync = data && data.context && data.context.sync && typeof data.context.sync === 'object' ? data.context.sync : {};
+    var modelName = data && data.model ? data.model : ((modelInput.value || '').trim() || 'llama3');
+
+    parts.push('Answer generated using local Ollama model ' + modelName + '.');
+    if (typeof timings.retrieval_ms === 'number') {
+      parts.push('Retrieval ' + timings.retrieval_ms + ' ms.');
+    }
+    if (typeof timings.generation_ms === 'number') {
+      parts.push('Generation ' + timings.generation_ms + ' ms.');
+    }
+    if (sync.mode === 'background' && sync.queued) {
+      parts.push('RAG refresh queued in background.');
+    } else if (sync.mode === 'rebuilding' || sync.status === 'queued') {
+      parts.push('RAG rebuild queued in background.');
+    } else if (sync.status === 'running') {
+      parts.push('RAG rebuild is running in background with ' + (typeof sync.pending_documents === 'number' ? sync.pending_documents : 0) + ' pending docs.');
+    } else if (typeof sync.indexed_documents === 'number') {
+      parts.push('Indexed docs ' + sync.indexed_documents + '.');
+    }
+    return parts.join(' ');
+  }
+
+  function syncButtonState() {
+    sendBtn.disabled = queryBusy;
+    exampleBtn.disabled = queryBusy;
+    rebuildBtn.disabled = rebuildBusy;
+  }
+
+  function setQueryBusy(isBusy) {
+    queryBusy = !!isBusy;
+    syncButtonState();
+  }
+
+  function setRebuildBusy(isBusy) {
+    rebuildBusy = !!isBusy;
+    syncButtonState();
+  }
+
+  function setAnswer(text) {
+    answerEl.classList.remove('is-empty');
+    answerEl.textContent = text || 'No answer returned.';
+  }
+
+  function safeArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function safeLength(value) {
+    return safeArray(value).length;
+  }
+
+  function normalizeObject(value) {
+    if (value && typeof value === 'object') {
+      return value;
+    }
+    if (typeof value === 'string') {
+      try {
+        var parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (error) {
+        return {};
+      }
+    }
+    return {};
+  }
+
+  function renderList(elementId, countId, items, builder) {
+    var host = document.getElementById(elementId);
+    var count = document.getElementById(countId);
+    if (!host || !count) return;
+    var normalizedItems = safeArray(items);
+    count.textContent = String(safeLength(normalizedItems));
+    host.innerHTML = '';
+    if (!normalizedItems.length) {
+      var empty = document.createElement('div');
+      empty.className = 'wfai-source-item';
+      empty.textContent = 'No matching context found.';
+      host.appendChild(empty);
+      return;
+    }
+    normalizedItems.forEach(function (item) {
+      var div = document.createElement('div');
+      div.className = 'wfai-source-item';
+      div.textContent = builder(item);
+      host.appendChild(div);
+    });
+  }
+
+  function groupDocumentsByType(context) {
+    var grouped = {
+      steps: [],
+      workflows: [],
+      databank: []
+    };
+    safeArray(context && context.documents).forEach(function (doc) {
+      if (!doc || typeof doc !== 'object') {
+        return;
+      }
+      var metadata = normalizeObject(doc.metadata);
+      var entry = Object.assign({
+        title: doc.title || '',
+        source_key: doc.source_key || '',
+        content: doc.content || ''
+      }, metadata);
+      if (doc.source_type === 'steps') {
+        grouped.steps.push(entry);
+      } else if (doc.source_type === 'ai_workflow') {
+        grouped.workflows.push(entry);
+      } else if (doc.source_type === 'ai_databank') {
+        grouped.databank.push(entry);
+      }
+    });
+    return grouped;
+  }
+
+  function chooseItems(preferredItems, fallbackItems) {
+    var normalizedPreferred = safeArray(preferredItems).filter(function (item) {
+      return item && typeof item === 'object' && Object.keys(item).length;
+    });
+    return safeLength(normalizedPreferred) ? normalizedPreferred : safeArray(fallbackItems);
+  }
+
+  function renderContext(context) {
+    var counts = context && context.counts ? context.counts : {};
+    var grouped = groupDocumentsByType(context);
+    var stepItems = chooseItems(context && context.steps, grouped.steps);
+    var workflowItems = chooseItems(context && context.workflows, grouped.workflows);
+    var databankItems = chooseItems(context && context.databank, grouped.databank);
+
+    renderList('wfaiStepsList', 'wfaiStepsCount', stepItems, function (item) {
+      var recordName = item.record_name || item.title || 'Unnamed record';
+      var stepNo = item.step_no != null ? item.step_no : '?';
+      var action = item.action || 'unknown action';
+      var locator = item.locator ? ((item.locator_strategy || 'locator') + ':' + item.locator) : '';
+      return recordName + ' · step ' + stepNo + ' · ' + action + (locator ? ' · ' + locator : '');
+    });
+    renderList('wfaiWorkflowsList', 'wfaiWorkflowsCount', workflowItems, function (item) {
+      var workflowName = item.workflow_name || item.title || 'Unnamed workflow';
+      var pageSequence = safeArray(item.page_sequence);
+      var pageConnections = safeArray(item.page_connections);
+      return workflowName + ' · sequence ' + safeLength(pageSequence) + ' · links ' + safeLength(pageConnections);
+    });
+    renderList('wfaiDatabankList', 'wfaiDatabankCount', databankItems, function (item) {
+      var pageName = item.page_name || item.title || 'Untitled page';
+      var elementType = item.element_type || item.tag_name || 'element';
+      var pageUrl = item.page_url || 'No URL';
+      return pageName + ' · ' + elementType + ' · ' + pageUrl;
+    });
+    if (typeof counts.steps === 'number' && counts.steps > 0) {
+      document.getElementById('wfaiStepsCount').textContent = String(counts.steps);
+    } else {
+      document.getElementById('wfaiStepsCount').textContent = String(safeLength(stepItems));
+    }
+    if (typeof counts.workflows === 'number' && counts.workflows > 0) {
+      document.getElementById('wfaiWorkflowsCount').textContent = String(counts.workflows);
+    } else {
+      document.getElementById('wfaiWorkflowsCount').textContent = String(safeLength(workflowItems));
+    }
+    if (typeof counts.databank === 'number' && counts.databank > 0) {
+      document.getElementById('wfaiDatabankCount').textContent = String(counts.databank);
+    } else {
+      document.getElementById('wfaiDatabankCount').textContent = String(safeLength(databankItems));
+    }
+  }
+
+  function stopStatusPolling() {
+    if (statusPollTimer) {
+      window.clearTimeout(statusPollTimer);
+      statusPollTimer = null;
+    }
+  }
+
+  function pollSyncStatus(showStatusText) {
+    stopStatusPolling();
+    fetch('{% url "workflow_assistant_status" %}', {
+      method: 'GET',
+      headers: {
+        'X-CSRFToken': getCsrf()
+      }
+    })
+    .then(function (response) { return response.json(); })
+    .then(function (data) {
+      if (!data.ok) {
+        throw new Error(data.error || 'Unable to load RAG status.');
+      }
+      var sync = data.sync && typeof data.sync === 'object' ? data.sync : {};
+      var previousStatus = lastObservedSyncStatus;
+      lastObservedSyncStatus = sync.status || 'idle';
+      updateSyncBadge(sync);
+      if ((previousStatus === 'queued' || previousStatus === 'running') && sync.status === 'idle') {
+        showRebuildToast(sync);
+      }
+      if (showStatusText && !queryBusy) {
+        if (sync.status === 'queued') {
+          setStatus('RAG rebuild queued. The page remains usable while the index reloads in the background.', false);
+        } else if (sync.status === 'running') {
+          setStatus('RAG rebuild is running in the background. Live queries are still using the current index. Pending docs ' + (typeof sync.pending_documents === 'number' ? sync.pending_documents : 0) + ' · progress ' + formatProgressPercent(sync) + '.', false);
+        } else if (sync.status === 'idle' && showStatusText) {
+          setStatus('RAG rebuild completed. Indexed docs ' + (typeof sync.indexed_documents === 'number' ? sync.indexed_documents : 0) + '.', false);
+        } else if (sync.last_error) {
+          setStatus(sync.last_error, true);
+        }
+      }
+      setRebuildBusy(sync.status === 'queued' || sync.status === 'running');
+      if (sync.status === 'queued' || sync.status === 'running') {
+        statusPollTimer = window.setTimeout(function () {
+          pollSyncStatus(true);
+        }, 2500);
+      }
+    })
+    .catch(function (error) {
+      if (showStatusText && !queryBusy) {
+        setStatus(error.message || 'Unable to load RAG status.', true);
+      }
+      setRebuildBusy(false);
+    });
+  }
+
+  function submitQuestion() {
+    var message = (promptInput.value || '').trim();
+    if (!message) {
+      setStatus('Enter a question before sending.', true);
+      promptInput.focus();
+      return;
+    }
+    setQueryBusy(true);
+    setStatus('Querying PostgreSQL context and sending it to local Ollama...', false);
+    modelStat.textContent = (modelInput.value || '').trim() || 'llama3';
+
+    fetch('{% url "workflow_assistant_query" %}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrf()
+      },
+      body: JSON.stringify({
+        message: message,
+        ollama_api: (apiInput.value || '').trim(),
+        model: (modelInput.value || '').trim()
+      })
+    })
+    .then(function (response) { return response.json(); })
+    .then(function (data) {
+      if (!data.ok) {
+        throw new Error(data.error || 'Assistant request failed.');
+      }
+      setAnswer(data.answer || 'No answer returned.');
+      renderContext(data.context || {});
+      updateSyncBadge(data.context && data.context.sync ? data.context.sync : {});
+      setStatus(buildStatusMessage(data), false);
+    })
+    .catch(function (error) {
+      setStatus(error.message || 'Assistant request failed.', true);
+    })
+    .finally(function () {
+      setQueryBusy(false);
+    });
+  }
+
+  function rebuildIndex() {
+    if (!window.confirm('Build a staged replacement for ai_rag_document and swap it in when the rebuild is finished?')) {
+      return;
+    }
+    setRebuildBusy(true);
+    setStatus('Queueing a staged background rebuild for ai_rag_document. The page will stay usable while the next index is prepared...', false);
+
+    fetch('{% url "workflow_assistant_rebuild" %}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrf()
+      },
+      body: JSON.stringify({
+        ollama_api: (apiInput.value || '').trim()
+      })
+    })
+    .then(function (response) { return response.json(); })
+    .then(function (data) {
+      if (!data.ok) {
+        throw new Error(data.error || 'RAG rebuild failed.');
+      }
+      var sync = data.sync && typeof data.sync === 'object' ? data.sync : {};
+      lastObservedSyncStatus = sync.status || lastObservedSyncStatus;
+      updateSyncBadge(sync);
+      if (sync.queued || sync.status === 'queued' || sync.status === 'running') {
+        setStatus('RAG rebuild queued. Polling status until the background reload completes.', false);
+        pollSyncStatus(true);
+      } else {
+        var parts = ['RAG index rebuild is already up to date.'];
+        if (typeof sync.indexed_documents === 'number') {
+          parts.push('Indexed docs ' + sync.indexed_documents + '.');
+        }
+        setStatus(parts.join(' '), false);
+      }
+    })
+    .catch(function (error) {
+      setStatus(error.message || 'RAG rebuild failed.', true);
+      setRebuildBusy(false);
+    })
+  }
+
+  sendBtn.addEventListener('click', submitQuestion);
+  rebuildBtn.addEventListener('click', rebuildIndex);
+  exampleBtn.addEventListener('click', function () {
+    promptInput.value = 'Which workflow contains the Login page, and what steps or locators are available to automate the login action?';
+    promptInput.focus();
+  });
+  promptInput.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      submitQuestion();
+    }
+  });
+  var initialSyncState = {
+    indexed_documents: Number('{{ rag_status.indexed_documents|default:0 }}') || 0,
+    pending_documents: Number('{{ rag_status.pending_documents|default:0 }}') || 0,
+    target_documents: Number('{{ rag_status.target_documents|default:0 }}') || 0,
+    last_finished_at: '{{ rag_status.last_finished_at|default:""|escapejs }}',
+    last_started_at: '{{ rag_status.last_started_at|default:""|escapejs }}',
+    status: '{{ rag_status.status|default:"idle"|escapejs }}',
+    is_active: '{{ rag_status.is_active|yesno:"true,false" }}' === 'true'
+  };
+  updateSyncBadge(initialSyncState);
+  if (initialSyncState.is_active) {
+    pollSyncStatus(true);
+  } else {
+    pollSyncStatus(false);
+  }
+})();
+</script>
+{% endblock %}

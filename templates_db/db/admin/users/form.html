@@ -1,0 +1,30 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<section class="form-shell mx-auto">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="page-title h3 mb-0">Edit User - {{ target_user.username }}</h1>
+        <a class="btn btn-outline-secondary" href="/db-lab/administration/users/">Back</a>
+    </div>
+
+    <form method="post" class="section-card form-card">
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="field-wrap">
+                <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}
+                    <small class="field-help">{{ field.help_text }}</small>
+                {% endif %}
+                {% for error in field.errors %}
+                    <small class="field-error">{{ error }}</small>
+                {% endfor %}
+            </div>
+        {% endfor %}
+        <div class="d-flex justify-content-end mt-3">
+            <button class="btn btn-primary" type="submit">Save User</button>
+        </div>
+    </form>
+</section>
+{% endblock %}
+

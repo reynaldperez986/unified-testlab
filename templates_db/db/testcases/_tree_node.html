@@ -1,0 +1,80 @@
+<li class="tree-folder-item" draggable="{{ can_manage|yesno:'true,false' }}" data-draggable-item data-item-type="folder" data-item-id="{{ node.folder.id }}">
+    <div class="tree-folder-head" aria-expanded="true" aria-controls="folderBody{{ node.folder.id }}" onclick="if(!event.target.closest('[data-folder-checkbox]')){var _t=document.getElementById('folderBody{{ node.folder.id }}');var _s=_t.classList.contains('show');bootstrap.Collapse.getOrCreateInstance(_t,{toggle:false}).toggle();this.setAttribute('aria-expanded',_s?'false':'true');return;}event.stopPropagation();">
+        <div class="d-flex align-items-center gap-2 flex-grow-1">
+            {% if can_manage %}
+                <span class="tree-drag-handle" data-drag-handle title="Drag folder"><i class="bi bi-grip-vertical"></i></span>
+                <span onclick="event.stopPropagation(); event.stopImmediatePropagation();" style="position: relative; z-index: 10;">
+                    <input type="checkbox" class="form-check-input folder-select-checkbox" data-folder-checkbox data-folder-target="folderBody{{ node.folder.id }}" onclick="event.stopPropagation(); event.stopImmediatePropagation();">
+                </span>
+            {% endif %}
+            <i class="bi bi-chevron-down tree-folder-toggle"></i>
+            <i class="bi bi-folder2-open tree-folder-icon"></i>
+            <span class="fw-semibold">{{ node.folder.name }}</span>
+            <span class="badge bg-secondary">{{ node.tests|length }}</span>
+            {% if can_manage %}
+            <span class="d-inline-flex gap-1" onclick="event.stopPropagation();">
+                <form method="post" action="/db-lab/testcases/folders/{{ node.folder.id }}/duplicate/" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn folder-action-btn" title="Duplicate Project"><i class="bi bi-files"></i></button>
+                </form>
+                <button type="button" class="btn folder-action-btn" title="Edit Project" onclick="promptEditProject({{ node.folder.id }}, '{{ node.folder.name|escapejs }}')"><i class="bi bi-pencil"></i></button>
+                <button type="button" class="btn folder-action-btn" title="Delete Project" onclick="openDeleteProjectModal({{ node.folder.id }}, '{{ node.folder.name|escapejs }}')"><i class="bi bi-trash"></i></button>
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <ul class="tree-dropzone collapse show" id="folderBody{{ node.folder.id }}" data-dropzone data-target-folder-id="{{ node.folder.id }}">
+        {% for child in node.children %}
+            {% include "testcases/_tree_node.html" with node=child can_manage=can_manage %}
+        {% endfor %}
+
+        {% for t in node.tests %}
+            <li class="tree-testcase-item" draggable="{{ can_manage|yesno:'true,false' }}" data-draggable-item data-item-type="testcase" data-item-id="{{ t.id }}">
+                <div class="tree-testcase-card">
+                    <div class="d-flex align-items-center gap-2">
+                        {% if can_manage %}
+                            <span class="tree-drag-handle" data-drag-handle title="Drag test case"><i class="bi bi-grip-vertical"></i></span>
+                            <input type="checkbox" class="form-check-input test-case-checkbox" data-testcase-id="{{ t.id }}">
+                        {% endif %}
+                        <div>
+                        <div class="fw-semibold">{{ t.name }}</div>
+                        <div class="small text-muted">{{ t.connection.name }} | {{ t.test_type }}</div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        {% if t.is_active %}
+                            <span class="status-pill status-pass">Active</span>
+                        {% else %}
+                            <span class="status-pill status-fail">Inactive</span>
+                        {% endif %}
+                        <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/testcases/{{ t.id }}/" title="View" aria-label="View test case">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        {% if can_manage %}
+                            <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/testcases/{{ t.id }}/edit/" title="Edit" aria-label="Edit test case">
+                                <i class="bi bi-pencil-square"></i>
+                            </a>
+                            <a class="btn btn-sm btn-success btn-icon" href="/db-lab/testcases/{{ t.id }}/run/" title="Run" aria-label="Run test case">
+                                <i class="bi bi-play-fill"></i>
+                            </a>
+                            <form method="post" action="/db-lab/testcases/{{ t.id }}/duplicate/" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-info btn-icon" title="Duplicate" aria-label="Duplicate test case">
+                                    <i class="bi bi-files"></i>
+                                </button>
+                            </form>
+                            <form method="post" action="/db-lab/testcases/{{ t.id }}/delete/" class="d-inline" onsubmit="return confirm('Delete test case {{ t.name|escapejs }}?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger btn-icon" title="Delete" aria-label="Delete test case">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </li>
+        {% endfor %}
+    </ul>
+</li>
+

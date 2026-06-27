@@ -1,0 +1,1080 @@
+<form style="display:none">{% csrf_token %}</form>
+<style>
+  .adb-flow-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .adb-flow-header-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: .6rem;
+    white-space: nowrap;
+  }
+  .adb-flow-subtitle {
+    max-width: 54rem;
+    margin: .6rem 0 0;
+    color: #5f748a;
+    font-size: .96rem;
+    line-height: 1.6;
+  }
+  .adb-flow-stat {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 8rem;
+    padding: .9rem 1rem;
+    margin-left: auto;
+    align-self: flex-start;
+    border-radius: 1rem;
+    border: 1px solid rgba(31,111,182,0.28);
+    background: linear-gradient(135deg, #1f6fb6 0%, #2d87d4 60%, #56a3e6 100%);
+    box-shadow: 0 8px 20px rgba(20,80,160,0.22), 0 1px 4px rgba(20,80,160,0.12);
+  }
+  .adb-flow-stat-label {
+    font-size: .75rem;
+    color: rgba(255,255,255,0.75);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: .2rem;
+  }
+  .adb-flow-stat-value {
+    font-size: 1.55rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+  }
+  .adb-flow-tabs {
+    display: inline-flex;
+    gap: .55rem;
+    padding: .35rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(31, 111, 182, 0.12);
+    box-shadow: 0 12px 24px rgba(20, 52, 87, 0.06);
+  }
+  .adb-flow-tabs-wrap {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: 1rem 1rem 0;
+    overflow-x: auto;
+  }
+  .adb-flow-tabs::-webkit-scrollbar,
+  .adb-flow-tabs-wrap::-webkit-scrollbar {
+    height: 7px;
+  }
+  .adb-flow-tabs::-webkit-scrollbar-thumb,
+  .adb-flow-tabs-wrap::-webkit-scrollbar-thumb {
+    background: rgba(31, 111, 182, 0.18);
+    border-radius: 999px;
+  }
+  .adb-flow-tab-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    border: 0;
+    background: transparent;
+  }
+  .adb-flow-tab-name {
+    max-width: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .adb-flow-tab-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-left: .15rem;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.08);
+    color: inherit;
+    transition: background .12s ease, transform .12s ease;
+  }
+  .adb-flow-tab-close:hover,
+  .adb-flow-tab-close:focus {
+    background: rgba(220, 53, 69, 0.16);
+    color: #b3263b;
+    transform: scale(1.04);
+  }
+  .adb-flow-tab-close .bi {
+    font-size: .85rem;
+    line-height: 1;
+  }
+  .adb-flow-tabs .nav-link {
+    border-radius: 999px;
+    padding: .55rem 1rem;
+    color: #4f6479;
+    font-weight: 700;
+  }
+  .adb-flow-tabs .nav-link.active {
+    background: linear-gradient(135deg, #1f6fb6, #154f85);
+    box-shadow: 0 10px 18px rgba(20, 79, 133, 0.22);
+    color: #fff;
+  }
+  .adb-flow-shell {
+    border-radius: 1.4rem;
+    border: 1px solid rgba(31, 111, 182, 0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.84), rgba(245,249,253,0.96));
+    box-shadow: 0 18px 34px rgba(20, 52, 87, 0.08);
+    overflow: hidden;
+  }
+  .adb-flow-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 1rem 1rem 0;
+  }
+  .adb-flow-toolbar-group {
+    flex: 1 1 760px;
+    min-width: min(100%, 760px);
+  }
+  .adb-flow-toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-left: 0;
+    flex: 1 1 100%;
+    align-self: flex-start;
+  }
+  .adb-flow-primary-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    align-items: center;
+  }
+  .adb-flow-status-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .9rem;
+    padding: .85rem 1rem 0;
+  }
+  .adb-flow-view-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: .55rem;
+    align-items: center;
+    justify-content: flex-end;
+    margin-left: auto;
+    flex: 0 0 auto;
+  }
+  .adb-flow-toolbar-actions .btn {
+    border-radius: .75rem;
+    font-weight: 700;
+  }
+  .adb-flow-view-actions .btn {
+    min-width: 38px;
+    padding-inline: .7rem;
+  }
+  .adb-flow-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .38rem .82rem;
+    border-radius: .75rem;
+    background: rgba(31,111,182,0.05);
+    border: 1.5px solid rgba(31,111,182,0.24);
+    color: #46627f;
+    font-size: .82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .12s ease, color .12s ease, transform .12s ease;
+  }
+  .adb-flow-toggle:hover {
+    background: rgba(31,111,182,0.12);
+    color: #1f6fb6;
+    transform: translateY(-1px);
+  }
+  .adb-flow-toggle .form-check-input {
+    width: 1em;
+    height: 1em;
+    margin: 0;
+    cursor: pointer;
+  }
+  .adb-flow-board {
+    position: relative;
+    min-height: 72vh;
+    margin: 1rem;
+    border-radius: 1.25rem;
+    border: 1px solid rgba(30, 75, 114, 0.12);
+    background:
+      radial-gradient(circle at 18% 12%, rgba(116, 170, 219, 0.18), transparent 28%),
+      radial-gradient(circle at 82% 16%, rgba(255, 211, 132, 0.18), transparent 26%),
+      linear-gradient(180deg, rgba(255,255,255,0.92), rgba(240,246,251,0.98));
+    overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 18px 36px rgba(20, 52, 87, 0.08);
+    touch-action: none;
+  }
+  .adb-flow-scene {
+    position: absolute;
+    inset: 0;
+    transform-origin: top left;
+    will-change: transform;
+  }
+  .adb-flow-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(17, 24, 39, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(17, 24, 39, 0.04) 1px, transparent 1px);
+    background-size: 28px 28px;
+    pointer-events: none;
+  }
+  .adb-flow-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .adb-flow-cards {
+    position: relative;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .adb-flow-card {
+    position: absolute;
+    width: 388px;
+    min-height: 148px;
+    padding: 1rem 1rem .95rem;
+    border-radius: 1.15rem;
+    border: 1px solid rgba(31, 111, 182, 0.16);
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,251,254,0.95));
+    box-shadow: 0 14px 30px rgba(17, 24, 39, 0.12);
+    backdrop-filter: blur(14px);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+    transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease, background .18s ease;
+  }
+  .adb-flow-board.is-compact .adb-flow-card {
+    width: 312px;
+    min-height: 122px;
+    padding: .85rem .85rem .8rem;
+    border-radius: 1rem;
+  }
+  .adb-flow-board.is-compact .adb-flow-card-title {
+    font-size: .92rem;
+  }
+  .adb-flow-board.is-compact .adb-flow-card-url {
+    font-size: .74rem;
+  }
+  .adb-flow-board.is-compact .adb-flow-badge {
+    font-size: .68rem;
+    padding: .22rem .45rem;
+  }
+  .adb-flow-board.is-compact .adb-flow-card-body {
+    gap: .45rem;
+  }
+  .adb-flow-board.is-compact .adb-flow-element-label {
+    font-size: .66rem;
+  }
+  .adb-flow-board.is-compact .adb-flow-element-select {
+    min-height: 32px;
+    font-size: .74rem;
+  }
+  .adb-flow-card:hover {
+    box-shadow: 0 20px 38px rgba(17, 24, 39, 0.16);
+    transform: translateY(-3px);
+  }
+  .adb-flow-card.is-dragging {
+    cursor: grabbing;
+    box-shadow: 0 24px 40px rgba(17, 24, 39, 0.22);
+    z-index: 4;
+  }
+  .adb-flow-card.is-selected {
+    border-color: rgba(220, 53, 69, 0.7);
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.12), 0 18px 34px rgba(17, 24, 39, 0.18);
+  }
+  .adb-flow-card-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: start;
+    gap: .6rem;
+    margin-bottom: .6rem;
+  }
+  .adb-flow-card-copy {
+    grid-column: 1 / 2;
+    min-width: 0;
+    width: 100%;
+  }
+  .adb-flow-card-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    flex: 0 0 auto;
+    justify-self: end;
+  }
+  .adb-flow-card-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: .7rem;
+    border: 1px solid rgba(31, 111, 182, 0.16);
+    background: rgba(255, 255, 255, 0.92);
+    color: #1f6fb6;
+    box-shadow: 0 8px 16px rgba(17, 24, 39, 0.06);
+    transition: transform .12s ease, background .12s ease, border-color .12s ease, color .12s ease;
+  }
+  .adb-flow-card-icon-btn:hover,
+  .adb-flow-card-icon-btn:focus {
+    background: rgba(31, 111, 182, 0.08);
+    border-color: rgba(31, 111, 182, 0.28);
+    color: #154f85;
+  }
+  .adb-flow-card-icon-btn:active {
+    transform: scale(.94);
+  }
+  .adb-flow-card-icon-btn.is-danger {
+    border-color: rgba(220, 53, 69, 0.18);
+    color: #c0394b;
+  }
+  .adb-flow-card-icon-btn.is-danger:hover,
+  .adb-flow-card-icon-btn.is-danger:focus {
+    background: rgba(220, 53, 69, 0.08);
+    border-color: rgba(220, 53, 69, 0.32);
+    color: #9f2333;
+  }
+  .adb-flow-card-title {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 700;
+    line-height: 1.3;
+    color: #17324f;
+  }
+  .adb-flow-card-title-select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 .9rem 0 0;
+    border: none;
+    background-color: transparent;
+    background-image: linear-gradient(45deg, transparent 50%, #5f748a 50%), linear-gradient(135deg, #5f748a 50%, transparent 50%);
+    background-position: calc(100% - .55rem) calc(50% - 1px), calc(100% - .3rem) calc(50% - 1px);
+    background-size: .26rem .26rem, .26rem .26rem;
+    background-repeat: no-repeat;
+    color: #17324f;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1.3;
+    box-shadow: none;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .adb-flow-card-title-select:focus {
+    outline: none;
+    box-shadow: none;
+  }
+  .adb-flow-card-title-select option {
+    color: #17324f;
+    font-size: .74rem;
+    font-weight: 600;
+  }
+  .adb-flow-card-label {
+    display: grid;
+    gap: .3rem;
+    margin-top: .2rem;
+    padding: .7rem .8rem;
+    border-radius: .9rem;
+    border: 1px solid rgba(31, 111, 182, 0.14);
+    background: linear-gradient(180deg, rgba(31, 111, 182, 0.08), rgba(86, 163, 230, 0.1));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.54);
+  }
+  .adb-flow-card-label-title {
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #5f748a;
+    line-height: 1.1;
+  }
+  .adb-flow-card-label-name {
+    font-size: .96rem;
+    font-weight: 800;
+    line-height: 1.3;
+    color: #17324f;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .adb-flow-board.is-compact .adb-flow-card-label {
+    padding: .55rem .65rem;
+    border-radius: .8rem;
+  }
+  .adb-flow-board.is-compact .adb-flow-card-label-title {
+    font-size: .62rem;
+  }
+  .adb-flow-board.is-compact .adb-flow-card-label-name {
+    font-size: .82rem;
+  }
+  .adb-flow-card-url {
+    display: block;
+    margin-top: .35rem;
+    font-size: .8rem;
+    color: #1f6fb6;
+    text-decoration: none;
+    max-width: 100%;
+    line-height: 1.45;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+    display: -webkit-box;
+    line-clamp: 2;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .adb-flow-card-url:hover {
+    text-decoration: underline;
+  }
+  .adb-flow-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: max-content;
+    padding: .3rem .55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(31, 111, 182, 0.14);
+    background: rgba(31, 111, 182, 0.12);
+    color: #1d5f9c;
+    font-size: .74rem;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    justify-self: end;
+    max-width: 100%;
+  }
+  .adb-flow-card-body {
+    display: grid;
+    gap: .55rem;
+    min-width: 0;
+  }
+  .adb-flow-element-picker {
+    display: grid;
+    gap: .28rem;
+    min-width: 0;
+  }
+  .adb-flow-element-label {
+    font-size: .71rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #60758b;
+  }
+  .adb-flow-element-select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    border-radius: .75rem;
+    border: 1px solid rgba(31, 111, 182, 0.16);
+    background: rgba(255, 255, 255, 0.92);
+    color: #17324f;
+    font-size: .8rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.54);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .adb-flow-element-select:focus {
+    border-color: rgba(31, 111, 182, 0.42);
+    box-shadow: 0 0 0 .2rem rgba(31, 111, 182, 0.12);
+  }
+  .adb-flow-element-meta {
+    min-height: 1rem;
+    font-size: .76rem;
+    color: #5f748a;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .adb-flow-line {
+    stroke: rgba(31, 111, 182, 0.8);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 2 10;
+  }
+  .adb-flow-dot {
+    fill: rgba(220, 53, 69, 0.9);
+  }
+  .adb-flow-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #60758b;
+    padding: 2rem;
+  }
+  .adb-flow-minimap {
+    position: absolute;
+    right: 1rem;
+    bottom: 1rem;
+    width: min(240px, 38vw);
+    border-radius: 1rem;
+    border: 1px solid rgba(31, 111, 182, 0.14);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 18px 30px rgba(17, 24, 39, 0.14);
+    backdrop-filter: blur(10px);
+    z-index: 6;
+    overflow: hidden;
+  }
+  .adb-flow-minimap-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .6rem .8rem;
+    background: rgba(31, 111, 182, 0.08);
+    color: #17324f;
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .adb-flow-minimap-scale {
+    color: #5f748a;
+    font-size: .7rem;
+    font-weight: 700;
+  }
+  .adb-flow-minimap-body {
+    position: relative;
+    height: 140px;
+    overflow: hidden;
+    background:
+      linear-gradient(rgba(17, 24, 39, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(17, 24, 39, 0.04) 1px, transparent 1px);
+    background-size: 16px 16px;
+    cursor: crosshair;
+  }
+  .adb-flow-minimap-cards,
+  .adb-flow-minimap-viewport {
+    position: absolute;
+    inset: 0;
+  }
+  .adb-flow-minimap-card {
+    position: absolute;
+    border-radius: .35rem;
+    background: rgba(31, 111, 182, 0.18);
+    border: 1px solid rgba(31, 111, 182, 0.28);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);
+    overflow: hidden;
+  }
+  .adb-flow-minimap-card::after {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.28), rgba(31, 111, 182, 0.04));
+  }
+  .adb-flow-minimap-card.is-active {
+    background: rgba(220, 53, 69, 0.25);
+    border-color: rgba(220, 53, 69, 0.48);
+  }
+  .adb-flow-minimap-window {
+    position: absolute;
+    border: 2px solid rgba(220, 53, 69, 0.82);
+    border-radius: .45rem;
+    background: rgba(220, 53, 69, 0.1);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.42) inset;
+  }
+  .adb-flow-toolbar-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    align-items: center;
+  }
+  .adb-flow-toolbar-group .adb-flow-toolbar-spacer {
+    flex: 1 1 320px;
+    margin-left: 0;
+  }
+  .adb-flow-toolbar-group .input-group {
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 10px 20px rgba(20, 52, 87, 0.06);
+  }
+  .adb-flow-toolbar-group .input-group-text {
+    border: 0;
+    background: rgba(31, 111, 182, 0.1);
+    color: #1f6fb6;
+    font-weight: 700;
+  }
+  .adb-flow-toolbar-group .form-control,
+  .adb-flow-toolbar-group .form-select {
+    border: 0;
+    min-height: 36px;
+  }
+  .adb-flow-toolbar-group .btn {
+    border-radius: .75rem;
+    font-weight: 700;
+    min-height: 36px;
+  }
+  .adb-flow-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+  }
+  .adb-flow-status strong {
+    color: #17324f;
+  }
+  /* ── Sync progress bar ─────────────────────────────────── */
+  .adb-flow-progress-wrap {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    margin: .55rem 1rem 0;
+    width: calc(100% - 2rem);
+    border-radius: 999px;
+    background: rgba(31, 111, 182, 0.1);
+    overflow: hidden;
+  }
+  .adb-flow-progress-bar {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #1f6fb6 0%, #56a3e6 50%, #1f6fb6 100%);
+    background-size: 200% 100%;
+    animation: adb-progress-slide 1.4s linear infinite;
+    transform-origin: left;
+  }
+  @keyframes adb-progress-slide {
+    0%   { background-position: 0% 0; }
+    100% { background-position: -200% 0; }
+  }
+  .adb-flow-progress-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,.25);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  @media (max-width: 991.98px) {
+    .adb-flow-hero {
+      align-items: flex-start;
+    }
+    .adb-flow-header-actions {
+      width: 100%;
+      align-items: flex-start;
+    }
+    .adb-flow-subtitle {
+      font-size: .9rem;
+    }
+    .adb-flow-tabs {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .adb-flow-tabs .nav-item {
+      flex: 1 1 0;
+    }
+    .adb-flow-tabs .nav-link {
+      text-align: center;
+      width: 100%;
+    }
+    .adb-flow-shell {
+      border-radius: 1.2rem;
+    }
+    .adb-flow-board {
+      min-height: 64vh;
+      margin: .85rem;
+      border-radius: 1rem;
+    }
+    .adb-flow-card {
+      width: min(92vw, 320px);
+      max-width: calc(100% - 1rem);
+      padding: .95rem;
+    }
+    .adb-flow-toolbar-group {
+      width: 100%;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .adb-flow-toolbar-group .adb-flow-toolbar-spacer {
+      margin-left: 0;
+    }
+    .adb-flow-toolbar {
+      padding: .85rem .85rem 0;
+    }
+    .adb-flow-toolbar-actions {
+      width: 100%;
+      justify-content: stretch;
+    }
+    .adb-flow-primary-actions {
+      width: 100%;
+      justify-content: stretch;
+    }
+    .adb-flow-status-row {
+      flex-direction: column;
+      align-items: stretch;
+      padding: .4rem .85rem 0;
+    }
+    .adb-flow-view-actions {
+      width: 100%;
+      justify-content: stretch;
+      margin-left: 0;
+      margin-top: 0;
+    }
+    .adb-flow-view-actions .btn,
+    .adb-flow-toggle {
+      flex: 1 1 calc(33.333% - .5rem);
+      justify-content: center;
+    }
+    .adb-flow-toolbar-actions .btn {
+      flex: 1 1 calc(50% - .5rem);
+    }
+    .adb-flow-stat {
+      width: 100%;
+      min-width: 0;
+      margin-left: 0;
+    }
+    .adb-flow-status {
+      font-size: .78rem;
+    }
+    .adb-flow-minimap {
+      width: min(220px, 42vw);
+      right: .85rem;
+      bottom: .85rem;
+    }
+  }
+  @media (max-width: 575.98px) {
+    .adb-flow-board {
+      min-height: 70vh;
+      margin: .7rem;
+    }
+    .adb-flow-board.is-compact .adb-flow-card,
+    .adb-flow-card {
+      width: min(78vw, 260px);
+      max-width: calc(100% - .8rem);
+    }
+    .adb-flow-toolbar-actions .btn {
+      flex: 1 1 100%;
+    }
+    .adb-flow-view-actions .btn,
+    .adb-flow-toggle {
+      flex: 1 1 calc(50% - .5rem);
+    }
+    .adb-flow-card-title {
+      font-size: .95rem;
+    }
+    .adb-flow-card-title-select {
+      font-size: .72rem;
+    }
+    .adb-flow-card-actions {
+      width: 100%;
+      justify-content: flex-end;
+    }
+    .adb-flow-card-url {
+      font-size: .76rem;
+    }
+    .adb-flow-minimap {
+      width: calc(100% - 1.4rem);
+      right: .7rem;
+      bottom: .7rem;
+    }
+    .adb-flow-minimap-body {
+      height: 112px;
+    }
+    .adb-flow-card-head {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'copy badge'
+        'copy actions';
+    }
+    .adb-flow-card-copy {
+      grid-area: copy;
+    }
+    .adb-flow-badge {
+      grid-area: badge;
+      font-size: .68rem;
+      padding: .24rem .46rem;
+    }
+    .adb-flow-card-actions {
+      grid-area: actions;
+    }
+  }
+
+  /* ── Toolbar layout helpers ──────────────────────────────── */
+  .adb-flow-toolbar-break {
+    width: 100%;
+    height: 0;
+    margin: 0;
+    padding: 0;
+  }
+  .adb-flow-ig {
+    border-radius: 1rem !important;
+    overflow: hidden;
+    box-shadow: 0 6px 14px rgba(20, 52, 87, 0.07);
+  }
+  .adb-flow-ig .input-group-text {
+    border: 0;
+    background: rgba(31, 111, 182, 0.1);
+    color: #1a5f9e;
+    font-weight: 700;
+    font-size: .83rem;
+    white-space: nowrap;
+    padding-inline: .85rem;
+  }
+  .adb-flow-ig .form-control,
+  .adb-flow-ig .form-select {
+    border: 0;
+    min-height: 38px;
+    font-size: .85rem;
+  }
+  .adb-flow-ig-grow {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* ── App-themed toolbar buttons ─────────────────────────── */
+  .adb-flow-btn-save {
+    background: linear-gradient(135deg, #1f6fb6 0%, #154f85 100%);
+    border: none;
+    color: #fff;
+    font-weight: 700;
+    white-space: nowrap;
+    box-shadow: 0 6px 14px rgba(21, 79, 133, 0.28);
+    transition: filter .15s ease, transform .12s ease, box-shadow .15s ease;
+  }
+  .adb-flow-btn-save:hover,
+  .adb-flow-btn-save:focus {
+    filter: brightness(1.1);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgba(21, 79, 133, 0.36);
+  }
+  .adb-flow-btn-save:disabled {
+    opacity: .6;
+    filter: none;
+    transform: none;
+  }
+  .adb-flow-btn-sync {
+    background: rgba(31, 111, 182, 0.07);
+    border: 1.5px solid rgba(31, 111, 182, 0.38);
+    color: #1a5f9e;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: background .15s ease, color .15s ease, transform .12s ease, box-shadow .15s ease;
+  }
+  .adb-flow-btn-sync:hover,
+  .adb-flow-btn-sync:focus {
+    background: linear-gradient(135deg, #1f6fb6 0%, #154f85 100%);
+    border-color: #154f85;
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(21, 79, 133, 0.24);
+  }
+  .adb-flow-btn-sync:disabled {
+    opacity: .6;
+    transform: none;
+  }
+  /* App-blue override for Connect button (btn-primary state) */
+  #adbFlowConnectBtn.btn-primary {
+    background: linear-gradient(135deg, #1f6fb6 0%, #154f85 100%);
+    border-color: #154f85;
+    box-shadow: 0 6px 14px rgba(21, 79, 133, 0.22);
+  }
+  #adbFlowConnectBtn.btn-primary:hover {
+    filter: brightness(1.1);
+    border-color: #154f85;
+  }
+</style>
+
+<div class="page-header-shell">
+  <div class="adb-flow-hero">
+    <div>
+      <h1 class="page-title"><i class="bi bi-diagram-3"></i> AI Databank Flow</h1>
+      <p class="adb-flow-subtitle">Arrange pages as a visual journey, connect them into real flows, and save reusable workflow maps that work cleanly on desktop and mobile.</p>
+    </div>
+    <div class="adb-flow-header-actions">
+      <div class="adb-flow-stat">
+        <span class="adb-flow-stat-label">Unique Pages</span>
+        <span class="adb-flow-stat-value">{{ total_pages }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 adb-flow-shell">
+  <div class="card-body">
+    <div class="adb-flow-tabs-wrap">
+      <div class="adb-flow-tabs" id="adbWorkflowTabs" role="tablist" aria-label="Open workflow tabs"></div>
+    </div>
+    <div class="adb-flow-toolbar mb-3">
+
+      <!-- Row 1 — workflow load & save ──────────────────────── -->
+      <div class="adb-flow-toolbar-group">
+        <div class="input-group adb-flow-ig" style="max-width: 360px;">
+          <span class="input-group-text"><i class="bi bi-folder2-open me-1"></i>Load</span>
+          <select id="adbWorkflowSelect" class="form-select">
+            <option value="">Select workflow…</option>
+            {% for workflow_name in workflow_names %}
+            <option value="{{ workflow_name }}">{{ workflow_name }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn btn-outline-danger" id="adbWorkflowDeleteBtn" title="Delete the current saved workflow">
+            <i class="bi bi-trash3"></i>
+          </button>
+        </div>
+        <div class="input-group adb-flow-ig adb-flow-ig-grow" style="max-width: 540px;">
+          <span class="input-group-text"><i class="bi bi-journal-code me-1"></i>Test Case</span>
+          <select id="adbWorkflowRecordSelect" class="form-select">
+            <option value="">— select test case —</option>
+            {% for session in workflow_source_sessions %}
+            <option value="{{ session.record_id }}" title="{{ session.record_id }}">{{ session.record_name }} ({{ session.step_count }} steps)</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn adb-flow-btn-sync" id="adbWorkflowUpdateBtn" title="Refresh available test cases" aria-label="Refresh available test cases">
+            <i class="bi bi-arrow-repeat"></i>
+          </button>
+        </div>
+
+        <div class="input-group adb-flow-ig adb-flow-toolbar-spacer" style="max-width: 420px; min-width: 220px;">
+          <span class="input-group-text"><i class="bi bi-diagram-3"></i></span>
+          <input type="text" id="adbWorkflowName" class="form-control" list="adbWorkflowNameList" placeholder="Workflow name…">
+          <button type="button" class="btn adb-flow-btn-save" id="adbWorkflowNewTabBtn" title="Create a new workflow and save it automatically">
+            <i class="bi bi-plus-circle"></i>
+          </button>
+        </div>
+
+        <div class="adb-flow-toolbar-break"></div>
+
+        <datalist id="adbWorkflowNameList">
+          {% for workflow_name in workflow_names %}
+          <option value="{{ workflow_name }}"></option>
+          {% endfor %}
+        </datalist>
+      </div>
+
+      <!-- Canvas controls ──────────────────────────────────── -->
+      <div class="adb-flow-toolbar-actions">
+        <div class="adb-flow-primary-actions">
+          <button type="button" class="btn btn-outline-primary" id="adbFlowAddCardBtn"><i class="bi bi-plus-square me-1"></i>Add Card</button>
+          <button type="button" class="btn btn-primary" id="adbFlowConnectBtn"><i class="bi bi-link-45deg me-1"></i>Connect Pages</button>
+          <button type="button" class="btn btn-outline-secondary" id="adbFlowResetBtn"><i class="bi bi-grid me-1"></i>Reset</button>
+          <button type="button" class="btn btn-outline-danger" id="adbFlowClearBtn"><i class="bi bi-x-circle me-1"></i>Clear Lines</button>
+        </div>
+      </div>
+    </div>
+    <div class="adb-flow-status-row">
+      <div class="small text-muted adb-flow-status" id="adbFlowStatus">Drag cards to arrange pages. <strong>Pinch or use +/- to zoom</strong>, drag empty space to pan, and use Compact mode for dense workflows.</div>
+      <div class="adb-flow-view-actions">
+        <button type="button" class="btn btn-outline-secondary" id="adbFlowZoomOutBtn" aria-label="Zoom out"><i class="bi bi-dash-lg"></i></button>
+        <button type="button" class="btn btn-outline-secondary" id="adbFlowZoomResetBtn">100%</button>
+        <button type="button" class="btn btn-outline-secondary" id="adbFlowZoomInBtn" aria-label="Zoom in"><i class="bi bi-plus-lg"></i></button>
+        <label class="adb-flow-toggle mb-0" for="adbFlowCompactToggle">
+          <input type="checkbox" class="form-check-input mt-0" id="adbFlowCompactToggle">
+          <span>Compact</span>
+        </label>
+      </div>
+    </div>
+    <div class="adb-flow-progress-wrap" id="adbSyncProgressWrap" hidden>
+      <div class="adb-flow-progress-bar" id="adbSyncProgressBar"></div>
+      <span class="adb-flow-progress-label" id="adbSyncProgressLabel">Refreshing…</span>
+    </div>
+
+    <div class="adb-flow-board" id="adbFlowBoard">
+      <div class="adb-flow-scene" id="adbFlowScene">
+        <div class="adb-flow-grid"></div>
+        <svg class="adb-flow-svg" id="adbFlowSvg" aria-hidden="true"></svg>
+        <div class="adb-flow-cards" id="adbFlowCards"></div>
+      </div>
+      <div class="adb-flow-minimap" id="adbFlowMinimap">
+        <div class="adb-flow-minimap-head">
+          <span>Navigator</span>
+          <span class="adb-flow-minimap-scale" id="adbFlowMinimapScale">100%</span>
+        </div>
+        <div class="adb-flow-minimap-body" id="adbFlowMinimapBody">
+          <div class="adb-flow-minimap-cards" id="adbFlowMinimapCards"></div>
+          <div class="adb-flow-minimap-viewport" id="adbFlowMinimapViewport">
+            <div class="adb-flow-minimap-window" id="adbFlowMinimapWindow"></div>
+          </div>
+        </div>
+      </div>
+      {% if not page_cards %}
+      <div class="adb-flow-empty" id="adbFlowEmptyState">No page names are available yet. Scrape a few pages first, then return here to connect them.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="adbWorkflowNewTabModal" tabindex="-1" aria-labelledby="adbWorkflowNewTabModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:1rem;overflow:hidden;">
+      <div class="modal-header" style="background:linear-gradient(135deg,#1f6fb6 0%,#154f85 100%);color:#fff;border:0;">
+        <h5 class="modal-title fw-semibold" id="adbWorkflowNewTabModalLabel"><i class="bi bi-box-arrow-up-right me-2"></i>Create New Workflow</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <label for="adbWorkflowNewTabName" class="form-label fw-semibold text-primary">Workflow Name</label>
+        <input type="text" class="form-control" id="adbWorkflowNewTabName" list="adbWorkflowNameList" placeholder="New Workflow" maxlength="120">
+        <div class="form-text">A clean workflow tab will be created and saved automatically using this workflow name.</div>
+      </div>
+      <div class="modal-footer border-0 pt-0 px-4 pb-4">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn adb-flow-btn-save" id="adbWorkflowNewTabConfirmBtn">
+          <i class="bi bi-plus-circle me-1"></i>Create
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="adbWorkflowDeleteModal" tabindex="-1" aria-labelledby="adbWorkflowDeleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:1rem;overflow:hidden;">
+      <div class="modal-header" style="background:linear-gradient(135deg,#b3263b 0%,#7d1d2b 100%);color:#fff;border:0;">
+        <h5 class="modal-title fw-semibold" id="adbWorkflowDeleteModalLabel"><i class="bi bi-trash3 me-2"></i>Delete Workflow</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="mb-2">Delete this saved workflow?</p>
+        <div class="fw-semibold text-danger" id="adbWorkflowDeleteModalName">Workflow</div>
+        <div class="form-text mt-2">This removes the saved workflow from the list. Open tabs using it will be reset or closed.</div>
+      </div>
+      <div class="modal-footer border-0 pt-0 px-4 pb-4">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="adbWorkflowDeleteConfirmBtn">
+          <i class="bi bi-trash3 me-1"></i>Delete Workflow
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{ page_cards|json_script:"adbFlowCardsData" }}

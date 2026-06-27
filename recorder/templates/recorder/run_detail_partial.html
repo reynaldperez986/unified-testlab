@@ -1,0 +1,100 @@
+<style>
+  .run-detail-meta {
+    row-gap: .35rem;
+  }
+  @media (max-width: 480px) {
+    .run-detail-meta {
+      gap: .45rem .7rem !important;
+    }
+  }
+</style>
+<div class="d-flex gap-3 align-items-center mb-2 flex-wrap small text-muted run-detail-meta">
+  <span><span class="badge bg-secondary">{{ total }}</span> steps</span>
+  <span><span class="badge bg-success">{{ passed }}</span> pass</span>
+  <span><span class="badge bg-danger">{{ failed }}</span> fail</span>
+  {% if not_executed %}<span><span class="badge bg-secondary">{{ not_executed }}</span> not executed</span>{% endif %}
+  {% if first_row.run_date %}
+    <span class="ms-2"><i class="bi bi-calendar3 me-1"></i><strong>{{ first_row.run_date|date:"Y-m-d H:i:s" }}</strong></span>
+  {% endif %}
+  {% if first_row.runner %}
+    <span><i class="bi bi-person me-1"></i>{{ first_row.runner }}</span>
+  {% endif %}
+  {% if first_row %}
+    <a href="{% url 'ai_locator_stats' %}?record_name={{ first_row.record_name|default:first_row.record_id|urlencode }}" class="btn btn-sm btn-outline-success py-0 px-2">
+      <i class="bi bi-bar-chart-line me-1"></i>Locator Stats
+    </a>
+  {% endif %}
+</div>
+<div class="table-responsive" style="max-height:min(380px,55vh);overflow-y:auto;">
+  <table class="table table-sm align-middle mb-0 mobile-stack-table" style="font-size:0.8rem;">
+    <thead class="table-dark" style="position:sticky;top:0;z-index:1;">
+      <tr>
+        <th style="width:30px" title="Engine"></th>
+        <th style="width:45px">#</th>
+        <th>Page URL</th>
+        <th>Action</th>
+        <th>Steps</th>
+        <th class="text-center" style="width:90px">Status</th>
+        <th class="text-center" style="width:55px">Screenshot</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{% if r.status == 'pass' %}table-success{% elif r.status == 'fail' %}table-danger{% else %}table-secondary table-secondary{% endif %}">
+        <td class="text-center" data-label="Engine">
+          {% if r.engine == 'playwright' %}
+            <i class="bi bi-lightning-charge-fill text-success" title="Playwright"></i>
+          {% else %}
+            <i class="bi bi-browser-chrome text-warning" title="Selenium"></i>
+          {% endif %}
+        </td>
+        <td class="text-muted mobile-compact-cell" data-label="#">{{ r.step_no }}</td>
+        <td class="text-truncate" data-label="Page URL" style="max-width:180px;">
+          <a href="{{ r.page_url }}" target="_blank" class="text-decoration-none small" title="{{ r.page_url }}">{{ r.page_url|truncatechars:30 }}</a>
+        </td>
+        <td data-label="Action">
+          {% with action=r.action %}
+          <span class="badge
+            {% if action == 'click' %}bg-primary
+            {% elif action == 'dblclick' %}bg-info text-dark
+            {% elif action == 'input' or action == 'change' %}bg-warning text-dark
+            {% elif action == 'keydown' %}bg-secondary
+            {% elif action == 'submit' %}bg-success
+            {% else %}bg-light text-dark{% endif %}">
+            {% if action == 'click' %}<i class="bi bi-cursor-fill"></i>
+            {% elif action == 'dblclick' %}<i class="bi bi-cursor"></i>
+            {% elif action == 'input' or action == 'change' %}<i class="bi bi-keyboard"></i>
+            {% elif action == 'keydown' %}<i class="bi bi-keyboard"></i>
+            {% elif action == 'submit' %}<i class="bi bi-send-fill"></i>
+            {% else %}<i class="bi bi-lightning-fill"></i>{% endif %}
+            {{ action|capfirst }}
+          </span>
+          {% endwith %}
+        </td>
+        <td data-label="Steps">{{ r.steps_description|default:r.message|default:"—" }}</td>
+        <td class="text-center" data-label="Status">
+          {% if r.status == 'pass' %}
+            <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Pass</span>
+          {% elif r.status == 'fail' %}
+            <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> Fail</span>
+          {% else %}
+            <span class="badge bg-secondary"><i class="bi bi-dash-circle"></i> Not Executed</span>
+          {% endif %}
+        </td>
+        <td class="text-center" data-label="Screenshot">
+          {% if r.screenshot %}
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 btn-ss-partial"
+                  data-ss-url="{% url 'run_step_screenshot' r.run_id r.record_id r.step_no %}"
+                  data-bs-toggle="modal" data-bs-target="#ssModalHistory"
+                  title="View screenshot">
+            <i class="bi bi-camera-fill"></i>
+          </button>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

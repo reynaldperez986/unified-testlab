@@ -1,0 +1,693 @@
+﻿{% extends "recorder/base.html" %}
+{% block title %}User Management &#8212; WebConX Automation{% endblock %}
+
+{% block content %}
+<style>
+  .folder-tree-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+    flex-wrap: wrap;
+  }
+</style>
+<div class="page-header-shell">
+  <div>
+    <h4 class="page-title fw-bold mb-1"><i class="bi bi-people"></i> User Management</h4>
+    <div class="page-header-meta">Manage accounts, permissions, and action visibility with mobile-friendly controls.</div>
+  </div>
+  <a href="{% url 'create_user' %}" class="btn btn-primary btn-sm">
+    <i class="bi bi-person-plus"></i> New User
+  </a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 mobile-stack-table">
+      <thead class="table-dark">
+        <tr>
+          <th>#</th>
+          <th>Username</th>
+          <th>Email</th>
+          <th class="text-center">Superuser</th>
+          <th class="text-center">Staff</th>
+          <th class="text-center">Active</th>
+          <th>Date Joined</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr class="{% if not u.is_active %}table-secondary text-muted{% endif %}">
+          <td class="text-muted small mobile-compact-cell" data-label="#">{{ forloop.counter }}</td>
+          <td class="fw-semibold mobile-primary-cell" data-label="User">
+            <div class="mobile-primary-title">
+            <i class="bi bi-person-circle me-1"></i>{{ u.username }}
+            {% if u == request.user %}<span class="badge bg-primary ms-1">you</span>{% endif %}
+            </div>
+          </td>
+          <td class="small" data-label="Email">{{ u.email|default:"" }}</td>
+          <td class="text-center mobile-compact-cell" data-label="Superuser">
+            {% if u.is_superuser %}<i class="bi bi-shield-fill-check text-danger"></i>
+            {% else %}<i class="bi bi-dash text-secondary"></i>{% endif %}
+          </td>
+          <td class="text-center mobile-compact-cell" data-label="Staff">
+            {% if u.is_staff %}<i class="bi bi-check-circle-fill text-success"></i>
+            {% else %}<i class="bi bi-dash text-secondary"></i>{% endif %}
+          </td>
+          <td class="text-center" data-label="Active">
+            {% if u.is_active %}<span class="badge bg-success">Active</span>
+            {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+          </td>
+          <td class="small text-muted" data-label="Joined">{{ u.date_joined|date:"Y-m-d H:i" }}</td>
+          <td class="text-center mobile-actions-cell" data-label="Actions">
+            <div class="folder-tree-actions mobile-actions-wrap">
+
+              {# Edit button #}
+              <button type="button" class="btn btn-sm btn-outline-primary"
+                      title="Edit"
+                      data-bs-toggle="modal" data-bs-target="#editModal"
+                      data-pk="{{ u.pk }}"
+                      data-username="{{ u.username }}"
+                      data-email="{{ u.email }}"
+                      data-is-staff="{% if u.is_staff %}1{% else %}0{% endif %}"
+                      data-is-superuser="{% if u.is_superuser %}1{% else %}0{% endif %}"
+                      data-is-active="{% if u.is_active %}1{% else %}0{% endif %}"
+                      data-is-self="{% if u == request.user %}1{% else %}0{% endif %}">
+                <i class="bi bi-pencil"></i>
+              </button>
+
+              {# Visible Actions config #}
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      title="Configure visible action buttons"
+                      onclick="openActionsModal({{ u.pk }}, '{{ u.username }}')">                
+                <i class="bi bi-sliders"></i>
+              </button>
+
+              {# Toggle active  not for self #}
+              {% if u != request.user %}
+              {% if u.is_active %}
+              <button type="button" class="btn btn-sm btn-outline-warning" title="Deactivate"
+                      data-username="{{ u.username }}"
+                      data-toggle-url="{% url 'toggle_user_active' u.pk %}"
+                      onclick="openDeactivateModal(this)">
+                <i class="bi bi-person-dash"></i>
+              </button>
+              {# Force logout #}
+              <button type="button" class="btn btn-sm btn-outline-danger" title="Logout user"
+                      data-username="{{ u.username }}"
+                      data-logout-url="{% url 'force_logout_user' u.pk %}"
+                      onclick="openLogoutModal(this)">
+                <i class="bi bi-box-arrow-right"></i>
+              </button>
+              {% else %}
+              <form method="post" action="{% url 'toggle_user_active' u.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-success" title="Activate">
+                  <i class="bi bi-person-check"></i>
+                </button>
+              </form>
+              {% endif %}
+              {% endif %}
+
+              {# Delete  not for superusers or self #}
+              {% if not u.is_superuser and u != request.user %}
+              <button type="button" class="btn btn-sm btn-outline-danger" title="Delete"
+                      data-username="{{ u.username }}" data-delete-url="{% url 'delete_user' u.pk %}"
+                      onclick="openDeleteUserModal(this)">
+                <i class="bi bi-trash"></i>
+              </button>
+              {% endif %}
+
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr class="mobile-empty-row"><td colspan="8" class="text-center text-muted py-4">No users found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# Force Logout Confirmation Modal #}
+<div class="modal fade" id="logoutUserModal" tabindex="-1" aria-labelledby="logoutUserModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold" id="logoutUserModalLabel">
+          <i class="bi bi-box-arrow-right text-danger me-1"></i> Logout User
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        Logout <strong id="logoutUsername"></strong>?
+        <p class="text-muted small mt-1 mb-0">All active sessions will be terminated immediately.</p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" id="logoutUserConfirmBtn">
+          <i class="bi bi-box-arrow-right me-1"></i>Logout
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Deactivate Confirmation Modal #}
+<div class="modal fade" id="deactivateModal" tabindex="-1" aria-labelledby="deactivateModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold" id="deactivateModalLabel">
+          <i class="bi bi-person-dash text-warning me-1"></i> Deactivate User
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        Deactivate <strong id="deactivateUsername"></strong>?
+        <p class="text-muted small mt-1 mb-0">The user will be logged out immediately.</p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning btn-sm" id="deactivateConfirmBtn">
+          <i class="bi bi-person-dash me-1"></i>Deactivate
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Deactivate toast notification #}
+<div class="position-fixed top-0 start-50 translate-middle-x p-3" style="z-index:1100">
+  <div id="deactivateToast" class="toast align-items-center text-bg-warning border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="4000">
+    <div class="d-flex">
+      <div class="toast-body fw-semibold" id="deactivateToastBody"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+{# Edit User Modal #}
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="post" id="editForm" novalidate>
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="editModalLabel"><i class="bi bi-pencil-square"></i> Edit User</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Username</label>
+            <input type="text" name="username" id="edit_username" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Email <span class="text-muted fw-normal">(optional)</span></label>
+            <input type="email" name="email" id="edit_email" class="form-control">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">New Password <span class="text-muted fw-normal">(leave blank to keep)</span></label>
+            <input type="password" name="password1" id="edit_password1" class="form-control" autocomplete="new-password">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Confirm New Password</label>
+            <input type="password" name="password2" id="edit_password2" class="form-control" autocomplete="new-password">
+          </div>
+
+          <hr>
+          <div class="d-flex flex-wrap gap-4">
+            <div class="form-check form-switch" id="row_superuser">
+              <input class="form-check-input" type="checkbox" name="is_superuser" id="edit_is_superuser">
+              <label class="form-check-label" for="edit_is_superuser">Superuser</label>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="is_staff" id="edit_is_staff">
+              <label class="form-check-label" for="edit_is_staff">Staff</label>
+            </div>
+            <div class="form-check form-switch" id="row_active">
+              <input class="form-check-input" type="checkbox" name="is_active" id="edit_is_active">
+              <label class="form-check-label" for="edit_is_active">Active</label>
+            </div>
+          </div>
+          <div id="self_note" class="text-muted small mt-2 d-none">
+            <i class="bi bi-info-circle"></i> Role and active status cannot be changed for your own account.
+          </div>
+
+        </div>
+        <div class="modal-footer d-flex align-items-center gap-2">
+          <span id="editSaveStatus" class="small me-auto"></span>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary" id="editSaveBtn"><i class="bi bi-save"></i> Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Configure Visible Actions modal ───────────────────────── #}
+<div class="modal fade" id="actionsConfigModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-sliders me-1"></i> Configure Action Buttons</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-1">Visible action buttons for <strong id="actionsConfigUsername"></strong> in the Projects table.</p>
+        <div class="form-check form-switch mt-3 mb-3">
+          <input class="form-check-input" type="checkbox" id="actionsConfigPublicFolders">
+          <label class="form-check-label" for="actionsConfigPublicFolders">Allow viewing public project folders</label>
+        </div>
+        <p class="text-muted small mb-2">When off, the user only sees project folders they authored unless they are a superadmin.</p>
+        <div id="actionsConfigList" class="mt-2"></div>
+      </div>
+      <div class="modal-footer d-flex align-items-center gap-2">
+        <span id="actionsConfigStatus" class="small me-auto"></span>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Permanently Delete User Modal #}
+<div class="modal fade" id="deleteUserModal" tabindex="-1" aria-labelledby="deleteUserModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold text-danger" id="deleteUserModalLabel">
+          <i class="bi bi-person-x-fill me-1"></i> Delete User
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <p class="mb-2">Permanently delete user <strong id="deleteUserName"></strong>?</p>
+        <p class="text-muted small mb-0">
+          This will remove the account and cannot be undone.
+        </p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <form method="post" id="deleteUserForm" action="">
+          {% csrf_token %}
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger btn-sm">
+            <i class="bi bi-trash-fill me-1"></i>Delete
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const editModal     = document.getElementById('editModal');
+const editForm      = document.getElementById('editForm');
+const editSaveBtn   = document.getElementById('editSaveBtn');
+const editSaveStatus = document.getElementById('editSaveStatus');
+
+editModal.addEventListener('show.bs.modal', function (e) {
+  const btn = e.relatedTarget;
+  const pk    = btn.dataset.pk;
+  const isSelf = btn.dataset.isSelf === '1';
+
+  editForm.action = '/users/' + pk + '/edit/';
+  editSaveStatus.textContent = '';
+  editSaveStatus.className = 'small me-auto';
+  clearTimeout(_editDebounce);
+  _reloading = false;
+  document.getElementById('edit_username').value       = btn.dataset.username;
+  document.getElementById('edit_email').value          = btn.dataset.email || '';
+  document.getElementById('edit_password1').value      = '';
+  document.getElementById('edit_password2').value      = '';
+  document.getElementById('edit_is_staff').checked     = btn.dataset.isStaff === '1';
+  document.getElementById('edit_is_superuser').checked = btn.dataset.isSuperuser === '1';
+  document.getElementById('edit_is_active').checked    = btn.dataset.isActive === '1';
+
+  const staffChk  = document.getElementById('edit_is_staff');
+  const superChk  = document.getElementById('edit_is_superuser');
+  const activeChk = document.getElementById('edit_is_active');
+  const selfNote  = document.getElementById('self_note');
+
+  syncEditRoleSelection();
+
+  [staffChk, superChk, activeChk].forEach(el => el.disabled = isSelf);
+  selfNote.classList.toggle('d-none', !isSelf);
+
+  const amSuperuser = {% if request.user.is_superuser %}true{% else %}false{% endif %};
+  document.getElementById('row_superuser').style.display = amSuperuser ? '' : 'none';
+});
+
+// ── Shared save function ──────────────────────────────────────
+let _reloading = false;
+
+function doSave() {
+  if (_reloading) return;
+
+  // Clear previous field errors
+  editForm.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+  editForm.querySelectorAll('.invalid-feedback').forEach(el => el.remove());
+
+  editSaveBtn.disabled = true;
+  editSaveStatus.className = 'small me-auto text-warning';
+  editSaveStatus.innerHTML = '<i class="bi bi-arrow-repeat spin-icon me-1"></i>Saving…';
+
+  const data = new FormData(editForm);
+  fetch(editForm.action, {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    body: data,
+  })
+  .then(r => r.json())
+  .then(function (d) {
+    editSaveBtn.disabled = false;
+    if (d.ok) {
+      if (_reloading) return;
+      _reloading = true;
+      clearTimeout(_editDebounce);
+      editSaveStatus.className = 'small me-auto text-success';
+      editSaveStatus.innerHTML = '<i class="bi bi-check-circle me-1"></i>Saved — reloading…';
+      setTimeout(function () { window.location.reload(); }, 600);
+    } else {
+      editSaveStatus.className = 'small me-auto text-danger';
+      editSaveStatus.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i>' + (d.error || 'Save failed');
+      if (d.field) {
+        const el = editForm.querySelector('[name="' + d.field + '"]');
+        if (el) {
+          el.classList.add('is-invalid');
+          el.insertAdjacentHTML('afterend', '<div class="invalid-feedback">' + d.error + '</div>');
+        }
+      }
+    }
+  })
+  .catch(function () {
+    editSaveBtn.disabled = false;
+    editSaveStatus.className = 'small me-auto text-danger';
+    editSaveStatus.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i>Network error';
+  });
+}
+
+// Manual submit (Save button)
+editForm.addEventListener('submit', function (e) { e.preventDefault(); doSave(); });
+
+// ── Auto-save listeners ───────────────────────────────────────
+let _editDebounce = null;
+function schedSave() {
+  clearTimeout(_editDebounce);
+  _editDebounce = setTimeout(doSave, 700);
+}
+
+function syncEditRoleSelection(changedSource) {
+  if (!staffChkEl || !superChkEl) return;
+
+  if (changedSource === 'superuser') {
+    if (superChkEl.checked) {
+      staffChkEl.checked = false;
+    } else {
+      staffChkEl.checked = true;
+    }
+    return;
+  }
+
+  if (changedSource === 'staff') {
+    if (staffChkEl.checked) {
+      superChkEl.checked = false;
+    } else if (!superChkEl.checked) {
+      staffChkEl.checked = true;
+    }
+    return;
+  }
+
+  if (superChkEl.checked && staffChkEl.checked) {
+    staffChkEl.checked = false;
+  }
+  if (!superChkEl.checked && !staffChkEl.checked) {
+    staffChkEl.checked = true;
+  }
+}
+
+// Text / email: debounce on input
+document.getElementById('edit_username').addEventListener('input', schedSave);
+document.getElementById('edit_email').addEventListener('input', schedSave);
+
+// Checkboxes: save immediately on change
+// Superuser and Staff are mutually exclusive
+const staffChkEl  = document.getElementById('edit_is_staff');
+const superChkEl  = document.getElementById('edit_is_superuser');
+staffChkEl.addEventListener('change', function () {
+  syncEditRoleSelection('staff');
+  doSave();
+});
+superChkEl.addEventListener('change', function () {
+  syncEditRoleSelection('superuser');
+  doSave();
+});
+document.getElementById('edit_is_active').addEventListener('change', doSave);
+
+// Password: only save when both fields are non-empty and match (debounced)
+function schedPasswordSave() {
+  const p1 = document.getElementById('edit_password1').value;
+  const p2 = document.getElementById('edit_password2').value;
+  if (!p1 || !p2) return;          // wait until both filled
+  schedSave();
+}
+document.getElementById('edit_password1').addEventListener('input', schedPasswordSave);
+document.getElementById('edit_password2').addEventListener('input', schedPasswordSave);
+
+// ── Permanently Delete User modal ─────────────────────────────
+let _deleteUserModalInstance = null;
+
+function openDeleteUserModal(btn) {
+  const username = btn.dataset.username;
+  const url      = btn.dataset.deleteUrl;
+  document.getElementById('deleteUserName').textContent = username;
+  const form = document.getElementById('deleteUserForm');
+  form.action = url;
+  if (!_deleteUserModalInstance) {
+    _deleteUserModalInstance = new bootstrap.Modal(document.getElementById('deleteUserModal'));
+  }
+  _deleteUserModalInstance.show();
+}
+
+// ── Force logout modal ───────────────────────────────────────
+let _logoutUrl = null;
+let _logoutModalInstance = null;
+
+function openLogoutModal(btn) {
+  _logoutUrl = btn.dataset.logoutUrl;
+  document.getElementById('logoutUsername').textContent = btn.dataset.username;
+  _logoutModalInstance = new bootstrap.Modal(document.getElementById('logoutUserModal'));
+  _logoutModalInstance.show();
+}
+
+const _logoutConfirmBtn = document.getElementById('logoutUserConfirmBtn');
+_logoutConfirmBtn.addEventListener('click', function () {
+  if (!_logoutUrl) return;
+  _logoutConfirmBtn.disabled = true;
+  _logoutConfirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Logging out…';
+  fetch(_logoutUrl, {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCsrf() },
+  })
+  .then(r => r.json())
+  .then(function (d) {
+    if (d.ok) {
+      if (_logoutModalInstance) _logoutModalInstance.hide();
+      const _username = document.getElementById('logoutUsername').textContent;
+      let html = '<i class="bi bi-box-arrow-right me-1"></i><strong>' + _username + '</strong> has been logged out.';
+      if (d.stopped && d.stopped.length) {
+        html += '<ul class="mb-0 mt-1 ps-3">' + d.stopped.map(m => '<li>' + m + '</li>').join('') + '</ul>';
+      }
+      _deactivateToastBody.innerHTML = html;
+      new bootstrap.Toast(_deactivateToastEl).show();
+      setTimeout(function () { window.location.reload(); }, 2000);
+    } else {
+      _logoutConfirmBtn.disabled = false;
+      _logoutConfirmBtn.innerHTML = '<i class="bi bi-box-arrow-right me-1"></i>Logout';
+      alert(d.error || 'Failed to logout user.');
+    }
+  })
+  .catch(function () {
+    _logoutConfirmBtn.disabled = false;
+    _logoutConfirmBtn.innerHTML = '<i class="bi bi-box-arrow-right me-1"></i>Logout';
+    alert('Network error — could not logout user.');
+  });
+});
+
+// ── Deactivate confirmation modal ───────────────────────────
+let _deactivateUrl = null;
+let _deactivateModalInstance = null;
+
+function openDeactivateModal(btn) {
+  _deactivateUrl = btn.dataset.toggleUrl;
+  document.getElementById('deactivateUsername').textContent = btn.dataset.username;
+  _deactivateModalInstance = new bootstrap.Modal(document.getElementById('deactivateModal'));
+  _deactivateModalInstance.show();
+}
+
+const _deactivateBtn = document.getElementById('deactivateConfirmBtn');
+const _deactivateToastEl = document.getElementById('deactivateToast');
+const _deactivateToastBody = document.getElementById('deactivateToastBody');
+
+function _showDeactivateToast(username, stoppedList) {
+  let html = '<i class="bi bi-person-dash me-1"></i><strong>' + username + '</strong> is now deactivated.';
+  if (stoppedList && stoppedList.length) {
+    html += '<ul class="mb-0 mt-1 ps-3">' + stoppedList.map(m => '<li>' + m + '</li>').join('') + '</ul>';
+  }
+  _deactivateToastBody.innerHTML = html;
+  new bootstrap.Toast(_deactivateToastEl).show();
+}
+
+_deactivateBtn.addEventListener('click', function () {
+  if (!_deactivateUrl) return;
+  _deactivateBtn.disabled = true;
+  _deactivateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deactivating…';
+  fetch(_deactivateUrl, {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCsrf() },
+  })
+  .then(r => r.json())
+  .then(function (d) {
+    if (d.ok) {
+      // Hide the confirmation modal first
+      if (_deactivateModalInstance) _deactivateModalInstance.hide();
+      const _username = document.getElementById('deactivateUsername').textContent;
+      _showDeactivateToast(_username, d.stopped || []);
+      // Reload after toast is visible
+      setTimeout(function () { window.location.reload(); }, 2000);
+    } else {
+      _deactivateBtn.disabled = false;
+      _deactivateBtn.innerHTML = '<i class="bi bi-person-dash me-1"></i>Deactivate';
+      alert(d.error || 'Failed to deactivate user.');
+    }
+  })
+  .catch(function () {
+    _deactivateBtn.disabled = false;
+    _deactivateBtn.innerHTML = '<i class="bi bi-person-dash me-1"></i>Deactivate';
+    alert('Network error — could not deactivate user.');
+  });
+});
+
+// spin animation (reuse dashboard's if present, else define locally)
+if (!document.getElementById('editSpinStyle')) {
+  const s = document.createElement('style');
+  s.id = 'editSpinStyle';
+  s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}.spin-icon{display:inline-block;animation:spin .8s linear infinite}';
+  document.head.appendChild(s);
+}
+
+// ── Actions Config modal ───────────────────────────────────
+
+const USER_ACTIONS = {{ user_actions_map_json|safe }};
+const USER_PUBLIC_FOLDERS = {{ user_public_folder_map_json|safe }};
+
+const ACTION_LABELS = {
+  copy:      { label: 'Copy to Folder', icon: 'bi-folder-symlink', color: 'warning'   },
+  copy_folder_button: { label: 'Copy Folder', icon: 'bi-folder-symlink', color: 'warning' },
+  copy_folder_modal: { label: 'Modal icon: Copy Folder', icon: 'bi-folder-symlink', color: 'warning' },
+  create_folder_modal: { label: 'New Folder', icon: 'bi-folder-plus', color: 'primary' },
+  create_subfolder_button: { label: 'Create Subfolder', icon: 'bi-folder-plus', color: 'primary' },
+  create_subfolder_modal: { label: 'Modal icon: Create Subfolder', icon: 'bi-folder-plus', color: 'primary' },
+  delete:        { label: 'Delete',         icon: 'bi-trash',          color: 'danger'    },
+  delete_folder_modal: { label: 'Modal icon: Delete Folder', icon: 'bi-folder-minus', color: 'danger' },
+  delete_folder: { label: 'Delete Folder',  icon: 'bi-folder-minus',   color: 'danger'    },
+  download:      { label: 'Download',       icon: 'bi-download',       color: 'info'      },
+  duplicate: { label: 'Duplicate',      icon: 'bi-files',          color: 'info'      },
+  headless:  { label: 'Headless',       icon: 'bi-display',        color: 'success'   },
+  rename_folder_button: { label: 'Rename Folder', icon: 'bi-pencil-square', color: 'secondary' },
+  rename_folder_modal: { label: 'Modal icon: Rename Folder', icon: 'bi-pencil-square', color: 'secondary' },
+  rename:    { label: 'Rename',         icon: 'bi-pencil',         color: 'secondary' },
+  replay:    { label: 'Replay',         icon: 'bi-play-circle',    color: 'success'   },
+  view:      { label: 'View',           icon: 'bi-list-ul',        color: 'primary'   },
+};
+
+let _actionsPk = null;
+
+function openActionsModal(pk, username) {
+  _actionsPk = pk;
+  clearTimeout(_actionsDebounce);
+  _actionsStatus.textContent = '';
+  _actionsStatus.className = 'small me-auto';
+  const current = new Set(USER_ACTIONS[String(pk)] || Object.keys(ACTION_LABELS));
+  document.getElementById('actionsConfigPublicFolders').checked = USER_PUBLIC_FOLDERS[String(pk)] !== false;
+  document.getElementById('actionsConfigUsername').textContent = username;
+  const container = document.getElementById('actionsConfigList');
+  container.innerHTML = '';
+  Object.entries(ACTION_LABELS).forEach(([key, meta]) => {
+    const checked = current.has(key) ? 'checked' : '';
+    container.insertAdjacentHTML('beforeend', `
+      <div class="form-check d-flex align-items-center gap-2 py-2 border-bottom">
+        <input class="form-check-input" type="checkbox" id="ac_${key}" value="${key}" ${checked}>
+        <label class="form-check-label d-flex align-items-center gap-2" for="ac_${key}">
+          <span class="badge bg-${meta.color} bg-opacity-75"><i class="bi ${meta.icon}"></i></span>
+          ${meta.label}
+        </label>
+      </div>`);
+  });
+  new bootstrap.Modal(document.getElementById('actionsConfigModal')).show();
+}
+
+function getCsrf() {
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : '';
+}
+
+const _actionsStatus = document.getElementById('actionsConfigStatus');
+let   _actionsDebounce = null;
+
+function saveActions() {
+  const checked = [...document.querySelectorAll('#actionsConfigList input:checked')].map(c => c.value);
+  const value   = checked.length ? checked.join(',') : 'none';
+  const canViewPublicFolders = document.getElementById('actionsConfigPublicFolders').checked;
+  _actionsStatus.className = 'small me-auto text-warning';
+  _actionsStatus.innerHTML = '<i class="bi bi-arrow-repeat spin-icon me-1"></i>Saving…';
+  Promise.all([
+    fetch('/api/user-prefs/' + _actionsPk + '/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ key: 'projects.visible_actions', value }),
+    }).then(r => r.json()),
+    fetch('/api/user-prefs/' + _actionsPk + '/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ key: 'projects.view_public_folders', value: canViewPublicFolders ? 'true' : 'false' }),
+    }).then(r => r.json()),
+  ])
+  .then(function ([actionsData, publicFoldersData]) {
+    if (actionsData.ok && publicFoldersData.ok) {
+      USER_ACTIONS[String(_actionsPk)] = checked;
+      USER_PUBLIC_FOLDERS[String(_actionsPk)] = canViewPublicFolders;
+      _actionsStatus.className = 'small me-auto text-success';
+      _actionsStatus.innerHTML = '<i class="bi bi-check-circle me-1"></i>Saved';
+      clearTimeout(_actionsDebounce);
+    } else {
+      _actionsStatus.className = 'small me-auto text-danger';
+      _actionsStatus.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i>Save failed';
+    }
+  })
+  .catch(function () {
+    _actionsStatus.className = 'small me-auto text-danger';
+    _actionsStatus.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i>Network error';
+  });
+}
+
+// Auto-save on any checkbox change inside the list
+document.getElementById('actionsConfigList').addEventListener('change', function (e) {
+  if (e.target.type !== 'checkbox') return;
+  clearTimeout(_actionsDebounce);
+  _actionsDebounce = setTimeout(saveActions, 300);
+});
+
+document.getElementById('actionsConfigPublicFolders').addEventListener('change', function () {
+  clearTimeout(_actionsDebounce);
+  _actionsDebounce = setTimeout(saveActions, 300);
+});
+</script>
+{% endblock %}

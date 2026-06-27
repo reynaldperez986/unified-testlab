@@ -1,0 +1,155 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<section class="form-shell testcase-shell mx-auto">
+    <div class="hero-panel mb-3 mb-md-4">
+        <p class="eyebrow mb-2">Test Designer</p>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h1 class="page-title h3 mb-1">{{ title }}</h1>
+                <p class="subtitle mb-0">Build reliable checks for connectivity, schema, and data quality.</p>
+            </div>
+            <a class="btn btn-outline-secondary" href="/db-lab/testcases/">Back</a>
+        </div>
+    </div>
+
+    <form method="post" class="testcase-composer">
+        {% csrf_token %}
+
+        <div class="section-card form-card mb-3 mb-md-4">
+            <div class="section-card-header">
+                <h2 class="section-title mb-0">Configuration</h2>
+            </div>
+
+            <div class="form-grid">
+                <div class="field-wrap span-2">
+                    <label class="field-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+                    {{ form.name }}
+                    {% for error in form.name.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap">
+                    <label class="field-label" for="{{ form.project_folder.id_for_label }}">{{ form.project_folder.label }}</label>
+                    {{ form.project_folder }}
+                    {% for error in form.project_folder.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap">
+                    <label class="field-label" for="{{ form.connection.id_for_label }}">{{ form.connection.label }}</label>
+                    {{ form.connection }}
+                    {% for error in form.connection.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap">
+                    <label class="field-label" for="{{ form.test_type.id_for_label }}">{{ form.test_type.label }}</label>
+                    {{ form.test_type }}
+                    {% for error in form.test_type.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap" data-type-field="comparison_operator">
+                    <label class="field-label" for="{{ form.comparison_operator.id_for_label }}">{{ form.comparison_operator.label }}</label>
+                    {{ form.comparison_operator }}
+                    {% for error in form.comparison_operator.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap" data-type-field="expected_value">
+                    <label class="field-label" for="{{ form.expected_value.id_for_label }}">{{ form.expected_value.label }}</label>
+                    {{ form.expected_value }}
+                    {% for error in form.expected_value.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap span-2" data-type-field="table_name">
+                    <label class="field-label" for="{{ form.table_name.id_for_label }}">{{ form.table_name.label }}</label>
+                    {{ form.table_name }}
+                    <small class="field-help">Required for TABLE_EXISTS and ROW_COUNT tests.</small>
+                    {% for error in form.table_name.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap span-2" data-type-field="query">
+                    <label class="field-label" for="{{ form.query.id_for_label }}">{{ form.query.label }}</label>
+                    {{ form.query }}
+                    <small class="field-help">Used for QUERY_VALUE tests. Return one row with one target value.</small>
+                    {% for error in form.query.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap span-2">
+                    <label class="field-label" for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+                    {{ form.notes }}
+                    {% for error in form.notes.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                <div class="field-wrap span-2">
+                    <label class="field-toggle" for="{{ form.is_active.id_for_label }}">
+                        {{ form.is_active }}
+                        <span>Active test case</span>
+                    </label>
+                    {% for error in form.is_active.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="hint-card mb-3 mb-md-4">
+            <h3 class="hint-title">Quick Guide</h3>
+            <p class="mb-2"><strong>CONNECTION:</strong> checks if DB login works.</p>
+            <p class="mb-2"><strong>TABLE_EXISTS:</strong> set <em>table_name</em>.</p>
+            <p class="mb-2"><strong>ROW_COUNT:</strong> set <em>table_name</em>, <em>operator</em>, and <em>expected_value</em>.</p>
+            <p class="mb-0"><strong>QUERY_VALUE:</strong> set <em>query</em>, <em>operator</em>, and <em>expected_value</em>.</p>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <a class="btn btn-outline-secondary" href="/db-lab/testcases/">Cancel</a>
+            <button class="btn btn-primary" type="submit">Save Test Case</button>
+        </div>
+    </form>
+</section>
+<script>
+    (function () {
+        var typeEl = document.getElementById("{{ form.test_type.id_for_label }}");
+        var tableEl = document.getElementById("{{ form.table_name.id_for_label }}");
+        var queryEl = document.getElementById("{{ form.query.id_for_label }}");
+        var expectedEl = document.getElementById("{{ form.expected_value.id_for_label }}");
+        var operatorEl = document.getElementById("{{ form.comparison_operator.id_for_label }}");
+        if (!typeEl) {
+            return;
+        }
+
+        function setFieldVisible(fieldName, visible) {
+            document.querySelectorAll('[data-type-field*="' + fieldName + '"]').forEach(function (wrap) {
+                wrap.style.display = visible ? "" : "none";
+            });
+        }
+
+        function setRequired(el, required) {
+            if (!el) {
+                return;
+            }
+            if (required) {
+                el.setAttribute("required", "required");
+            } else {
+                el.removeAttribute("required");
+            }
+        }
+
+        function applyTypeRules() {
+            var t = typeEl.value;
+            var needsTable = t === "TABLE_EXISTS" || t === "ROW_COUNT";
+            var needsQuery = t === "QUERY_VALUE";
+            var needsCompare = t === "ROW_COUNT" || t === "QUERY_VALUE";
+
+            setFieldVisible("table_name", needsTable);
+            setFieldVisible("query", needsQuery);
+            setFieldVisible("comparison_operator", needsCompare);
+            setFieldVisible("expected_value", needsCompare);
+
+            setRequired(tableEl, needsTable);
+            setRequired(queryEl, needsQuery);
+            setRequired(operatorEl, needsCompare);
+            setRequired(expectedEl, needsCompare);
+        }
+
+        typeEl.addEventListener("change", applyTypeRules);
+        applyTypeRules();
+    })();
+</script>
+{% endblock %}
+

@@ -1,0 +1,874 @@
+<script>
+(function () {
+  /* ── Shared refs ──────────────────────────────────────── */
+  var apiInput      = document.getElementById('wfaiApiInput');
+  var modelInput    = document.getElementById('wfaiModelInput');
+  var modelStat     = document.getElementById('wfaiModelStat');
+
+  /* Ask tab */
+  var promptInput   = document.getElementById('wfaiPromptInput');
+  var sendBtn       = document.getElementById('wfaiSendBtn');
+  var rebuildBtn    = document.getElementById('wfaiRebuildBtn');
+  var answerEl      = document.getElementById('wfaiAnswer');
+  var statusEl      = document.getElementById('wfaiStatus');
+
+  /* Sync badges */
+  var indexedBadge   = document.getElementById('wfaiIndexedBadge');
+  var rebuildBadge   = document.getElementById('wfaiRebuildBadge');
+  var indexedCountEl = document.getElementById('wfaiIndexedCount');
+  var lastRebuildEl  = document.getElementById('wfaiLastRebuild');
+
+  /* Rebuild banner */
+  var rebuildBanner     = document.getElementById('wfaiRebuildBanner');
+  var rebuildBannerText = document.getElementById('wfaiRebuildBannerText');
+  var progressBarEl     = document.getElementById('wfaiProgressBar');
+  var completedCountEl  = document.getElementById('wfaiCompletedCount');
+  var targetCountEl     = document.getElementById('wfaiTargetCount');
+  var progressPercentEl = document.getElementById('wfaiProgressPercent');
+  var elapsedTimeEl     = document.getElementById('wfaiElapsedTime');
+
+  /* Toast */
+  var toastEl     = document.getElementById('wfaiToast');
+  var toastBodyEl = document.getElementById('wfaiToastBody');
+
+  /* Search tab */
+  var searchInput       = document.getElementById('wfaiSearchInput');
+  var searchTopK        = document.getElementById('wfaiSearchTopK');
+  var searchBtn         = document.getElementById('wfaiSearchBtn');
+  var searchStatusEl    = document.getElementById('wfaiSearchStatus');
+  var searchResults     = document.getElementById('wfaiSearchResults');
+  var searchResultCount = document.getElementById('wfaiSearchResultCount');
+
+  /* Generate tab */
+  var genPrompt   = document.getElementById('wfaiGenPrompt');
+  var genModel    = document.getElementById('wfaiGenModel');
+  var genBtn      = document.getElementById('wfaiGenBtn');
+  var genStatusEl = document.getElementById('wfaiGenStatus');
+  var genOutput   = document.getElementById('wfaiGenOutput');
+  var workflowNameInput = document.getElementById('wfaiWorkflowName');
+  var caseNameInput = document.getElementById('wfaiCaseName');
+  var caseFolderInput = document.getElementById('wfaiCaseFolder');
+  var caseMaxStepsInput = document.getElementById('wfaiCaseMaxSteps');
+  var createCaseBtn = document.getElementById('wfaiCreateCaseBtn');
+  var createCaseStatusEl = document.getElementById('wfaiCreateCaseStatus');
+  var createCaseOutput = document.getElementById('wfaiCreateCaseOutput');
+
+  /* Fine-tune tab */
+  var ftDatasetBtn     = document.getElementById('wfaiFtDatasetBtn');
+  var ftDatasetStatus  = document.getElementById('wfaiFtDatasetStatus');
+  var ftUploadFile     = document.getElementById('wfaiFtUploadFile');
+  var ftUploadBtn      = document.getElementById('wfaiFtUploadBtn');
+  var ftUploadStatus   = document.getElementById('wfaiFtUploadStatus');
+  var ftNextSteps      = document.getElementById('wfaiFtNextSteps');
+  var ftNextStepsList  = document.getElementById('wfaiFtNextStepsList');
+  var ftNextStepsCode  = document.getElementById('wfaiFtNextStepsCode');
+  var ftTrainBtn       = document.getElementById('wfaiTrainBtn');
+  var ftTrainStatus    = document.getElementById('wfaiTrainStatus');
+  var ftTrainBaseModel = document.getElementById('wfaiTrainBaseModel');
+  var ftTrainOutput    = document.getElementById('wfaiTrainOutputName');
+  var ftTrainStateBadge = document.getElementById('wfaiTrainStateBadge');
+  var ftTrainMeta      = document.getElementById('wfaiTrainMeta');
+  var ftTrainLog       = document.getElementById('wfaiTrainLog');
+  var ftCreateBtn      = document.getElementById('wfaiFtCreateBtn');
+  var ftCreateStatus   = document.getElementById('wfaiFtCreateStatus');
+  var ftRefreshBtn     = document.getElementById('wfaiFtRefreshBtn');
+  var ftStatusBadge    = document.getElementById('wfaiFtStatusBadge');
+  var ftModelList      = document.getElementById('wfaiFtModelList');
+  var ftBaseModel      = document.getElementById('wfaiFtBaseModel');
+  var ftName           = document.getElementById('wfaiFtName');
+
+  /* State */
+  var statusPollTimer = null;
+  var ftTrainingPollTimer = null;
+  var queryBusy       = false;
+  var rebuildBusy     = false;
+  var createCaseBusy  = false;
+  var lastObservedSyncStatus = '{{ rag_status.status|default:"idle"|escapejs }}' || 'idle';
+  var lastObservedTrainingStatus = 'idle';
+
+  /* ── Helpers ──────────────────────────────────────────── */
+  function getCsrf() {
+    var m = document.cookie.match(/(?:^|; )csrftoken[^=]*=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : ((document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '');
+  }
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s || ''));
+    return d.innerHTML;
+  }
+
+  function showToast(text, cls) {
+    if (!toastEl || !toastBodyEl) return;
+    toastBodyEl.textContent = text;
+    toastEl.className = 'toast align-items-center border-0 ' + (cls || 'text-bg-success');
+    if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+      bootstrap.Toast.getOrCreateInstance(toastEl).show();
+    }
+  }
+
+  function setStatusText(el, text, isError) {
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('is-error', !!isError);
+  }
+
+  function renderFtNextSteps(data) {
+    if (!ftNextSteps || !ftNextStepsList || !ftNextStepsCode) return;
+    var instructions = safeArray(data && data.instructions);
+    var savedPath = data && data.saved_path ? String(data.saved_path) : '';
+    if (!instructions.length && !savedPath) {
+      ftNextSteps.classList.remove('is-visible');
+      ftNextStepsList.innerHTML = '';
+      ftNextStepsCode.textContent = '';
+      return;
+    }
+    ftNextStepsList.innerHTML = '';
+    instructions.forEach(function (item) {
+      var li = document.createElement('li');
+      li.textContent = item;
+      ftNextStepsList.appendChild(li);
+    });
+    ftNextStepsCode.textContent = [
+      savedPath ? ('Dataset: ' + savedPath) : '',
+      'ollama pull llama3.2:3b',
+      'pip install unsloth',
+      'Train LoRA with the saved dataset',
+      'Export GGUF from the trained model',
+      "echo 'FROM ./llama3-finetuned.gguf' > Modelfile",
+      'ollama create llama3-finetuned -f Modelfile'
+    ].filter(Boolean).join('\n');
+    ftNextSteps.classList.add('is-visible');
+  }
+
+  function stopTrainingPolling() {
+    if (ftTrainingPollTimer) { window.clearTimeout(ftTrainingPollTimer); ftTrainingPollTimer = null; }
+  }
+
+  function scheduleTrainingPolling(delay) {
+    stopTrainingPolling();
+    ftTrainingPollTimer = window.setTimeout(function () { doRefreshFtStatus(); }, delay || 3000);
+  }
+
+  function getModelNames(models) {
+    var seen = {};
+    var names = [];
+    safeArray(models).forEach(function (item) {
+      var name = ((item && (item.name || item.model)) || '').trim();
+      if (!name || seen[name]) return;
+      seen[name] = true;
+      names.push(name);
+    });
+    return names;
+  }
+
+  function syncTrainingModelOptions(names) {
+    if (!ftTrainBaseModel) return;
+    var arr = safeArray(names);
+    var current = (ftTrainBaseModel.value || ftBaseModel.value || modelInput.value || 'llama3.2:3b').trim();
+    if (!arr.length) arr = [current || 'llama3.2:3b'];
+    ftTrainBaseModel.innerHTML = '';
+    arr.forEach(function (name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      ftTrainBaseModel.appendChild(opt);
+    });
+    ftTrainBaseModel.value = arr.indexOf(current) >= 0 ? current : arr[0];
+  }
+
+  function renderTrainingStatus(data) {
+    var status = data && data.status ? data.status : 'idle';
+    var active = !!(data && data.is_active);
+    var env = window.__wfaiTrainingEnvironment || null;
+    var envSupported = !env || !!env.supported;
+    if (ftTrainBtn) ftTrainBtn.disabled = active || !envSupported;
+    if (ftTrainOutput) ftTrainOutput.value = (ftName.value || '').trim() || 'llama3-finetuned';
+    if (ftTrainStateBadge) {
+      if (status === 'running') {
+        ftTrainStateBadge.className = 'wfai-ft-badge is-running';
+        ftTrainStateBadge.innerHTML = '<i class="bi bi-arrow-repeat"></i> running';
+      } else if (status === 'completed') {
+        ftTrainStateBadge.className = 'wfai-ft-badge is-ok';
+        ftTrainStateBadge.innerHTML = '<i class="bi bi-check-circle-fill"></i> completed';
+      } else if (status === 'failed') {
+        ftTrainStateBadge.className = 'wfai-ft-badge is-missing';
+        ftTrainStateBadge.innerHTML = '<i class="bi bi-x-circle-fill"></i> failed';
+      } else {
+        ftTrainStateBadge.className = 'wfai-ft-badge is-missing';
+        ftTrainStateBadge.innerHTML = '<i class="bi bi-hourglass-split"></i> idle';
+      }
+    }
+    if (ftTrainMeta) {
+      var meta = [];
+      if (data && data.base_model) meta.push('Base: ' + data.base_model);
+      if (data && data.ft_model_name) meta.push('Output: ' + data.ft_model_name);
+      if (data && data.pid) meta.push('PID: ' + data.pid);
+      if (data && data.started_at) meta.push('Started: ' + formatTimestamp(data.started_at));
+      if (data && data.finished_at) meta.push('Finished: ' + formatTimestamp(data.finished_at));
+      ftTrainMeta.textContent = meta.join(' · ') || 'No training job started yet.';
+    }
+    if (ftTrainLog) {
+      ftTrainLog.textContent = (data && data.log_tail) ? data.log_tail : 'No training logs yet.';
+      ftTrainLog.scrollTop = ftTrainLog.scrollHeight;
+    }
+    if (ftTrainStatus) {
+      if (!envSupported) setStatusText(ftTrainStatus, (env && env.message) || 'Training environment is not supported.', true);
+      else if (status === 'running') setStatusText(ftTrainStatus, 'Training is running in the background...', false);
+      else if (status === 'completed') setStatusText(ftTrainStatus, 'Training completed. Review the log and import the GGUF into Ollama.', false);
+      else if (status === 'failed') setStatusText(ftTrainStatus, (data && data.last_error) || 'Training failed.', true);
+      else setStatusText(ftTrainStatus, 'Upload a dataset, choose the training model, then start background training.', false);
+    }
+    if (lastObservedTrainingStatus === 'running' && status === 'completed') showToast('Training completed successfully.');
+    if (lastObservedTrainingStatus === 'running' && status === 'failed') showToast('Training failed. Review the log output.', 'text-bg-danger');
+    lastObservedTrainingStatus = status;
+    if (active) scheduleTrainingPolling(3000); else stopTrainingPolling();
+  }
+
+  function formatTimestamp(value) {
+    if (!value) return 'Never';
+    var d = new Date(value);
+    return isNaN(d.getTime()) ? String(value) : d.toLocaleString();
+  }
+
+  function formatProgressPercent(sync) {
+    if (!sync || !sync.is_active) return '100%';
+    var t = typeof sync.target_documents === 'number' ? sync.target_documents : 0;
+    var p = typeof sync.pending_documents === 'number' ? sync.pending_documents : 0;
+    if (!t) return '0%';
+    return String(Math.round((Math.max(0, t - p) / t) * 100)) + '%';
+  }
+
+  function getCompletedCount(sync) {
+    if (!sync || !sync.is_active) {
+      return sync && typeof sync.indexed_documents === 'number' ? sync.indexed_documents : 0;
+    }
+    var t = typeof sync.target_documents === 'number' ? sync.target_documents : 0;
+    var p = typeof sync.pending_documents === 'number' ? sync.pending_documents : 0;
+    return Math.max(0, t - p);
+  }
+
+  function getTargetCount(sync) {
+    if (!sync || !sync.is_active) {
+      return sync && typeof sync.indexed_documents === 'number' ? sync.indexed_documents : 0;
+    }
+    return typeof sync.target_documents === 'number' ? sync.target_documents : 0;
+  }
+
+  function formatElapsedTime(sync) {
+    if (!sync || !sync.is_active) return '';
+    var v = sync.last_started_at;
+    if (!v) return '0s';
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return '0s';
+    var s = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+    var m = Math.floor(s / 60);
+    var sec = s % 60;
+    return m > 0 ? (m + 'm ' + sec + 's') : (sec + 's');
+  }
+
+  function safeArray(v) { return Array.isArray(v) ? v : []; }
+
+  function normalizeObject(v) {
+    if (v && typeof v === 'object') return v;
+    if (typeof v === 'string') {
+      try { var p = JSON.parse(v); return p && typeof p === 'object' ? p : {}; } catch (e) { return {}; }
+    }
+    return {};
+  }
+
+  /* ── Sync badge / banner ──────────────────────────────── */
+  function updateSyncBadge(sync) {
+    var data = sync && typeof sync === 'object' ? sync : {};
+    if (indexedCountEl) indexedCountEl.textContent = String(typeof data.indexed_documents === 'number' ? data.indexed_documents : 0);
+    if (lastRebuildEl) lastRebuildEl.textContent = formatTimestamp(data.last_finished_at);
+    if (indexedBadge) indexedBadge.classList.toggle('is-active', !!data.is_active);
+    if (rebuildBadge) rebuildBadge.classList.toggle('is-active', !!data.is_active);
+
+    var hasBannerData = 'is_active' in data;
+    if (hasBannerData) {
+      var isActive = !!data.is_active;
+      if (completedCountEl) completedCountEl.textContent = String(getCompletedCount(data));
+      if (targetCountEl) targetCountEl.textContent = String(getTargetCount(data));
+      if (progressPercentEl) progressPercentEl.textContent = formatProgressPercent(data);
+      if (progressBarEl) {
+        progressBarEl.style.width = isActive ? formatProgressPercent(data) : '0%';
+        progressBarEl.classList.toggle('is-running', data.status === 'running');
+      }
+      if (elapsedTimeEl) elapsedTimeEl.textContent = formatElapsedTime(data);
+      if (rebuildBanner) rebuildBanner.classList.toggle('is-visible', isActive);
+      if (rebuildBannerText) {
+        if (data.status === 'queued') rebuildBannerText.textContent = 'Rebuild refresh all data. Queued and waiting to start…';
+        else if (data.status === 'running') rebuildBannerText.textContent = 'Rebuild refresh all data. Embedding documents in background…';
+        else rebuildBannerText.textContent = 'Rebuild refresh all data.';
+      }
+    }
+  }
+
+  /* ── Ask tab helpers ──────────────────────────────────── */
+  function syncButtonState() {
+    sendBtn.disabled = queryBusy;
+    rebuildBtn.disabled = rebuildBusy;
+    if (createCaseBtn) createCaseBtn.disabled = createCaseBusy;
+  }
+  function setQueryBusy(b) { queryBusy = !!b; syncButtonState(); }
+  function setRebuildBusy(b) { rebuildBusy = !!b; syncButtonState(); }
+  function setCreateCaseBusy(b) { createCaseBusy = !!b; syncButtonState(); }
+  function setAnswer(text) { answerEl.classList.remove('is-empty'); answerEl.textContent = text || 'No answer returned.'; }
+  function setCreateCaseSummary(text, isEmpty) {
+    if (!createCaseOutput) return;
+    createCaseOutput.classList.toggle('is-empty', !!isEmpty);
+    createCaseOutput.textContent = text || 'No result returned.';
+  }
+
+  function renderList(elId, countId, items, builder) {
+    var host = document.getElementById(elId);
+    var cnt = document.getElementById(countId);
+    if (!host || !cnt) return;
+    var arr = safeArray(items);
+    cnt.textContent = String(arr.length);
+    host.innerHTML = '';
+    if (!arr.length) {
+      var d = document.createElement('div');
+      d.className = 'wfai-source-item';
+      d.textContent = 'No matching context found.';
+      host.appendChild(d);
+      return;
+    }
+    arr.forEach(function (item) {
+      var d = document.createElement('div');
+      d.className = 'wfai-source-item';
+      d.textContent = builder(item);
+      host.appendChild(d);
+    });
+  }
+
+  function renderStepsTable(elId, countId, items) {
+    var host = document.getElementById(elId);
+    var cnt = document.getElementById(countId);
+    if (!host || !cnt) return;
+    var arr = safeArray(items);
+    cnt.textContent = String(arr.length);
+    host.innerHTML = '';
+    if (!arr.length) {
+      var d = document.createElement('div');
+      d.className = 'wfai-source-item';
+      d.textContent = 'No matching context found.';
+      host.appendChild(d);
+      return;
+    }
+    var tbl = document.createElement('table');
+    tbl.className = 'table table-sm table-hover align-middle mb-0';
+    tbl.style.fontSize = '0.8rem';
+    var thead = '<thead class="table-dark"><tr><th style="width:45px">#</th><th>Steps</th><th>Page URL</th><th>Action</th><th>Element</th></tr></thead>';
+    var rows = '';
+    arr.forEach(function (i) {
+      var stepNo = i.step_no != null ? i.step_no : '—';
+      var desc = i.steps_description || i.title || '—';
+      var url = i.page_url || '—';
+      var urlShort = url.length > 40 ? url.substring(0, 40) + '…' : url;
+      var action = i.action || '—';
+      var element = i.element_tag || '—';
+      rows += '<tr>'
+        + '<td class="text-muted">' + escHtml(String(stepNo)) + '</td>'
+        + '<td>' + escHtml(desc) + '</td>'
+        + '<td class="text-truncate" style="max-width:180px;" title="' + escHtml(url) + '">' + escHtml(urlShort) + '</td>'
+        + '<td>' + escHtml(action) + '</td>'
+        + '<td>' + escHtml(element) + '</td>'
+        + '</tr>';
+    });
+    tbl.innerHTML = thead + '<tbody>' + rows + '</tbody>';
+    var wrap = document.createElement('div');
+    wrap.className = 'table-responsive';
+    wrap.style.maxHeight = '300px';
+    wrap.style.overflowY = 'auto';
+    wrap.appendChild(tbl);
+    host.appendChild(wrap);
+  }
+
+  function groupDocsByType(ctx) {
+    var g = { steps: [], workflows: [], databank: [] };
+    safeArray(ctx && ctx.documents).forEach(function (doc) {
+      if (!doc || typeof doc !== 'object') return;
+      var meta = normalizeObject(doc.metadata);
+      var e = Object.assign({ title: doc.title || '', source_key: doc.source_key || '', content: doc.content || '' }, meta);
+      if (doc.source_type === 'steps') g.steps.push(e);
+      else if (doc.source_type === 'ai_workflow') g.workflows.push(e);
+      else if (doc.source_type === 'ai_databank') g.databank.push(e);
+    });
+    return g;
+  }
+
+  function renderContext(ctx) {
+    var g = groupDocsByType(ctx);
+    var pick = function (a, b) {
+      var f = safeArray(a).filter(function (x) { return x && typeof x === 'object' && Object.keys(x).length; });
+      return f.length ? f : safeArray(b);
+    };
+    var si = pick(ctx && ctx.steps, g.steps);
+    var wi = pick(ctx && ctx.workflows, g.workflows);
+    var di = pick(ctx && ctx.databank, g.databank);
+    // Sort steps by step_no
+    si.sort(function (a, b) { return (parseInt(a.step_no) || 0) - (parseInt(b.step_no) || 0); });
+    renderStepsTable('wfaiStepsList', 'wfaiStepsCount', si);
+    renderList('wfaiWorkflowsList', 'wfaiWorkflowsCount', wi, function (i) {
+      return (i.workflow_name || i.title || '?') + ' \u00b7 seq ' + safeArray(i.page_sequence).length + ' \u00b7 links ' + safeArray(i.page_connections).length;
+    });
+    renderList('wfaiDatabankList', 'wfaiDatabankCount', di, function (i) {
+      return (i.page_name || i.title || '?') + ' \u00b7 ' + (i.element_type || i.tag_name || 'element') + ' \u00b7 ' + (i.page_url || 'No URL');
+    });
+  }
+
+  function buildStatusMsg(data) {
+    var p = [];
+    var t = data && data.timings || {};
+    var s = data && data.context && data.context.sync || {};
+    var m = data && data.model || (modelInput.value || '').trim() || 'llama3.2:3b';
+    p.push('Model ' + m + '.');
+    if (typeof t.retrieval_ms === 'number') p.push('Retrieval ' + t.retrieval_ms + ' ms.');
+    if (typeof t.generation_ms === 'number') p.push('Generation ' + t.generation_ms + ' ms.');
+    if (typeof s.indexed_documents === 'number') p.push('Indexed docs ' + s.indexed_documents + '.');
+    return p.join(' ');
+  }
+
+  /* ── Polling ──────────────────────────────────────────── */
+  function stopPolling() {
+    if (statusPollTimer) { window.clearTimeout(statusPollTimer); statusPollTimer = null; }
+  }
+
+  function pollSyncStatus(showText) {
+    stopPolling();
+    fetch('{% url "workflow_assistant_status" %}', { method: 'GET', headers: { 'X-CSRFToken': getCsrf() } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Status failed.');
+        var s = d.sync && typeof d.sync === 'object' ? d.sync : {};
+        var prev = lastObservedSyncStatus;
+        lastObservedSyncStatus = s.status || 'idle';
+        updateSyncBadge(s);
+        if ((prev === 'queued' || prev === 'running') && s.status === 'idle') {
+          showToast('RAG rebuild complete. ' + (typeof s.indexed_documents === 'number' ? s.indexed_documents : 0) + ' indexed docs.');
+        }
+        if (showText && !queryBusy) {
+          if (s.status === 'queued') setStatusText(statusEl, 'RAG rebuild queued \u2014 page usable.', false);
+          else if (s.status === 'running') setStatusText(statusEl, 'RAG rebuild running. Progress ' + formatProgressPercent(s) + '.', false);
+          else if (s.status === 'idle') setStatusText(statusEl, 'RAG rebuild completed. Indexed docs ' + (typeof s.indexed_documents === 'number' ? s.indexed_documents : 0) + '.', false);
+          else if (s.last_error) setStatusText(statusEl, s.last_error, true);
+        }
+        setRebuildBusy(s.status === 'queued' || s.status === 'running');
+        if (s.status === 'queued' || s.status === 'running') {
+          statusPollTimer = window.setTimeout(function () { pollSyncStatus(true); }, 2500);
+        }
+      })
+      .catch(function (e) {
+        if (showText && !queryBusy) setStatusText(statusEl, e.message || 'Status failed.', true);
+        setRebuildBusy(false);
+      });
+  }
+
+  /* ── Submit question ──────────────────────────────────── */
+  function submitQuestion() {
+    var msg = (promptInput.value || '').trim();
+    if (!msg) { setStatusText(statusEl, 'Enter a question before sending.', true); promptInput.focus(); return; }
+    setQueryBusy(true);
+    setStatusText(statusEl, 'Querying PostgreSQL context and sending to local Ollama...', false);
+    modelStat.textContent = (modelInput.value || '').trim() || 'llama3.2:3b';
+    fetch('{% url "workflow_assistant_query" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ message: msg, ollama_api: (apiInput.value || '').trim(), model: (modelInput.value || '').trim() })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Request failed.');
+        setAnswer(d.answer || 'No answer returned.');
+        renderContext(d.context || {});
+        updateSyncBadge(d.context && d.context.sync ? d.context.sync : {});
+        setStatusText(statusEl, buildStatusMsg(d), false);
+      })
+      .catch(function (e) { setStatusText(statusEl, e.message || 'Request failed.', true); })
+      .finally(function () { setQueryBusy(false); });
+  }
+
+  /* ── Rebuild ──────────────────────────────────────────── */
+  var rebuildModal = new bootstrap.Modal(document.getElementById('wfaiRebuildModal'));
+
+  function rebuildIndex() {
+    rebuildModal.show();
+  }
+
+  function doConfirmedRebuild() {
+    rebuildModal.hide();
+    setRebuildBusy(true);
+    setStatusText(statusEl, 'Rebuild refresh all data…', false);
+    fetch('{% url "workflow_assistant_rebuild" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ ollama_api: (apiInput.value || '').trim() })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Rebuild failed.');
+        var s = d.sync && typeof d.sync === 'object' ? d.sync : {};
+        lastObservedSyncStatus = s.status || lastObservedSyncStatus;
+        updateSyncBadge(s);
+        if (s.queued || s.status === 'queued' || s.status === 'running') {
+          setStatusText(statusEl, 'Rebuild refresh all data… Polling…', false);
+          pollSyncStatus(true);
+        } else {
+          setStatusText(statusEl, 'RAG index already up to date. Indexed docs ' + (typeof s.indexed_documents === 'number' ? s.indexed_documents : 0) + '.', false);
+        }
+      })
+      .catch(function (e) { setStatusText(statusEl, e.message || 'Rebuild failed.', true); setRebuildBusy(false); });
+  }
+
+  /* ── Search tab ───────────────────────────────────────── */
+  function doSearch() {
+    var q = (searchInput.value || '').trim();
+    if (!q) { setStatusText(searchStatusEl, 'Enter a query.', true); searchInput.focus(); return; }
+    searchBtn.disabled = true;
+    setStatusText(searchStatusEl, 'Searching...', false);
+    fetch('{% url "workflow_assistant_search" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ query: q, ollama_api: (apiInput.value || '').trim(), top_k: parseInt(searchTopK.value, 10) || 10 })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Search failed.');
+        var res = safeArray(d.results);
+        searchResultCount.textContent = String(res.length);
+        searchResults.innerHTML = '';
+        if (!res.length) {
+          searchResults.innerHTML = '<div class="wfai-source-item">No results found.</div>';
+        } else {
+          // Sort by step_no (steps first, then others at the end)
+          res.sort(function (a, b) {
+            var aIsStep = a.source_type === 'steps' ? 0 : 1;
+            var bIsStep = b.source_type === 'steps' ? 0 : 1;
+            if (aIsStep !== bIsStep) return aIsStep - bIsStep;
+            if (aIsStep === 0) {
+              var aNo = (a.metadata && parseInt(a.metadata.step_no)) || 0;
+              var bNo = (b.metadata && parseInt(b.metadata.step_no)) || 0;
+              return aNo - bNo;
+            }
+            return 0;
+          });
+          var tbl = document.createElement('table');
+          tbl.className = 'table table-sm table-hover align-middle mb-0';
+          tbl.style.fontSize = '0.8rem';
+          var thead = '<thead class="table-dark"><tr>'
+            + '<th style="width:45px">#</th>'
+            + '<th>Steps</th>'
+            + '<th>Page URL</th>'
+            + '<th>Action</th>'
+            + '<th>Element</th>'
+            + '</tr></thead>';
+          var rows = '';
+          res.forEach(function (r) {
+            var m = r.metadata || {};
+            var stepNo = m.step_no != null ? m.step_no : '—';
+            var desc = m.steps_description || m.workflow_name || m.page_name || r.title || '—';
+            var url = m.page_url || '—';
+            var urlShort = url.length > 40 ? url.substring(0, 40) + '…' : url;
+            var action = m.action || '—';
+            var element = m.element_tag || m.element_type || '—';
+            rows += '<tr>'
+              + '<td class="text-muted">' + escHtml(String(stepNo)) + '</td>'
+              + '<td>' + escHtml(desc) + '</td>'
+              + '<td class="text-truncate" style="max-width:180px;" title="' + escHtml(url) + '">' + escHtml(urlShort) + '</td>'
+              + '<td>' + escHtml(action) + '</td>'
+              + '<td>' + escHtml(element) + '</td>'
+              + '</tr>';
+          });
+          tbl.innerHTML = thead + '<tbody>' + rows + '</tbody>';
+          var wrap = document.createElement('div');
+          wrap.className = 'table-responsive';
+          wrap.style.maxHeight = '45vh';
+          wrap.style.overflowY = 'auto';
+          wrap.appendChild(tbl);
+          searchResults.appendChild(wrap);
+        }
+        setStatusText(searchStatusEl, 'Found ' + res.length + ' documents.', false);
+      })
+      .catch(function (e) { setStatusText(searchStatusEl, e.message || 'Search failed.', true); })
+      .finally(function () { searchBtn.disabled = false; });
+  }
+
+  /* ── Generate tab ─────────────────────────────────────── */
+  function doGenerate() {
+    var p = (genPrompt.value || '').trim();
+    if (!p) { setStatusText(genStatusEl, 'Enter a prompt.', true); genPrompt.focus(); return; }
+    genBtn.disabled = true;
+    setStatusText(genStatusEl, 'Generating test script...', false);
+    genOutput.classList.add('is-empty');
+    genOutput.textContent = 'Generating...';
+    fetch('{% url "workflow_assistant_generate" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ prompt: p, ollama_api: (apiInput.value || '').trim(), model: (genModel.value || '').trim() })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Generate failed.');
+        genOutput.classList.remove('is-empty');
+        genOutput.textContent = d.script || 'No script returned.';
+        setStatusText(genStatusEl, 'Generated using ' + d.model + ' in ' + d.elapsed_ms + ' ms.', false);
+      })
+      .catch(function (e) {
+        genOutput.classList.add('is-empty');
+        genOutput.textContent = 'Generation failed.';
+        setStatusText(genStatusEl, e.message || 'Generate failed.', true);
+      })
+      .finally(function () { genBtn.disabled = false; });
+  }
+
+  function formatCreatedCase(data) {
+    var lines = [];
+    lines.push('Record ID: ' + (data.record_id || '')); 
+    lines.push('Record Name: ' + (data.record_name || '')); 
+    lines.push('Workflow: ' + (data.workflow_name || '')); 
+    lines.push('Folder: ' + (data.folder_name || '(none)')); 
+    lines.push('Step Count: ' + String(data.step_count || 0));
+    lines.push('Selection Mode: ' + (data.selection_mode || 'deterministic'));
+    if (data.llm_notes) lines.push('LLM Notes: ' + data.llm_notes);
+    if (safeArray(data.pages_used).length) lines.push('Pages Used: ' + data.pages_used.join(' -> '));
+    if (safeArray(data.skipped_pages).length) lines.push('Skipped Pages: ' + data.skipped_pages.join(', '));
+    lines.push('');
+    lines.push('Generated Steps:');
+    safeArray(data.steps).forEach(function (step) {
+      lines.push(
+        String(step.step_no || '?') + '. '
+        + (step.action || 'step')
+        + ' | ' + (step.page_name || '-')
+        + ' | ' + (step.strategy || '-') + ':' + (step.locator || '-')
+        + ((step.field_name || step.field_value) ? (' | ' + (step.field_name || '-') + ' = ' + (step.field_value || '-')) : '')
+      );
+    });
+    return lines.join('\n');
+  }
+
+  function doCreateCase() {
+    var workflowName = (workflowNameInput && workflowNameInput.value || '').trim();
+    if (!workflowName) {
+      setStatusText(createCaseStatusEl, 'Select a saved workflow first.', true);
+      if (workflowNameInput) workflowNameInput.focus();
+      return;
+    }
+    setCreateCaseBusy(true);
+    setStatusText(createCaseStatusEl, 'Creating test case in PostgreSQL...', false);
+    setCreateCaseSummary('Creating test case from ai_workflow and ai_databank...', false);
+    fetch('{% url "workflow_assistant_create_test_case" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({
+        workflow_name: workflowName,
+        record_name: (caseNameInput && caseNameInput.value || '').trim(),
+        folder_name: (caseFolderInput && caseFolderInput.value || '').trim(),
+        max_steps_per_page: parseInt((caseMaxStepsInput && caseMaxStepsInput.value) || '8', 10) || 8,
+        use_llm: true,
+        ollama_api: (apiInput && apiInput.value || '').trim(),
+        model: (genModel && genModel.value || modelInput && modelInput.value || '').trim()
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Create test case failed.');
+        setCreateCaseSummary(formatCreatedCase(d), false);
+        setStatusText(createCaseStatusEl, 'Created test case ' + (d.record_name || d.record_id) + ' with ' + String(d.step_count || 0) + ' steps using ' + (d.selection_mode || 'deterministic') + ' selection.', false);
+        showToast('Created PostgreSQL test case ' + (d.record_name || d.record_id) + '.');
+      })
+      .catch(function (e) {
+        setCreateCaseSummary('Creation failed.', true);
+        setStatusText(createCaseStatusEl, e.message || 'Create test case failed.', true);
+      })
+      .finally(function () { setCreateCaseBusy(false); });
+  }
+
+  /* ── Fine-tune tab ────────────────────────────────────── */
+  function doBuildDataset() {
+    ftDatasetBtn.disabled = true;
+    setStatusText(ftDatasetStatus, 'Building dataset...', false);
+    fetch('{% url "workflow_assistant_finetune" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ action: 'build_dataset', ollama_api: (apiInput.value || '').trim() })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Build failed.');
+        setStatusText(ftDatasetStatus, 'Dataset built: ' + d.count + ' entries.', false);
+        showToast('Training dataset ready \u2014 ' + d.count + ' entries.');
+        if (d.jsonl) {
+          var blob = new Blob([d.jsonl], { type: 'application/jsonl' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'fine_tune.jsonl';
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      })
+      .catch(function (e) { setStatusText(ftDatasetStatus, e.message || 'Build failed.', true); })
+      .finally(function () { ftDatasetBtn.disabled = false; });
+  }
+
+  function doUploadDataset() {
+    var file = ftUploadFile && ftUploadFile.files ? ftUploadFile.files[0] : null;
+    if (!file) { setStatusText(ftUploadStatus, 'Choose a finetune.json or .jsonl file.', true); return; }
+    ftUploadBtn.disabled = true;
+    setStatusText(ftUploadStatus, 'Uploading dataset...', false);
+    renderFtNextSteps(null);
+    var form = new FormData();
+    form.append('action', 'upload_dataset');
+    form.append('ollama_api', (apiInput.value || '').trim());
+    form.append('base_model', (ftTrainBaseModel.value || '').trim() || 'llama3.2:3b');
+    form.append('ft_model_name', (ftName.value || '').trim() || 'llama3-finetuned');
+    form.append('dataset', file);
+    fetch('{% url "workflow_assistant_finetune" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf() },
+      body: form
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Upload failed.');
+        var note = 'Saved ' + (d.saved_name || file.name) + ' (' + String(d.count || 0) + ' rows) at ' + (d.saved_path || 'local upload folder') + '. Ollama cannot train from dataset uploads directly.';
+        setStatusText(ftUploadStatus, note, false);
+        renderFtNextSteps(d);
+        showToast('Dataset uploaded for external training workflow.');
+      })
+      .catch(function (e) {
+        renderFtNextSteps(null);
+        setStatusText(ftUploadStatus, e.message || 'Upload failed.', true);
+      })
+      .finally(function () { ftUploadBtn.disabled = false; });
+  }
+
+  function doStartTraining() {
+    var base = (ftTrainBaseModel.value || '').trim() || 'llama3.2:3b';
+    var name = (ftName.value || '').trim() || 'llama3-finetuned';
+    ftTrainBtn.disabled = true;
+    setStatusText(ftTrainStatus, 'Starting training...', false);
+    fetch('{% url "workflow_assistant_finetune" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ action: 'start_training', ollama_api: (apiInput.value || '').trim(), base_model: base, ft_model_name: name })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Training failed to start.');
+        renderTrainingStatus(d.training_status || {});
+        showToast('Training started in background.');
+      })
+      .catch(function (e) {
+        ftTrainBtn.disabled = false;
+        setStatusText(ftTrainStatus, e.message || 'Training failed to start.', true);
+      });
+  }
+
+  function doCreateModel() {
+    var base = (ftBaseModel.value || '').trim() || 'llama3.2:3b';
+    var name = (ftName.value || '').trim() || 'llama3-finetuned';
+    if (!window.confirm('Create Ollama model "' + name + '" from base "' + base + '"?')) return;
+    ftCreateBtn.disabled = true;
+    setStatusText(ftCreateStatus, 'Creating model...', false);
+    fetch('{% url "workflow_assistant_finetune" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ action: 'create_model', ollama_api: (apiInput.value || '').trim(), base_model: base, ft_model_name: name })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Create failed.');
+        setStatusText(ftCreateStatus, 'Model "' + d.model + '" created from "' + d.base_model + '" in ' + d.elapsed_ms + ' ms.', false);
+        showToast('Model "' + d.model + '" created successfully.');
+        doRefreshFtStatus();
+      })
+      .catch(function (e) { setStatusText(ftCreateStatus, e.message || 'Create failed.', true); })
+      .finally(function () { ftCreateBtn.disabled = false; });
+  }
+
+  function doRefreshFtStatus() {
+    ftRefreshBtn.disabled = true;
+    fetch('{% url "workflow_assistant_finetune_status" %}', { method: 'GET', headers: { 'X-CSRFToken': getCsrf() } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Status failed.');
+        window.__wfaiTrainingEnvironment = d.training_environment || null;
+        var ft = d.ft_status || {};
+        var name = (ftName.value || '').trim() || 'llama3-finetuned';
+        var ftHeaderStatus = document.getElementById('wfaiFtHeaderStatus');
+        if (ft.exists) {
+          ftStatusBadge.innerHTML = '<span class="wfai-ft-badge is-ok"><i class="bi bi-check-circle-fill"></i> ' + escHtml(name) + ' available</span>';
+          ftHeaderStatus.className = 'text-success';
+          ftHeaderStatus.innerHTML = escHtml(name);
+        } else {
+          ftStatusBadge.innerHTML = '<span class="wfai-ft-badge is-missing"><i class="bi bi-x-circle-fill"></i> ' + escHtml(name) + ' not found</span>';
+          ftHeaderStatus.className = 'text-danger';
+          ftHeaderStatus.textContent = 'not created';
+        }
+        var models = safeArray(d.models);
+        var modelNames = getModelNames(models);
+        ftModelList.innerHTML = '';
+        if (!modelNames.length) {
+          var empty = document.createElement('span');
+          empty.className = 'text-muted';
+          empty.textContent = 'No local models found.';
+          ftModelList.appendChild(empty);
+        }
+        modelNames.forEach(function (name) {
+          var s = document.createElement('span');
+          s.className = 'badge bg-light text-dark';
+          s.textContent = name;
+          ftModelList.appendChild(s);
+        });
+        syncTrainingModelOptions(modelNames);
+        renderTrainingStatus(d.training_status || {});
+      })
+      .catch(function (e) {
+        ftStatusBadge.innerHTML = '<span class="wfai-ft-badge is-missing"><i class="bi bi-exclamation-triangle-fill"></i> ' + escHtml(e.message) + '</span>';
+        var ftHeaderStatus = document.getElementById('wfaiFtHeaderStatus');
+        ftHeaderStatus.className = 'text-danger';
+        ftHeaderStatus.textContent = 'unavailable';
+        renderTrainingStatus({ status: 'failed', is_active: false, last_error: e.message || 'Status failed.' });
+      })
+      .finally(function () { ftRefreshBtn.disabled = false; });
+  }
+
+  /* ── Event bindings ───────────────────────────────────── */
+  sendBtn.addEventListener('click', submitQuestion);
+  rebuildBtn.addEventListener('click', rebuildIndex);
+  document.getElementById('wfaiRebuildConfirmBtn').addEventListener('click', doConfirmedRebuild);
+  promptInput.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitQuestion(); } });
+  searchBtn.addEventListener('click', doSearch);
+  searchInput.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSearch(); } });
+  genBtn.addEventListener('click', doGenerate);
+  genPrompt.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doGenerate(); } });
+  if (createCaseBtn) createCaseBtn.addEventListener('click', doCreateCase);
+  if (workflowNameInput) workflowNameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doCreateCase(); } });
+  ftDatasetBtn.addEventListener('click', doBuildDataset);
+  ftUploadBtn.addEventListener('click', doUploadDataset);
+  ftTrainBtn.addEventListener('click', doStartTraining);
+  ftCreateBtn.addEventListener('click', doCreateModel);
+  ftRefreshBtn.addEventListener('click', doRefreshFtStatus);
+
+  /* ── Boot ─────────────────────────────────────────────── */
+  var initialSyncState = {
+    indexed_documents: Number('{{ rag_status.indexed_documents|default:0 }}') || 0,
+    pending_documents: Number('{{ rag_status.pending_documents|default:0 }}') || 0,
+    target_documents: Number('{{ rag_status.target_documents|default:0 }}') || 0,
+    last_finished_at: '{{ rag_status.last_finished_at|default:""|escapejs }}',
+    last_started_at: '{{ rag_status.last_started_at|default:""|escapejs }}',
+    status: '{{ rag_status.status|default:"idle"|escapejs }}',
+    is_active: '{{ rag_status.is_active|yesno:"true,false" }}' === 'true'
+  };
+  updateSyncBadge(initialSyncState);
+  if (initialSyncState.is_active) {
+    pollSyncStatus(true);
+  } else {
+    pollSyncStatus(false);
+  }
+  doRefreshFtStatus();
+})();
+</script>

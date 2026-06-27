@@ -1,0 +1,150 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 mb-md-4">
+    <div>
+        <h1 class="page-title h3 mb-1">Audit Log Detail</h1>
+        <p class="subtitle mb-0">View full details of this action</p>
+    </div>
+    <div>
+        <a href="{% url 'db:' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i>
+            Back to Logs
+        </a>
+    </div>
+</div>
+
+<section class="section-card">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="audit-detail-section mb-4">
+                <h5 class="mb-3">Action Information</h5>
+                <div class="detail-row">
+                    <strong>Action:</strong>
+                    <span class="badge bg-info">{{ log.get_action_display }}</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Timestamp:</strong>
+                    <code>{{ log.created_at|date:"Y-m-d H:i:s" }}</code>
+                </div>
+                <div class="detail-row">
+                    <strong>Date (ISO):</strong>
+                    <code>{{ log.created_at|date:"c" }}</code>
+                </div>
+            </div>
+
+            <div class="audit-detail-section mb-4">
+                <h5 class="mb-3">User Information</h5>
+                <div class="detail-row">
+                    <strong>Username:</strong>
+                    <code>{{ log.user.username }}</code>
+                </div>
+                <div class="detail-row">
+                    <strong>Full Name:</strong>
+                    {{ log.user.get_full_name|default:"&ndash;"|safe }}
+                </div>
+                <div class="detail-row">
+                    <strong>Email:</strong>
+                    {{ log.user.email|default:"&ndash;" }}
+                </div>
+                {% if log.user.db_profile %}
+                <div class="detail-row">
+                    <strong>Role:</strong>
+                    <span class="badge bg-secondary">{{ log.user.db_profile.get_role_display }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="audit-detail-section mb-4">
+                <h5 class="mb-3">Target Information</h5>
+                <div class="detail-row">
+                    <strong>Target Type:</strong>
+                    <code>{{ log.target_type }}</code>
+                </div>
+                <div class="detail-row">
+                    <strong>Target ID:</strong>
+                    {% if log.target_id %}
+                        <code>{{ log.target_id }}</code>
+                    {% else %}
+                        &ndash;
+                    {% endif %}
+                </div>
+                <div class="detail-row">
+                    <strong>Target Name:</strong>
+                    {% if log.target_name %}
+                        <code>{{ log.target_name }}</code>
+                    {% else %}
+                        &ndash;
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="audit-detail-section mb-4">
+                <h5 class="mb-3">Request Information</h5>
+                <div class="detail-row">
+                    <strong>IP Address:</strong>
+                    {% if log.ip_address %}
+                        <code class="font-monospace">{{ log.ip_address }}</code>
+                    {% else %}
+                        &ndash;
+                    {% endif %}
+                </div>
+                <div class="detail-row">
+                    <strong>User Agent:</strong>
+                    {% if log.user_agent %}
+                        <small class="font-monospace text-break">{{ log.user_agent|truncatechars:150 }}</small>
+                    {% else %}
+                        &ndash;
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if log.details %}
+    <div class="audit-detail-section">
+        <h5 class="mb-3">Details</h5>
+        <div class="alert alert-light border">
+            <code class="font-monospace text-break">{{ log.details }}</code>
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+<style>
+.audit-detail-section {
+    padding: 1.5rem;
+    background-color: #f8f9fa;
+    border-radius: 0.375rem;
+    border-left: 4px solid #0f766e;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.detail-row:last-child {
+    border-bottom: none;
+}
+
+.detail-row strong {
+    min-width: 150px;
+    color: #122322;
+}
+
+.detail-row code {
+    background-color: #fff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid #dee2e6;
+}
+</style>
+{% endblock %}
+
+

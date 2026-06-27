@@ -1,0 +1,956 @@
+{% extends "recorder/base.html" %}
+{% block title %}Dashboard — WebConX Automation{% endblock %}
+
+{% block content %}
+<div class="page-header-shell">
+  <div>
+    <h4 class="page-title fw-bold mb-0"><i class="bi bi-speedometer2"></i> Dashboard</h4>
+    <span class="page-header-meta">Live overview of recordings, runs, users, and in-flight activity.</span>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{% url 'ai_databank' %}" class="btn btn-outline-primary btn-sm"><i class="bi bi-stars me-1"></i>AI Databank</a>
+  </div>
+</div>
+
+{# ── Stat cards ─────────────────────────────────────────────── #}
+<style>
+  /* ── Dashboard stat chips ───────────────────────────────────── */
+  .stat-chip {
+    border-radius: 1.1rem;
+    border: none;
+    padding: .72rem .6rem .65rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .28rem;
+    overflow: hidden;
+    position: relative;
+    transition: transform .18s ease, box-shadow .18s ease;
+    min-height: 5rem;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (max-width: 480px) {
+    .stat-chip { min-height: 4.2rem; padding: .55rem .45rem .5rem; border-radius: .9rem; }
+    .stat-chip .chip-val { font-size: 1.4rem; }
+    .stat-chip .chip-lbl { font-size: .58rem; letter-spacing: .03em; }
+    .stat-chip .chip-icon { font-size: 1.2rem; top: .35rem; right: .45rem; }
+  }
+  .stat-chip::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, rgba(255,255,255,.18) 0%, transparent 55%);
+    pointer-events: none;
+  }
+  .stat-chip:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,.18) !important; }
+  .stat-chip:active { transform: translateY(0) scale(.98); }
+  .stat-chip .chip-val {
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1;
+    color: #fff;
+    letter-spacing: -.02em;
+  }
+  .stat-chip .chip-lbl {
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.82);
+  }
+  .stat-chip .chip-icon {
+    position: absolute;
+    top: .5rem;
+    right: .65rem;
+    font-size: 1.6rem;
+    opacity: .18;
+    line-height: 1;
+  }
+  .chip-blue   { background: linear-gradient(135deg, #1e6fb5 0%, #1450a0 100%); box-shadow: 0 8px 20px rgba(20,80,160,.3); }
+  .chip-cyan   { background: linear-gradient(135deg, #0891b2 0%, #0e6f9a 100%); box-shadow: 0 8px 20px rgba(8,145,178,.3); }
+  .chip-slate  { background: linear-gradient(135deg, #4a5f7a 0%, #334155 100%); box-shadow: 0 8px 20px rgba(51,65,85,.3); }
+  .chip-green  { background: linear-gradient(135deg, #16a34a 0%, #0e7a36 100%); box-shadow: 0 8px 20px rgba(22,163,74,.3); }
+  .chip-red    { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); box-shadow: 0 8px 20px rgba(220,38,38,.3); }
+  .chip-amber  { background: linear-gradient(135deg, #d97706 0%, #b45309 100%); box-shadow: 0 8px 20px rgba(217,119,6,.3); }
+  html.ui-dark .stat-chip::after { background: linear-gradient(160deg, rgba(255,255,255,.12) 0%, transparent 55%); }
+  @media (max-width: 768px) {
+    .stat-chip:hover { transform: none; box-shadow: inherit !important; }
+  }
+</style>
+
+<div class="row g-3 mb-4">
+
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="stat-chip chip-blue shadow-sm">
+      <i class="bi bi-collection chip-icon"></i>
+      <div class="chip-val">{{ total_sessions }}</div>
+      <div class="chip-lbl"><i class="bi bi-collection me-1"></i>Recordings</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="stat-chip chip-cyan shadow-sm">
+      <i class="bi bi-list-ol chip-icon"></i>
+      <div class="chip-val">{{ total_steps }}</div>
+      <div class="chip-lbl"><i class="bi bi-list-ol me-1"></i>Rec. Steps</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="stat-chip chip-slate shadow-sm">
+      <i class="bi bi-play-circle chip-icon"></i>
+      <div class="chip-val">{{ total_runs }}</div>
+      <div class="chip-lbl"><i class="bi bi-play-circle me-1"></i>Replay Runs</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="stat-chip chip-green shadow-sm">
+      <i class="bi bi-check-circle chip-icon"></i>
+      <div class="chip-val">{{ total_pass }}</div>
+      <div class="chip-lbl"><i class="bi bi-check-circle me-1"></i>Passed</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="stat-chip chip-red shadow-sm">
+      <i class="bi bi-x-circle chip-icon"></i>
+      <div class="chip-val">{{ total_fail }}</div>
+      <div class="chip-lbl"><i class="bi bi-x-circle me-1"></i>Failed</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="stat-chip chip-amber shadow-sm">
+      <i class="bi bi-dash-circle chip-icon"></i>
+      <div class="chip-val">{{ total_not_exec }}</div>
+      <div class="chip-lbl"><i class="bi bi-dash-circle me-1"></i>Skipped</div>
+    </div>
+  </div>
+
+</div>
+
+
+
+{# ── Two-column layout: main content left, Active Users sidebar right ── #}
+<div class="row g-4 align-items-start">
+<div class="col-12">
+
+
+{# ── Charts row: Pie + Burndown ─────────────────────────────── #}
+<div class="row g-4 mb-4 align-items-stretch">
+
+  {# ── Live Pie chart ── #}
+  <div class="col-12 col-md-4">
+    <div class="card shadow-sm h-100" id="pieCard">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2 py-2">
+        <span class="fw-semibold"><i class="bi bi-pie-chart-fill text-warning me-1"></i> Test Outcomes</span>
+        <div class="d-flex align-items-center gap-2 flex-wrap dashboard-chart-controls">
+          <select id="pieFolder" class="form-select form-select-sm dashboard-filter-select">
+            <option value="">All Folders</option>
+          </select>
+          <span id="pieSpin" class="text-muted small d-none"><i class="bi bi-arrow-repeat spin-icon"></i></span>
+        </div>
+      </div>
+      <div class="card-body d-flex flex-column align-items-center justify-content-center py-3">
+        <div id="pieEmpty" class="text-center text-muted py-4 d-none">
+          <i class="bi bi-pie-chart" style="font-size:2.5rem;"></i>
+          <p class="mt-2 mb-0">No run data yet.</p>
+        </div>
+        <canvas id="pieChart" style="max-height:240px;max-width:240px;"></canvas>
+        <div id="pieLegend" class="d-flex gap-3 flex-wrap justify-content-center mt-3 small"></div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Burndown chart ── #}
+  <div class="col-12 col-md-8">
+    <div class="card shadow-sm h-100" id="burndownCard">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2 py-2">
+        <span class="fw-semibold"><i class="bi bi-bar-chart-line-fill text-primary me-1"></i> Run Results Burndown</span>
+        <div class="d-flex align-items-center gap-2 flex-wrap dashboard-chart-controls">
+          <select id="bdFolder" class="form-select form-select-sm dashboard-filter-select">
+            <option value="">All Folders</option>
+          </select>
+          <select id="bdDays" class="form-select form-select-sm dashboard-filter-select dashboard-filter-select-short">
+            <option value="7">Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <span id="bdSpin" class="text-muted small d-none"><i class="bi bi-arrow-repeat spin-icon"></i></span>
+          <button id="bdRandom" class="btn btn-outline-secondary btn-sm py-0 px-2" title="Fill with random demo data">
+            <i class="bi bi-dice-3"></i> Demo
+          </button>
+        </div>
+      </div>
+      <div class="card-body py-3" style="position:relative;min-height:200px;">
+        <div id="bdEmpty" class="text-center text-muted py-4 d-none">
+          <i class="bi bi-bar-chart" style="font-size:2.5rem;"></i>
+          <p class="mt-2 mb-0">No run data for this period.</p>
+        </div>
+        <canvas id="bdChart" style="max-height:280px;"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Active (in-flight) runs ──────────────────────────────── #}
+<div id="activeRunsSection" style="display:none;">
+  <div id="activeRunsHeader" class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <h6 class="fw-semibold mb-0 text-success">
+      <i class="bi bi-lightning-charge-fill"></i> Active Runs
+      <span id="arBadge" class="badge bg-success ms-1">0</span>
+    </h6>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button id="arStopAll" class="btn btn-sm btn-outline-danger d-none py-0 px-2" title="Stop all running runs">
+        <i class="bi bi-stop-circle me-1"></i>Stop all
+      </button>
+      <button id="arClearAll" class="btn btn-sm btn-outline-secondary d-none py-0 px-2" title="Clear all finished runs">
+        <i class="bi bi-trash me-1"></i>Clear finished
+      </button>
+      <span class="text-muted small"><i class="bi bi-arrow-repeat spin-icon"></i> Auto-refreshing…</span>
+    </div>
+  </div>
+  <div id="arList" class="mb-4" style="max-height:420px;overflow-y:auto;">
+  <div id="arEmpty" class="text-center py-5 text-muted d-none">
+    <i class="bi bi-activity" style="font-size:3rem;"></i>
+    <p class="mt-2">No active runs.<br>Go to <a href="{% url 'sessions_list' %}">Recordings</a> and hit Replay to get started.</p>
+  </div>
+</div>
+
+</div>{# /col main #}
+
+</div>{# /row #}
+
+{# ── Active Users floating panel ──────────────────────────── #}
+<div id="activeUsersPanel" class="position-fixed bg-white rounded-4 shadow-lg border"
+  style="z-index:1078; top:5rem; right:1.5rem; overflow:hidden;">
+  <div id="activeUsersHeader" class="d-flex align-items-center gap-2 px-3 py-2 text-white rounded-top"
+       style="cursor:grab; user-select:none;">
+    <i class="bi bi-people-fill"></i>
+    <span class="fw-semibold flex-grow-1">Active Users</span>
+    <span class="badge bg-white text-primary" id="activeUsersBadge"{% if not active_users %} style="display:none"{% endif %}>{{ active_users|length }}</span>
+    <button type="button" class="btn btn-link btn-sm text-white p-0 ms-1" id="activeUsersMinimize" title="Minimize">
+      <i class="bi bi-dash-lg"></i>
+    </button>
+  </div>
+  <div id="activeUsersBody" style="max-height:340px;overflow-y:auto;">
+    {% if active_users %}
+    <ul class="list-group list-group-flush">
+      {% for u in active_users %}
+      <li class="list-group-item py-2 px-3 d-flex align-items-center gap-2">
+        <span class="bg-success rounded-circle d-inline-block flex-shrink-0" style="width:9px;height:9px;" title="Online"></span>
+        <span class="fw-semibold text-truncate">{{ u.username }}</span>
+        {% if u.is_recording %}
+          <i class="bi bi-record-circle-fill text-danger flex-shrink-0" title="Recording in progress"></i>
+        {% endif %}
+        {% if u.is_running %}
+          <i class="bi bi-play-circle-fill text-success flex-shrink-0" title="Replay running"></i>
+        {% endif %}
+        {% if u.first_name or u.last_name %}
+          <span class="text-muted small text-truncate">{{ u.first_name }} {{ u.last_name }}</span>
+        {% endif %}
+        {% if u.is_superuser %}
+          <span class="badge bg-warning text-dark ms-auto flex-shrink-0"><i class="bi bi-shield-fill"></i> Admin</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="text-center text-muted py-4 small">
+      <i class="bi bi-person-x" style="font-size:1.6rem;"></i><br>No active users
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin-icon { display:inline-block; animation: spin 1s linear infinite; }
+  .dashboard-record-name {
+    min-width: 0;
+    word-break: break-word;
+  }
+  .dashboard-chart-controls {
+    min-width: 0;
+  }
+  .dashboard-filter-select {
+    min-width: min(11rem, 100%);
+    max-width: 100%;
+    flex: 1 1 11rem;
+  }
+  .dashboard-filter-select-short {
+    flex-basis: 8.5rem;
+    min-width: 8.5rem;
+  }
+  #activeUsersPanel {
+    background: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(245,249,253,.96) 100%);
+    border-color: rgba(27, 71, 108, .12) !important;
+    box-shadow: 0 18px 36px rgba(16, 42, 69, .14), 0 8px 18px rgba(16, 42, 69, .08) !important;
+    backdrop-filter: blur(10px);
+  }
+  #activeUsersHeader {
+    background:
+      radial-gradient(circle at top right, rgba(255, 210, 116, 0.16), transparent 30%),
+      linear-gradient(135deg, #215c90 0%, #174976 58%, #103554 100%);
+    box-shadow: inset 0 -1px 0 rgba(255,255,255,.08);
+  }
+  #activeUsersBody {
+    background: linear-gradient(180deg, rgba(255,255,255,.38) 0%, rgba(255,255,255,0) 100%);
+  }
+  html.ui-dark #activeUsersPanel {
+    background: linear-gradient(180deg, rgba(18, 32, 52, 0.96) 0%, rgba(12, 22, 37, 0.96) 100%);
+    border-color: rgba(141, 176, 214, .14) !important;
+    box-shadow: 0 22px 42px rgba(0, 0, 0, .34), 0 10px 20px rgba(0,0,0,.2) !important;
+  }
+  html.ui-dark #activeUsersHeader {
+    background:
+      radial-gradient(circle at top right, rgba(125, 196, 255, 0.14), transparent 30%),
+      linear-gradient(135deg, rgba(19, 55, 96, 0.96) 0%, rgba(17, 41, 73, 0.96) 58%, rgba(12, 28, 54, 0.98) 100%);
+  }
+  /* Active Users panel responsiveness */
+  #activeUsersPanel {
+    transition: transform .2s ease-out, box-shadow .2s ease-out;
+    width: clamp(220px, 28vw, 320px);
+  }
+  @media (max-width: 768px) {
+    .dashboard-chart-controls {
+      width: 100%;
+    }
+    .dashboard-filter-select,
+    .dashboard-filter-select-short {
+      min-width: 0;
+      flex: 1 1 100%;
+      width: 100%;
+    }
+    #activeUsersPanel {
+      top: auto !important;
+      bottom: 0.75rem !important;
+      right: 0.75rem !important;
+      left: auto !important;
+      max-width: calc(100vw - 1.5rem) !important;
+      min-width: 0 !important;
+      width: min(290px, calc(100vw - 1.5rem)) !important;
+    }
+    #activeUsersBody {
+      max-height: 45vh !important;
+    }
+  }
+  @media (max-width: 420px) {
+    .dashboard-chart-controls {
+      flex-direction: column;
+      align-items: stretch !important;
+    }
+    #activeUsersPanel {
+      left: .55rem !important;
+      right: .55rem !important;
+      width: auto !important;
+      max-width: none !important;
+    }
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+// ── Live Pie chart ────────────────────────────────────────────
+(function () {
+  var pieChart       = null;
+  var pieSpin        = document.getElementById('pieSpin');
+  var pieEmpty       = document.getElementById('pieEmpty');
+  var pieLegend      = document.getElementById('pieLegend');
+  var pieCanvas      = document.getElementById('pieChart');
+  var pieCtx         = pieCanvas.getContext('2d');
+  var selPieFolder   = document.getElementById('pieFolder');
+  var pieFoldersLoaded = false;
+
+  var COLORS  = ['rgba(25,135,84,0.85)', 'rgba(220,53,69,0.85)', 'rgba(255,193,7,0.85)'];
+  var BORDERS = ['rgba(25,135,84,1)',     'rgba(220,53,69,1)',     'rgba(255,193,7,1)'];
+  var LABELS  = ['Pass', 'Fail', 'Not Executed'];
+
+  function buildLegend(data) {
+    var total = data.reduce(function(s,v){ return s+v; }, 0);
+    pieLegend.innerHTML = LABELS.map(function(lbl, i) {
+      var pct = total > 0 ? Math.round(data[i] / total * 100) : 0;
+      return '<span class="d-flex align-items-center gap-1">'
+        + '<span style="width:12px;height:12px;border-radius:2px;background:' + COLORS[i] + ';display:inline-block;"></span>'
+        + '<span>' + lbl + ': <strong>' + data[i] + '</strong> <span class="text-muted">(' + pct + '%)</span></span>'
+        + '</span>';
+    }).join('');
+  }
+
+  function populateFolders(folders) {
+    if (pieFoldersLoaded) return;
+    var cur = selPieFolder.value;
+    while (selPieFolder.options.length > 1) selPieFolder.remove(1);
+    folders.forEach(function(f) {
+      var o = document.createElement('option');
+      o.value = f.id;
+      o.textContent = f.name;
+      o.dataset.rowId    = f.row_id    || '';
+      o.dataset.recordId = f.record_id || '';
+      o.dataset.runDate  = f.run_date  || '';
+      if (f.id === cur) o.selected = true;
+      selPieFolder.appendChild(o);
+    });
+    pieFoldersLoaded = true;
+  }
+
+  function fetchPie() {
+    pieSpin.classList.remove('d-none');
+    fetch('/api/dashboard/stats/?folder=' + encodeURIComponent(selPieFolder.value))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        pieSpin.classList.add('d-none');
+        if (d.folders && d.folders.length) populateFolders(d.folders);
+        var data = [d.pass || 0, d.fail || 0, d.not_run || 0];
+        var hasData = data.some(function(v){ return v > 0; });
+        pieEmpty.classList.toggle('d-none', hasData);
+        pieCanvas.style.display = hasData ? '' : 'none';
+        pieLegend.style.display = hasData ? '' : 'none';
+        if (!hasData) return;
+        buildLegend(data);
+        if (pieChart) {
+          pieChart.data.datasets[0].data = data;
+          pieChart.update();
+        } else {
+          pieChart = new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+              labels: LABELS,
+              datasets: [{ data: data, backgroundColor: COLORS, borderColor: BORDERS, borderWidth: 2, hoverOffset: 8 }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: true,
+              cutout: '60%',
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) {
+                      var total = ctx.dataset.data.reduce(function(s,v){ return s+v; }, 0);
+                      var pct   = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
+                      return ' ' + ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }
+      })
+      .catch(function(){ pieSpin.classList.add('d-none'); });
+  }
+
+  selPieFolder.addEventListener('change', function() { pieFoldersLoaded = true; fetchPie(); });
+
+  fetchPie();
+  setInterval(fetchPie, 15000);
+})();
+</script>
+<script>
+// ── Burndown chart ────────────────────────────────────────────
+(function () {
+  var bdChart = null;
+  var ctx     = document.getElementById('bdChart').getContext('2d');
+  var spin    = document.getElementById('bdSpin');
+  var empty   = document.getElementById('bdEmpty');
+  var selFolder = document.getElementById('bdFolder');
+  var selDays   = document.getElementById('bdDays');
+  var foldersLoaded = false;
+
+  function buildChart(labels, passData, failData, skipData) {
+    if (bdChart) { bdChart.destroy(); }
+
+    bdChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Pass',
+            data: passData,
+            borderColor: 'rgba(25,135,84,1)',
+            backgroundColor: 'rgba(25,135,84,0.08)',
+            pointBackgroundColor: 'rgba(25,135,84,1)',
+            borderWidth: 2,
+            pointRadius: 4,
+            fill: false,
+            tension: 0.3,
+            order: 1
+          },
+          {
+            label: 'Fail',
+            data: failData,
+            borderColor: 'rgba(220,53,69,1)',
+            backgroundColor: 'rgba(220,53,69,0.08)',
+            pointBackgroundColor: 'rgba(220,53,69,1)',
+            borderWidth: 2,
+            pointRadius: 4,
+            fill: false,
+            tension: 0.3,
+            order: 2
+          },
+          {
+            label: 'Not Executed',
+            data: skipData,
+            borderColor: 'rgba(108,117,125,1)',
+            backgroundColor: 'rgba(108,117,125,0.08)',
+            pointBackgroundColor: 'rgba(108,117,125,1)',
+            borderWidth: 2,
+            pointRadius: 4,
+            fill: false,
+            tension: 0.3,
+            borderDash: [5, 3],
+            order: 3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            callbacks: {
+              afterBody: function(items) {
+                var total = items.reduce(function(s, i) { return s + i.parsed.y; }, 0);
+                return total > 0 ? ['', 'Total steps: ' + total] : [];
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 15 } },
+          y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+      }
+    });
+  }
+
+  function fetchBurndown() {
+    spin.classList.remove('d-none');
+    var url = '/api/dashboard/burndown/?folder=' + encodeURIComponent(selFolder.value)
+              + '&days=' + selDays.value;
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        spin.classList.add('d-none');
+        // Populate folder dropdown once
+        if (!foldersLoaded && d.folders && d.folders.length) {
+          var cur = selFolder.value;
+          while (selFolder.options.length > 1) selFolder.remove(1);
+          d.folders.forEach(function (f) {
+            var o = document.createElement('option');
+            o.value = f.id;
+            o.textContent = f.name;
+            o.dataset.rowId    = f.row_id    || '';
+            o.dataset.recordId = f.record_id || '';
+            o.dataset.runDate  = f.run_date  || '';
+            if (f.id === cur) o.selected = true;
+            selFolder.appendChild(o);
+          });
+          foldersLoaded = true;
+        }
+        var hasData = d.labels && d.labels.length > 0;
+        empty.classList.toggle('d-none', hasData);
+        document.getElementById('bdChart').style.display = hasData ? '' : 'none';
+        if (hasData) { buildChart(d.labels, d.pass, d.fail, d.skip); }
+      })
+      .catch(function () { spin.classList.add('d-none'); });
+  }
+
+  selFolder.addEventListener('change', function () { foldersLoaded = true; fetchBurndown(); });
+  selDays.addEventListener('change', fetchBurndown);
+
+  // ── Random demo data ─────────────────────────────────────────
+  var btnRandom  = document.getElementById('bdRandom');
+  var demoActive = false;
+
+  function randomBurndownData() {
+    var days = parseInt(selDays.value, 10) || 30;
+    var labels = [], pass = [], fail = [], skip = [];
+    var today = new Date();
+    // Smooth random walk so lines look natural
+    var p = Math.floor(Math.random() * 30) + 20;
+    var f = Math.floor(Math.random() * 12) + 3;
+    var s = Math.floor(Math.random() * 10) + 2;
+    for (var i = days - 1; i >= 0; i--) {
+      var d = new Date(today);
+      d.setDate(d.getDate() - i);
+      labels.push(d.toISOString().slice(0, 10));
+      p = Math.max(0, p + Math.round((Math.random() - 0.46) * 8));
+      f = Math.max(0, f + Math.round((Math.random() - 0.5)  * 4));
+      s = Math.max(0, s + Math.round((Math.random() - 0.52) * 3));
+      pass.push(p); fail.push(f); skip.push(s);
+    }
+    return { labels: labels, pass: pass, fail: fail, skip: skip };
+  }
+
+  btnRandom.addEventListener('click', function () {
+    demoActive = !demoActive;
+    if (demoActive) {
+      btnRandom.classList.replace('btn-outline-secondary', 'btn-secondary');
+      var rd = randomBurndownData();
+      empty.classList.add('d-none');
+      document.getElementById('bdChart').style.display = '';
+      buildChart(rd.labels, rd.pass, rd.fail, rd.skip);
+    } else {
+      btnRandom.classList.replace('btn-secondary', 'btn-outline-secondary');
+      fetchBurndown();
+    }
+  });
+
+  selDays.addEventListener('change', function () {
+    if (demoActive) {
+      var rd = randomBurndownData();
+      buildChart(rd.labels, rd.pass, rd.fail, rd.skip);
+    }
+  }, true); // capture so fires before the existing non-demo listener
+
+  fetchBurndown();
+  setInterval(function () { if (!demoActive) fetchBurndown(); }, 30000);
+})();
+</script>
+<script>
+  // ── Active Runs polling ───────────────────────────────────────
+  (function() {
+    const list      = document.getElementById('arList');
+    const empty     = document.getElementById('arEmpty');
+    const badge     = document.getElementById('arBadge');
+    const btnClear  = document.getElementById('arClearAll');
+    const btnStop   = document.getElementById('arStopAll');
+    const section   = document.getElementById('activeRunsSection');
+    let   _isSuperuser = false;  // updated on first poll
+    const _currentUser = '{{ request.user.username|escapejs }}';
+
+    const STATUS_COLORS = {
+      running: 'bg-success', paused: 'bg-warning text-dark',
+      stopped: 'bg-secondary', done: 'bg-primary', error: 'bg-danger'
+    };
+    const BORDER = {
+      running: 'border-success', paused: 'border-warning',
+      done: 'border-primary', error: 'border-danger', stopped: 'border-secondary'
+    };
+
+    function getCsrf() {
+      const m = document.cookie.match(/csrftoken=([^;]+)/);
+      return m ? m[1] : '';
+    }
+
+    function clearRun(runId) {
+      fetch('/api/active-runs/' + runId + '/clear/', {
+        method: 'POST', headers: {'X-CSRFToken': getCsrf()}
+      }).then(poll).catch(function(){});
+    }
+
+    // Match the working Active Runs monitor behavior for per-run controls
+    window.postAction = function(url) {
+      fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrf(), 'Content-Type': 'application/json' }
+      }).then(poll).catch(function(){});
+    };
+
+    function renderRun(r) {
+      const pct    = r.total > 0 ? Math.round(r.done / r.total * 100) : 0;
+      const col    = STATUS_COLORS[r.status] || 'bg-secondary';
+      const border = BORDER[r.status] || 'border-secondary';
+      const name   = r.record_name || r.record_id.substring(0, 8);
+      const isLive = r.status === 'running' || r.status === 'paused';
+
+      const statusBadge = isLive
+        ? (r.status === 'paused'
+            ? '<span class="badge bg-warning text-dark"><i class="bi bi-pause-fill"></i> Paused</span>'
+            : '<span class="badge bg-success"><i class="bi bi-play-fill"></i> Running</span>')
+        : '<span class="badge ' + col + '">' + r.status + '</span>';
+
+      const canControl = _isSuperuser || (r.runner === _currentUser);
+
+      const actionBtn = canControl
+        ? (isLive
+          ? '<div class="ms-auto btn-group btn-group-sm" role="group">'
+            + '<button class="btn btn-outline-secondary py-0 px-2" title="' + (r.status === 'paused' ? 'Resume' : 'Pause') + '"'
+            + ' onclick="postAction(\'/replay/' + r.run_id + '/pause/\')">'
+            + '<i class="bi bi-' + (r.status === 'paused' ? 'play' : 'pause') + '-fill"></i></button>'
+            + '<button class="btn btn-outline-danger py-0 px-2" title="Stop"'
+            + ' onclick="postAction(\'/replay/' + r.run_id + '/stop/\')">'
+            + '<i class="bi bi-stop-fill"></i></button>'
+            + '<a href="/replay/' + r.run_id + '/" class="btn btn-outline-success py-0 px-2" title="Watch"><i class="bi bi-eye"></i></a>'
+            + '</div>'
+          : '<div class="ms-auto btn-group btn-group-sm" role="group">'
+            + '<button class="btn btn-outline-secondary py-0 px-2" title="Clear"'
+            + ' onclick="arClearRun(\'' + r.run_id + '\')">'
+            + '<i class="bi bi-x-lg"></i></button>'
+            + '<a href="/replay/' + r.run_id + '/" class="btn btn-outline-primary py-0 px-2" title="View"><i class="bi bi-eye"></i></a>'
+            + '</div>')
+        : '';
+
+      const runnerHtml = r.runner
+        ? '<span class="text-muted small"><i class="bi bi-person me-1"></i>' + r.runner + '</span>' : '';
+
+      const progressHtml = r.total
+        ? '<div class="progress mt-2" style="height:6px;border-radius:4px;">'
+          + (r.passes ? '<div class="progress-bar bg-success" style="width:' + Math.round(r.passes/r.total*100) + '%"></div>' : '')
+          + (r.fails  ? '<div class="progress-bar bg-danger"  style="width:' + Math.round(r.fails /r.total*100) + '%"></div>' : '')
+          + '</div>' : '';
+
+      return '<div class="card shadow-sm mb-2 ' + border + ' border-opacity-50">'
+        + '<div class="card-body py-2 px-3">'
+        + '<div class="d-flex align-items-center gap-3 flex-wrap">'
+        + '<span class="fw-semibold">' + name + '</span>'
+        + statusBadge
+        + '<span class="text-muted small">Step ' + r.done + ' / ' + r.total + '</span>'
+        + (r.passes !== undefined ? '<span class="badge bg-success">' + r.passes + ' pass</span>' : '')
+        + (r.fails  !== undefined ? '<span class="badge bg-danger">'  + r.fails  + ' fail</span>' : '')
+        + runnerHtml
+        + actionBtn
+        + '</div>'
+        + progressHtml
+        + '</div></div>';
+    }
+
+    // track which folder sections are collapsed by user
+    var _collapsedFolders = {};
+
+    function renderGrouped(visible) {
+      // group runs by folder_name
+      var order = [];
+      var groups = {};
+      visible.forEach(function(r) {
+        var folder = r.folder_name || 'Recordings';
+        if (!groups[folder]) { groups[folder] = []; order.push(folder); }
+        groups[folder].push(r);
+      });
+
+      return order.map(function(folder) {
+        var runs = groups[folder];
+        var collapseId = 'arFolder_' + folder.replace(/[^a-zA-Z0-9]/g, '_');
+        var isOpen = !_collapsedFolders[folder];
+        var liveCount = runs.filter(function(r){ return r.status==='running'||r.status==='paused'; }).length;
+        var badge = liveCount > 0
+          ? ' <span class="badge bg-success">' + liveCount + ' running</span>'
+          : ' <span class="badge bg-secondary">' + runs.length + '</span>';
+
+        return '<div class="mb-2">'
+          + '<button class="btn btn-sm btn-warning w-100 d-flex align-items-center gap-2 text-start ar-folder-toggle"'
+          + ' data-folder="' + folder + '" data-target="' + collapseId + '">'
+          + '<i class="bi bi-folder2-open"></i>'
+          + '<span class="fw-semibold flex-grow-1">' + folder + '</span>'
+          + badge
+          + '<i class="bi ' + (isOpen ? 'bi-chevron-up' : 'bi-chevron-down') + ' ms-auto"></i>'
+          + '</button>'
+          + '<div id="' + collapseId + '" style="' + (isOpen ? '' : 'display:none;') + '">'
+          + '<div class="pt-2">'
+          + runs.map(renderRun).join('')
+          + '</div></div></div>';
+      }).join('');
+    }
+
+    // delegate collapse toggle
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('.ar-folder-toggle');
+      if (!btn) return;
+      var folder = btn.dataset.folder;
+      var target = document.getElementById(btn.dataset.target);
+      var icon   = btn.querySelector('.bi-chevron-up, .bi-chevron-down');
+      if (!target) return;
+      var nowOpen = target.style.display === 'none';
+      target.style.display = nowOpen ? '' : 'none';
+      if (icon) {
+        icon.classList.toggle('bi-chevron-up', nowOpen);
+        icon.classList.toggle('bi-chevron-down', !nowOpen);
+      }
+      _collapsedFolders[folder] = !nowOpen;
+    });
+
+    window.arClearRun = clearRun;
+
+    function poll() {
+      fetch('/api/active-runs/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          _isSuperuser = data.is_superuser || false;
+          const runs = data.runs || [];
+          const visible = runs.filter(function(r) {
+            return ['running','paused','done','error','stopped'].indexOf(r.status) !== -1;
+          });
+          const active = runs.filter(function(r) {
+            return r.status === 'running' || r.status === 'paused';
+          });
+          const clearable = runs.filter(function(r) {
+            return r.status === 'done' || r.status === 'error' || r.status === 'stopped';
+          });
+
+          badge.textContent = active.length;
+          const canStopAny = _isSuperuser || active.some(function(r){ return r.runner === _currentUser; });
+          const canClearAny = _isSuperuser || clearable.some(function(r){ return r.runner === _currentUser; });
+          btnStop.classList.toggle('d-none', !canStopAny);
+          btnClear.classList.toggle('d-none', !canClearAny);
+
+          if (visible.length > 0) {
+            section.style.display = '';
+            list.innerHTML = renderGrouped(visible);
+            empty.classList.add('d-none');
+          } else {
+            section.style.display = 'none';
+            list.innerHTML = '';
+            empty.classList.remove('d-none');
+          }
+        }).catch(function(){});
+    }
+
+    btnStop.addEventListener('click', function() {
+      fetch('/api/active-runs/stop-all/', {
+        method: 'POST', headers: {'X-CSRFToken': getCsrf()}
+      }).then(poll).catch(function(){});
+    });
+
+    btnClear.addEventListener('click', function() {
+      fetch('/api/active-runs/clear/', {
+        method: 'POST', headers: {'X-CSRFToken': getCsrf()}
+      }).then(poll).catch(function(){});
+    });
+
+    poll();
+    setInterval(poll, 2000);
+  })();
+</script>
+<script>
+  // ── Active Users draggable panel ──────────────────────────────
+  (function() {
+    const panel  = document.getElementById('activeUsersPanel');
+    const header = document.getElementById('activeUsersHeader');
+    const body   = document.getElementById('activeUsersBody');
+    const btnMin = document.getElementById('activeUsersMinimize');
+    let dragging = false, ox = 0, oy = 0, minimized = false;
+    // Dragging is allowed only when the viewport is wider than 768px.
+    header.addEventListener('mousedown', function(e) {
+      if (e.target.closest('button')) return;
+      if (window.innerWidth <= 768) { header.style.cursor = 'default'; return; }
+      dragging = true;
+      const r = panel.getBoundingClientRect();
+      ox = e.clientX - r.left;
+      oy = e.clientY - r.top;
+      header.style.cursor = 'grabbing';
+      panel.style.top    = r.top  + 'px';
+      panel.style.right  = 'unset';
+      panel.style.left   = r.left + 'px';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      panel.style.left = Math.max(0, Math.min(window.innerWidth  - panel.offsetWidth,  e.clientX - ox)) + 'px';
+      panel.style.top  = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, e.clientY - oy)) + 'px';
+    });
+    document.addEventListener('mouseup', function() {
+      if (dragging) { dragging = false; header.style.cursor = 'grab'; }
+    });
+
+    btnMin.addEventListener('click', function() {
+      minimized = !minimized;
+      body.style.display = minimized ? 'none' : '';
+      btnMin.querySelector('i').className = minimized ? 'bi bi-plus-lg' : 'bi bi-dash-lg';
+    });
+  })();
+
+  // ── Active Users auto-refresh ─────────────────────────────────
+  (function () {
+    var POLL_MS   = 10000;
+    var usersBody = document.getElementById('activeUsersBody');
+    var badge     = document.getElementById('activeUsersBadge');
+
+    function renderUsers(users) {
+      badge.textContent = users.length;
+      badge.style.display = users.length ? '' : 'none';
+
+      if (!users.length) {
+        usersBody.innerHTML =
+          '<div class="text-center text-muted py-4 small">'
+          + '<i class="bi bi-person-x" style="font-size:1.6rem;"></i><br>No active users</div>';
+        return;
+      }
+
+      var html = '<ul class="list-group list-group-flush">';
+      users.forEach(function (u) {
+        html += '<li class="list-group-item py-2 px-3 d-flex align-items-center gap-2">';
+        html += '<span class="bg-success rounded-circle d-inline-block flex-shrink-0" style="width:9px;height:9px;" title="Online"></span>';
+        html += '<span class="fw-semibold text-truncate">' + u.username + '</span>';
+        if (u.is_recording)
+          html += '<i class="bi bi-record-circle-fill text-danger flex-shrink-0" title="Recording in progress"></i>';
+        if (u.is_running)
+          html += '<i class="bi bi-play-circle-fill text-success flex-shrink-0" title="Replay running"></i>';
+        if (u.first_name || u.last_name)
+          html += '<span class="text-muted small text-truncate">' + (u.first_name + ' ' + u.last_name).trim() + '</span>';
+        if (u.is_superuser)
+          html += '<span class="badge bg-warning text-dark ms-auto flex-shrink-0"><i class="bi bi-shield-fill"></i> Admin</span>';
+        html += '</li>';
+      });
+      html += '</ul>';
+      usersBody.innerHTML = html;
+    }
+
+    function pollUsers() {
+      fetch('{% url "active_users_api" %}')
+        .then(function (r) { return r.json(); })
+        .then(function (d) { renderUsers(d.users || []); })
+        .catch(function () {});
+    }
+
+    setInterval(pollUsers, POLL_MS);
+  })();
+</script>
+<script>
+  // ── Auto-refresh after action buttons ──────────────────────────
+  (function() {
+    const AUTO_REFRESH_DELAY = 2000; // 2 seconds
+    const actionButtons = [
+      'button[data-bs-target="#replayOptionsModal"]',
+      'button[data-bs-target="#remoteActionsModal"]',
+      'button.headless-direct-btn',
+      'a[href*="/replay/"]',
+      'a[href*="/remote-execute/"]'
+    ];
+
+    function showLoadingState(btn) {
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      btn.innerHTML = '<span class="spinner-grow spinner-grow-sm me-1"></span>Loading...';
+    }
+
+    actionButtons.forEach(function(selector) {
+      document.querySelectorAll(selector).forEach(function(btn) {
+        ['click', 'touchstart'].forEach(function(event) {
+          btn.addEventListener(event, function(e) {
+            if (e.type === 'touchstart') e.preventDefault();
+            showLoadingState(btn);
+            setTimeout(function() {
+              location.reload();
+            }, AUTO_REFRESH_DELAY);
+          }, { passive: false });
+        });
+      });
+    });
+    // Poll for remote action status
+    let lastRemoteActionTime = 0;
+    setInterval(function() {
+      fetch('/api/remote-action-status/?since=' + lastRemoteActionTime)
+        .then(r => r.json())
+        .then(d => {
+          lastRemoteActionTime = d.last_action;
+          if (d.should_refresh) {
+            console.log('Remote action detected, refreshing...');
+            location.reload();
+          }
+        })
+        .catch(e => console.error('Remote action polling error:', e));
+    }, 3000); // Poll every 3 seconds  })();
+</script>
+{% endblock %}

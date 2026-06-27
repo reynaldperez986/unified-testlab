@@ -1,0 +1,1076 @@
+{% extends 'api/base.html' %}
+
+{% block title %}Test Cases - API TestLab{% endblock %}
+{% block page_title %}Test Cases{% endblock %}
+
+{% block content %}
+<style>
+    .folder-header {
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.2s ease;
+        padding: 0.25rem 0;
+        border-radius: 0.25rem;
+    }
+    .folder-header:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+    .folder-toggle {
+        transition: transform 0.3s ease;
+        display: inline-block;
+    }
+    .folder-header[aria-expanded="false"] .folder-toggle {
+        transform: rotate(-90deg);
+    }
+    .duplicate-square-btn {
+        border-radius: 0 !important;
+    }
+    .folder-action-btn {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: none;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #6c757d;
+        color: #fff;
+        line-height: 1;
+    }
+    .folder-action-btn:hover,
+    .folder-action-btn:focus {
+        background-color: #5c636a;
+        color: #fff;
+    }
+    .folder-action-btn i {
+        font-size: 0.72rem;
+    }
+    .testcase-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+    }
+    .testcase-actions form {
+        display: inline-flex;
+        margin: 0;
+    }
+    /* ── Floating execution panel ── */
+    .exec-floating-panel {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 460px;
+        max-height: 560px;
+        background: var(--surface, #fff);
+        border: 1px solid var(--border, #dbe3ec);
+        border-radius: 0.9rem;
+        box-shadow: 0 16px 48px rgba(15,23,42,0.22);
+        z-index: 9500;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .exec-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.7rem 1rem;
+        border-bottom: 1px solid var(--border, #dbe3ec);
+        background: var(--surface-soft, #f8fafc);
+        flex-shrink: 0;
+    }
+    .exec-panel-progress { height: 4px; border-radius: 0; flex-shrink: 0; }
+    .exec-panel-list { overflow-y: auto; flex: 1; }
+    .exec-test-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 1rem;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        font-size: 0.85rem;
+    }
+    .exec-test-row:last-child { border-bottom: none; }
+    .exec-test-num { color: #94a3b8; font-size: 0.75rem; min-width: 22px; }
+    .exec-test-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .exec-test-code { color: #94a3b8; font-size: 0.75rem; min-width: 36px; text-align: right; }
+    .exec-panel-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.65rem 1rem;
+        border-top: 1px solid var(--border, #dbe3ec);
+        background: var(--surface-soft, #f8fafc);
+        flex-shrink: 0;
+    }
+    .drag-handle {
+        cursor: grab;
+        color: #adb5bd;
+        padding: 0 4px;
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .drag-handle:hover { color: #6c757d; }
+    .sortable-ghost {
+        opacity: 0.4;
+        background: #e8f4ff;
+    }
+    .sortable-chosen { background: #f0f9ff; }
+    .folder-item { transition: background 0.15s; }
+</style>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <p class="text-muted mb-0">Manage your API test cases.</p>
+    {% if user.api_profile.role != 'viewer' %}
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#projectFolderModal">
+            <i class="bi bi-folder-plus"></i> Create Project
+        </button>
+        <a href="{% url 'api:testcase_create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> New Test Case
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small">Search</label>
+                <input type="text" name="search" class="form-control form-control-sm"
+                       value="{{ filters.search }}" placeholder="Name or endpoint...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Method</label>
+                <select name="method" class="form-select form-select-sm">
+                    <option value="">All Methods</option>
+                    <option value="GET" {% if filters.method == 'GET' %}selected{% endif %}>GET</option>
+                    <option value="POST" {% if filters.method == 'POST' %}selected{% endif %}>POST</option>
+                    <option value="PUT" {% if filters.method == 'PUT' %}selected{% endif %}>PUT</option>
+                    <option value="PATCH" {% if filters.method == 'PATCH' %}selected{% endif %}>PATCH</option>
+                    <option value="DELETE" {% if filters.method == 'DELETE' %}selected{% endif %}>DELETE</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Module</label>
+                <select name="module" class="form-select form-select-sm">
+                    <option value="">All Modules</option>
+                    {% for m in modules %}
+                    <option value="{{ m }}" {% if filters.module == m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Project</label>
+                <select name="project" class="form-select form-select-sm">
+                    <option value="">All Projects</option>
+                    {% for p in projects %}
+                    <option value="{{ p }}" {% if filters.project == p %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search"></i> Filter</button>
+                <a href="{% url 'api:testcase_list' %}" class="btn btn-sm btn-outline-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if hierarchy %}
+        <div class="mb-3 pb-3 border-bottom">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAllTestCases()"><i class="bi bi-check-all"></i> Select All</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deselectAllTestCases()"><i class="bi bi-x"></i> Deselect All</button>
+                <button type="button" class="btn btn-sm btn-outline-info duplicate-square-btn" onclick="bulkDuplicate()" id="duplicateBtn" disabled><i class="bi bi-copy"></i> Duplicate Selected</button>
+                <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#bulkExecuteModal" id="executeBtn" disabled><i class="bi bi-play"></i> Execute Selected</button>
+            </div>
+            <div class="small text-muted mt-2"><span id="selectionCount">0</span> test case(s) selected</div>
+        </div>
+        <div id="folderSortableContainer">
+            {% for item in hierarchy %}
+            <div class="mb-3 folder-item" data-folder-id="{{ item.folder_id }}" data-id="{{ item.folder_id|default:'ungrouped' }}">
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                        {% if user.api_profile.role != 'viewer' %}
+                        <span class="drag-handle folder-drag-handle" title="Drag to reorder folder"><i class="bi bi-grip-vertical"></i></span>
+                        {% endif %}
+                        {% if item.folder_id %}
+                        <input type="checkbox" class="form-check-input folder-checkbox" data-folder-id="{{ item.folder_id }}" onchange="toggleFolderCheckbox(this)">
+                        {% endif %}
+                        <div class="d-flex align-items-center gap-2 cursor-pointer folder-header flex-grow-1" 
+                             data-bs-toggle="collapse" 
+                             data-bs-target="#collapse-{{ forloop.counter }}"
+                             aria-expanded="true"
+                             aria-controls="collapse-{{ forloop.counter }}">
+                            <i class="bi bi-chevron-down folder-toggle"></i>
+                            <i class="bi bi-folder2-open text-warning"></i>
+                            <span class="fw-semibold">{{ item.folder_name }}</span>
+                            <span class="badge bg-secondary">{{ item.test_cases|length }}</span>
+                            {% if user.api_profile.role != 'viewer' and item.folder_id %}
+                            <span class="d-inline-flex gap-1 ms-1">
+                                <form method="post" action="{% url 'api:project_delete' item.folder_id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn folder-action-btn" title="Duplicate Folder"><i class="bi bi-files"></i></button>
+                                </form>
+                                <form method="post" action="{% url 'api:project_delete' item.folder_id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="name" value="{{ item.folder_name }}">
+                                    <button type="button" class="btn folder-action-btn" title="Edit" onclick="editFolder({{ item.folder_id }}, '{{ item.folder_name }}')"><i class="bi bi-pencil"></i></button>
+                                </form>
+                                <button type="button" class="btn folder-action-btn" title="Delete"
+                                        onclick="openDeleteFolderModal({{ item.folder_id }}, '{{ item.folder_name|escapejs }}', {{ item.test_cases|length }})"><i class="bi bi-trash"></i></button>
+                            </span>
+                            {% elif user.api_profile.role != 'viewer' and not item.folder_id %}
+                            <span class="d-inline-flex gap-1 ms-1">
+                                <button type="button" class="btn folder-action-btn" title="Delete Ungrouped"
+                                        onclick="openDeleteFolderModal('ungrouped', 'Ungrouped', {{ item.test_cases|length }})"><i class="bi bi-trash"></i></button>
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="ps-4 collapse show" id="collapse-{{ forloop.counter }}">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" style="table-layout:fixed;width:100%">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="22"></th>
+                                    <th width="30"></th>
+                                    <th width="60">Method</th>
+                                    <th style="width:220px;min-width:150px">Name</th>
+                                    <th style="width:180px;min-width:120px">Module</th>
+                                    <th width="130">Last Result</th>
+                                    <th width="100">Exp. Status</th>
+                                    <th width="180">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="tc-sortable" data-folder-id="{{ item.folder_id|default:'ungrouped' }}">
+                                {% for tc in item.test_cases %}
+                                <tr data-id="{{ tc.pk }}">
+                                    <td width="22">{% if user.api_profile.role != 'viewer' %}<span class="drag-handle tc-drag-handle" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></span>{% endif %}</td>
+                                    <td width="30"><input type="checkbox" class="form-check-input test-case-checkbox" data-tc-id="{{ tc.pk }}" onchange="updateSelectionCount()"></td>
+                                    <td width="60"><span class="method-badge method-{{ tc.http_method }}">{{ tc.http_method }}</span></td>
+                                    <td style="max-width:220px" class="text-truncate" title="{{ tc.name }}">{{ tc.name }}</td>
+                                    <td style="max-width:180px" class="text-truncate text-muted" title="{{ tc.module|default:'' }}">{{ tc.module|default:"-" }}</td>
+                                    <td width="130" class="latest-result-cell" data-tc-id="{{ tc.pk }}">
+                                        {% if tc.latest_result == 'passed' %}
+                                        <span class="badge bg-success">Pass</span>
+                                        {% elif tc.latest_result == 'failed' %}
+                                        <span class="badge bg-danger">Failed</span>
+                                        {% elif tc.latest_result == 'error' %}
+                                        <span class="badge bg-warning text-dark">Error</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Not Executed</span>
+                                        {% endif %}
+                                    </td>
+                                    <td width="100">{{ tc.expected_status_code|default:"-" }}</td>
+                                    <td width="180" class="text-nowrap">
+                                        <div class="testcase-actions">
+                                            <a href="{% url 'api:testcase_detail' tc.pk %}" class="btn btn-sm btn-outline-secondary" title="View">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            {% if user.api_profile.role != 'viewer' %}
+                                            <button type="button" class="btn btn-sm btn-outline-success" title="Run" onclick="runTestFromList({{ tc.pk }}, this)">
+                                                <i class="bi bi-play-fill"></i>
+                                            </button>
+                                            <a href="{% url 'api:testcase_edit' tc.pk %}" class="btn btn-sm btn-outline-primary" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <form method="post" action="{% url 'api:testcase_delete' tc.pk %}" class="d-inline">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-outline-info duplicate-square-btn" title="Duplicate">
+                                                    <i class="bi bi-files"></i>
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                            {% if user.api_profile.role == 'admin' %}
+                                            <form id="deleteTestCaseForm_{{ tc.pk }}" method="post" action="{% url 'api:testcase_delete' tc.pk %}" class="d-inline">
+                                                {% csrf_token %}
+                                                <button type="button" class="btn btn-sm btn-outline-danger" title="Delete"
+                                                        onclick="openDeleteTestCaseModal({{ tc.pk }}, '{{ tc.name|escapejs }}')"><i class="bi bi-trash"></i></button>
+                                            </form>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            No test cases found.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if user.api_profile.role != 'viewer' %}
+{% for item in hierarchy %}
+{% if item.folder_id %}
+<form id="deleteFolderForm_{{ item.folder_id }}" method="post" action="{% url 'api:project_delete' item.folder_id %}" class="d-none">
+    {% csrf_token %}
+</form>
+{% else %}
+<form id="deleteFolderForm_ungrouped" method="post" action="{% url 'api:ungrouped_delete' %}" class="d-none">
+    {% csrf_token %}
+</form>
+{% endif %}
+{% endfor %}
+
+<div class="modal fade" id="deleteFolderModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteFolderModalTitle"><i class="bi bi-trash me-2"></i>Delete Folder</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <p id="deleteFolderModalMsg" class="mb-0"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>Cancel</button>
+                <button type="button" class="btn btn-danger" id="deleteFolderConfirmBtn"><i class="bi bi-trash me-1"></i>Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteTestCaseModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteTestCaseModalTitle"><i class="bi bi-trash me-2"></i>Delete Test Case</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <p id="deleteTestCaseModalMsg" class="mb-0"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>Cancel</button>
+                <button type="button" class="btn btn-danger" id="deleteTestCaseConfirmBtn"><i class="bi bi-trash me-1"></i>Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="projectFolderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'api:project_create' %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Create Project Folder</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label">Project Name</label>
+                    {{ project_form.name }}
+                    <div class="form-text">New test cases can be created inside this folder.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editFolderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="editFolderForm" method="post">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Project Folder</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label">Folder Name</label>
+                    <input type="text" name="name" id="editFolderName" class="form-control" required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="bulkExecuteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="bulkExecuteForm">
+                <div class="modal-header">
+                    <h5 class="modal-title">Execute Selected Test Cases</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Execution Mode</label>
+                        <div class="btn-group d-block" role="group">
+                            <input type="radio" class="btn-check" name="executionMode" id="modeSerial" value="serial" checked>
+                            <label class="btn btn-outline-primary" for="modeSerial">Serial (Sequential)</label>
+                            <input type="radio" class="btn-check" name="executionMode" id="modeParallel" value="parallel">
+                            <label class="btn btn-outline-primary" for="modeParallel">Parallel (Concurrent)</label>
+                        </div>
+                        <div class="form-text mt-2">Serial: Run tests one by one. Parallel: Run tests simultaneously.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="bulkExecuteBtn" onclick="executeBulkTests()"><i class="bi bi-play"></i> Execute</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="bulkResultModal" tabindex="-1" aria-labelledby="bulkResultModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header" id="bulkResultHeader">
+                <h5 class="modal-title" id="bulkResultModalLabel"><i class="bi bi-check2-circle me-2"></i>Execution Completed</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <div class="row text-center g-3" id="bulkResultStats">
+                    <div class="col-4">
+                        <div class="fs-2 fw-bold text-success" id="bulkResultPassed">0</div>
+                        <div class="text-muted small">Passed</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="fs-2 fw-bold text-danger" id="bulkResultFailed">0</div>
+                        <div class="text-muted small">Failed</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="fs-2 fw-bold text-warning" id="bulkResultErrors">0</div>
+                        <div class="text-muted small">Errors</div>
+                    </div>
+                </div>
+                <div id="bulkResultError" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="location.reload()">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Floating execution panel ── -->
+<div id="execFloatingPanel" class="exec-floating-panel d-none">
+    <div class="exec-panel-header">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-play-circle-fill text-success" id="execHeaderIcon"></i>
+            <span class="fw-semibold small">Executing Tests</span>
+            <span id="execProgressText" class="text-muted small">0 / 0</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <div id="execGlobalControls" class="d-flex gap-1">
+                <button id="execGlobalPauseBtn" class="btn btn-sm btn-warning py-0 px-2" onclick="pauseExecution()" title="Pause after current test">
+                    <i class="bi bi-pause-fill"></i> Pause All
+                </button>
+                <button id="execGlobalContinueBtn" class="btn btn-sm btn-success py-0 px-2 d-none" onclick="continueExecution()" title="Resume execution">
+                    <i class="bi bi-play-fill"></i> Continue
+                </button>
+                <button id="execGlobalStopBtn" class="btn btn-sm btn-danger py-0 px-2" onclick="stopExecution()" title="Stop after current test">
+                    <i class="bi bi-stop-fill"></i> Stop All
+                </button>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="execCloseBtn" onclick="closeExecPanel()" title="Close" style="display:none">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    </div>
+    <div class="progress exec-panel-progress">
+        <div id="execProgressBar" class="progress-bar bg-success" role="progressbar" style="width:0%"></div>
+    </div>
+    <div id="execTestList" class="exec-panel-list"></div>
+    <div id="execPanelFooter" class="exec-panel-footer d-none">
+        <span id="execSummaryText" class="small"></span>
+        <button class="btn btn-sm btn-primary" onclick="closeExecPanelAndReload()">Done</button>
+    </div>
+</div>
+
+{% endif %}
+
+<script>
+let listResultsPoller = null;
+
+function renderResultBadge(status) {
+    if (status === 'passed') return '<span class="badge bg-success">Pass</span>';
+    if (status === 'failed') return '<span class="badge bg-danger">Failed</span>';
+    if (status === 'error') return '<span class="badge bg-warning text-dark">Error</span>';
+    return '<span class="badge bg-secondary">Not Executed</span>';
+}
+
+function getListTestCaseIds() {
+    return Array.from(document.querySelectorAll('.latest-result-cell[data-tc-id]'))
+        .map(cell => parseInt(cell.dataset.tcId, 10))
+        .filter(Number.isFinite);
+}
+
+function refreshListLatestResults() {
+    const ids = getListTestCaseIds();
+    if (!ids.length) return;
+
+    fetch(`{% url "api:testcase_latest_results" %}?ids=${ids.join(',')}`, { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+            const results = (data && data.results) ? data.results : {};
+            document.querySelectorAll('.latest-result-cell[data-tc-id]').forEach(cell => {
+                const id = cell.dataset.tcId;
+                cell.innerHTML = renderResultBadge(results[id] || null);
+            });
+        })
+        .catch(() => {
+            // Silent fail; next poll will retry.
+        });
+}
+
+function scheduleListRefreshBursts() {
+    refreshListLatestResults();
+    setTimeout(refreshListLatestResults, 600);
+    setTimeout(refreshListLatestResults, 1500);
+}
+
+function startListResultsPolling() {
+    refreshListLatestResults();
+    if (listResultsPoller) clearInterval(listResultsPoller);
+    listResultsPoller = setInterval(refreshListLatestResults, 5000);
+}
+
+function selectAllTestCases() {
+    document.querySelectorAll('.test-case-checkbox').forEach(cb => cb.checked = true);
+    updateSelectionCount();
+}
+
+function runTestFromList(testCaseId, btn) {
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    const row = btn.closest('tr');
+
+    fetch('{% url "api:execute_test" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ test_case_id: testCaseId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+
+        // Update the result badge cell (index 4 — the Pass/Fail cell)
+        const resultCell = row.cells[5];
+        if (resultCell) {
+            resultCell.innerHTML = renderResultBadge(data.result_status || null);
+        }
+
+        scheduleListRefreshBursts();
+
+        // Flash the run button green/red briefly
+        const flashClass = data.result_status === 'passed' ? 'btn-success' : 'btn-danger';
+        btn.classList.remove('btn-outline-success');
+        btn.classList.add(flashClass);
+        setTimeout(() => {
+            btn.classList.remove(flashClass);
+            btn.classList.add('btn-outline-success');
+        }, 2000);
+        
+        // Auto-download response files
+        if (data.execution_id) {
+            setTimeout(() => {
+                downloadResponseFile(data.execution_id, 'json');
+                setTimeout(() => downloadResponseFile(data.execution_id, 'csv'), 300);
+            }, 500);
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    });
+}
+
+function deselectAllTestCases() {
+    document.querySelectorAll('.test-case-checkbox').forEach(cb => cb.checked = false);
+    updateSelectionCount();
+}
+
+function updateSelectionCount() {
+    const selected = document.querySelectorAll('.test-case-checkbox:checked').length;
+    document.getElementById('selectionCount').textContent = selected;
+    document.getElementById('duplicateBtn').disabled = selected === 0;
+    document.getElementById('executeBtn').disabled = selected === 0;
+}
+
+function toggleFolderCheckbox(checkbox) {
+    const folderId = checkbox.dataset.folderId;
+    const folderItem = checkbox.closest('.folder-item');
+    const testCaseCheckboxes = folderItem.querySelectorAll('.test-case-checkbox');
+    testCaseCheckboxes.forEach(cb => cb.checked = checkbox.checked);
+    updateSelectionCount();
+}
+
+function bulkDuplicate() {
+    const selectedIds = Array.from(document.querySelectorAll('.test-case-checkbox:checked'))
+        .map(cb => cb.dataset.tcId);
+    
+    if (selectedIds.length === 0) {
+        alert('Please select at least one test case');
+        return;
+    }
+    
+    if (!confirm(`Duplicate ${selectedIds.length} test case(s)?`)) return;
+
+    fetch('{% url "api:bulk_duplicate_testcases" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify({
+            test_case_ids: selectedIds.map(id => parseInt(id))
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error duplicating test cases: ' + error);
+    });
+}
+
+/* ── Bulk execution state ── */
+let _execState = { paused: false, stopped: false, skipped: new Set() };
+let _execMode = 'serial';
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function _statusBadge(status, code) {
+    const codeStr = code ? ` <span class="exec-test-code">${code}</span>` : '';
+    if (status === 'running')  return `<span class="badge bg-primary">Running…</span>`;
+    if (status === 'passed')   return `<span class="badge bg-success">Pass</span>${codeStr}`;
+    if (status === 'failed')   return `<span class="badge bg-danger">Fail</span>${codeStr}`;
+    if (status === 'skipped')  return `<span class="badge bg-secondary">Skipped</span>`;
+    if (status === 'pending')  return `<span class="badge bg-light text-dark border">Pending</span>`;
+    return `<span class="badge bg-warning text-dark">Error</span>${codeStr}`;
+}
+
+function buildExecPanel(tests) {
+    const list = document.getElementById('execTestList');
+    list.innerHTML = tests.map((t, i) => `
+        <div class="exec-test-row" id="execRow_${i}">
+            <span class="exec-test-num">${i + 1}</span>
+            <span class="exec-test-name" title="${t.name}">${t.name}</span>
+            <span id="execBadge_${i}">${_statusBadge('pending')}</span>
+            <span id="execRowBtns_${i}" class="d-inline-flex gap-1 ms-1">
+                <button class="btn btn-sm btn-outline-secondary py-0 px-1 exec-skip-btn" id="execSkip_${i}"
+                        onclick="skipExecTest(${i})" title="Skip" style="font-size:0.7rem">
+                    <i class="bi bi-skip-forward-fill"></i>
+                </button>
+            </span>
+        </div>`).join('');
+
+    document.getElementById('execProgressText').textContent = `0 / ${tests.length}`;
+    document.getElementById('execProgressBar').style.width = '0%';
+    document.getElementById('execPanelFooter').classList.add('d-none');
+    document.getElementById('execCloseBtn').style.display = 'none';
+    // Reset global controls
+    document.getElementById('execGlobalControls')?.classList.remove('d-none');
+    document.getElementById('execGlobalPauseBtn')?.classList.remove('d-none');
+    document.getElementById('execGlobalContinueBtn')?.classList.add('d-none');
+    document.getElementById('execGlobalStopBtn').disabled = false;
+    document.getElementById('execHeaderIcon').className = 'bi bi-play-circle-fill text-success';
+    document.getElementById('execFloatingPanel').classList.remove('d-none');
+}
+
+function updateExecRow(i, status, code) {
+    const badge   = document.getElementById(`execBadge_${i}`);
+    const btnArea = document.getElementById(`execRowBtns_${i}`);
+    if (badge) badge.outerHTML = `<span id="execBadge_${i}">${_statusBadge(status, code)}</span>`;
+
+    if (!btnArea) return;
+    if (status === 'running' && _execMode === 'serial') {
+        // Show Pause / Continue / Stop on the active row; hide Skip
+        btnArea.innerHTML = `
+            <button class="btn btn-sm btn-outline-warning py-0 px-1" onclick="pauseExecution()" id="execPauseBtn" title="Pause after this test"><i class="bi bi-pause-fill"></i></button>
+            <button class="btn btn-sm btn-outline-success  py-0 px-1 d-none" onclick="continueExecution()" id="execContinueBtn" title="Continue"><i class="bi bi-play-fill"></i></button>
+            <button class="btn btn-sm btn-outline-danger   py-0 px-1" onclick="stopExecution()" id="execStopBtn" title="Stop after this test"><i class="bi bi-stop-fill"></i></button>`;
+        // Restore pause/continue state from flags
+        if (_execState.paused) {
+            document.getElementById('execPauseBtn')?.classList.add('d-none');
+            document.getElementById('execContinueBtn')?.classList.remove('d-none');
+        }
+    } else {
+        // Finished row — clear all controls
+        btnArea.innerHTML = '';
+    }
+
+    const row = document.getElementById(`execRow_${i}`);
+    if (row && status === 'running') row.scrollIntoView({ block: 'nearest' });
+}
+
+function updateExecProgress(done, total) {
+    document.getElementById('execProgressText').textContent = `${done} / ${total}`;
+    document.getElementById('execProgressBar').style.width = `${Math.round(done / total * 100)}%`;
+}
+
+function finishExecPanel(passed, failed, errors) {
+    // Hide global execution controls, show close button
+    document.getElementById('execGlobalControls')?.classList.add('d-none');
+    document.getElementById('execCloseBtn').style.display = '';
+    document.getElementById('execHeaderIcon').className = 'bi bi-check-circle-fill text-success';
+
+    const footer = document.getElementById('execPanelFooter');
+    footer.classList.remove('d-none');
+
+    const total = passed + failed + errors;
+    const colour = passed === total ? 'text-success' : (errors > 0 ? 'text-warning' : 'text-danger');
+    document.getElementById('execSummaryText').innerHTML =
+        `<span class="${colour} fw-semibold">Done</span> &nbsp;` +
+        `<span class="text-success">✓ ${passed}</span> &nbsp;` +
+        `<span class="text-danger">✗ ${failed}</span> &nbsp;` +
+        `<span class="text-warning">⚠ ${errors}</span>`;
+}
+
+function pauseExecution() {
+    _execState.paused = true;
+    // Global header buttons
+    document.getElementById('execGlobalPauseBtn')?.classList.add('d-none');
+    document.getElementById('execGlobalContinueBtn')?.classList.remove('d-none');
+    // Per-row running button (if mid-fetch)
+    document.getElementById('execPauseBtn')?.classList.add('d-none');
+    document.getElementById('execContinueBtn')?.classList.remove('d-none');
+}
+
+function continueExecution() {
+    _execState.paused = false;
+    // Global header buttons
+    document.getElementById('execGlobalContinueBtn')?.classList.add('d-none');
+    document.getElementById('execGlobalPauseBtn')?.classList.remove('d-none');
+    // Per-row buttons
+    document.getElementById('execContinueBtn')?.classList.add('d-none');
+    document.getElementById('execPauseBtn')?.classList.remove('d-none');
+}
+
+function stopExecution() {
+    _execState.stopped = true;
+    _execState.paused  = false;
+    // Hide global controls entirely
+    document.getElementById('execGlobalControls')?.classList.add('d-none');
+}
+
+function skipExecTest(i) {
+    _execState.skipped.add(i);
+    updateExecRow(i, 'skipped');
+    // If the loop is currently paused waiting on this row, resume so it can advance
+    if (_execState.paused) {
+        _execState.paused = false;
+    }
+}
+
+/* Show pause-state or pending-state controls on a not-yet-started row */
+function _showRowControls(i, state) {
+    const btnArea = document.getElementById(`execRowBtns_${i}`);
+    const badgeEl = document.getElementById(`execBadge_${i}`);
+    if (!btnArea) return;
+    if (state === 'paused') {
+        if (badgeEl) badgeEl.outerHTML = `<span id="execBadge_${i}"><span class="badge bg-warning text-dark"><i class="bi bi-pause-fill"></i> Paused</span></span>`;
+        btnArea.innerHTML = `
+            <button class="btn btn-sm btn-outline-success py-0 px-1" onclick="continueExecution()" id="execContinueBtn" title="Continue"><i class="bi bi-play-fill"></i></button>
+            <button class="btn btn-sm btn-outline-danger  py-0 px-1" onclick="stopExecution()"    id="execStopBtn"    title="Stop"><i class="bi bi-stop-fill"></i></button>`;
+    } else {
+        if (badgeEl) badgeEl.outerHTML = `<span id="execBadge_${i}">${_statusBadge('pending')}</span>`;
+        btnArea.innerHTML = `<button class="btn btn-sm btn-outline-secondary py-0 px-1 exec-skip-btn" onclick="skipExecTest(${i})" title="Skip" style="font-size:0.7rem"><i class="bi bi-skip-forward-fill"></i></button>`;
+    }
+}
+
+function closeExecPanel() {
+    document.getElementById('execFloatingPanel').classList.add('d-none');
+}
+
+function closeExecPanelAndReload() {
+    closeExecPanel();
+    location.reload();
+}
+
+async function executeBulkTests() {
+    const container = document.getElementById('folderSortableContainer');
+    const checked   = Array.from(container.querySelectorAll('.test-case-checkbox:checked'));
+    if (!checked.length) return;
+    const mode = document.querySelector('input[name="executionMode"]:checked')?.value || 'serial';
+    _execMode = mode;
+
+    const tests = checked.map(cb => {
+        const id  = parseInt(cb.dataset.tcId);
+        const row = container.querySelector(`tr[data-id="${id}"]`);
+        const name = row ? (row.cells[3]?.textContent.trim() || `#${id}`) : `#${id}`;
+        return { id, name };
+    });
+
+    bootstrap.Modal.getInstance(document.getElementById('bulkExecuteModal'))?.hide();
+    buildExecPanel(tests);
+    _execState = { paused: false, stopped: false, skipped: new Set() };
+
+    let passed = 0, failed = 0, errors = 0;
+
+    if (mode === 'parallel') {
+        // Pause/continue/stop are serial-only controls.
+        document.getElementById('execGlobalControls')?.classList.add('d-none');
+
+        let done = 0;
+        const total = tests.length;
+
+        const runOne = async (test, i) => {
+            updateExecRow(i, 'running');
+            try {
+                const res = await fetch('{% url "api:execute_test" %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                    body: JSON.stringify({ test_case_id: test.id })
+                }).then(r => r.json());
+
+                const status = res.result_status || 'error';
+                updateExecRow(i, status, res.response_status_code);
+                if (status === 'passed') passed++;
+                else if (status === 'failed') failed++;
+                else errors++;
+
+                const mainRow = container.querySelector(`tr[data-id="${test.id}"]`);
+                if (mainRow) {
+                    const resultCell = mainRow.cells[5];
+                    if (resultCell) resultCell.innerHTML = renderResultBadge(status);
+                }
+                
+                // Auto-download response files
+                if (res.execution_id) {
+                    setTimeout(() => {
+                        downloadResponseFile(res.execution_id, 'json');
+                        setTimeout(() => downloadResponseFile(res.execution_id, 'csv'), 300);
+                    }, 500);
+                }
+            } catch {
+                updateExecRow(i, 'error');
+                errors++;
+            } finally {
+                done++;
+                updateExecProgress(done, total);
+            }
+        };
+
+        await Promise.all(tests.map((test, i) => runOne(test, i)));
+        finishExecPanel(passed, failed, errors);
+        scheduleListRefreshBursts();
+        return;
+    }
+
+    for (let i = 0; i < tests.length; i++) {
+        if (_execState.skipped.has(i)) continue;
+
+        // If paused between tests, show Continue/Stop on this pending row and wait
+        if (_execState.paused && !_execState.stopped) {
+            _showRowControls(i, 'paused');
+            while (_execState.paused && !_execState.stopped) {
+                await sleep(150);
+            }
+            // Only reset to pending if not stopped (avoid flicker before skipped state)
+            if (!_execState.stopped) _showRowControls(i, 'pending');
+        }
+
+        if (_execState.stopped) {
+            for (let j = i; j < tests.length; j++) {
+                if (!_execState.skipped.has(j)) updateExecRow(j, 'skipped');
+            }
+            break;
+        }
+
+        updateExecRow(i, 'running');
+
+        try {
+            const res = await fetch('{% url "api:execute_test" %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                body: JSON.stringify({ test_case_id: tests[i].id })
+            }).then(r => r.json());
+
+            const status = res.result_status || 'error';
+            updateExecRow(i, status, res.response_status_code);
+            if (status === 'passed') passed++;
+            else if (status === 'failed') failed++;
+            else errors++;
+
+            // Refresh the badge in the main table
+            const mainRow = container.querySelector(`tr[data-id="${tests[i].id}"]`);
+            if (mainRow) {
+                const resultCell = mainRow.cells[5];
+                if (resultCell) {
+                    resultCell.innerHTML = renderResultBadge(status);
+                }
+            }
+            
+            // Auto-download response files
+            if (res.execution_id) {
+                setTimeout(() => {
+                    downloadResponseFile(res.execution_id, 'json');
+                    setTimeout(() => downloadResponseFile(res.execution_id, 'csv'), 300);
+                }, 500);
+            }
+        } catch {
+            updateExecRow(i, 'error');
+            errors++;
+        }
+
+        updateExecProgress(i + 1, tests.length);
+    }
+
+    finishExecPanel(passed, failed, errors);
+    scheduleListRefreshBursts();
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function downloadResponseFile(executionId, format) {
+    const jsonTemplate = "{% url 'api:execution_download_response_json' 0 %}";
+    const csvTemplate = "{% url 'api:execution_download_response_csv' 0 %}";
+    const url = format === 'json'
+        ? jsonTemplate.replace('/0/response/download/json/', `/${executionId}/response/download/json/`)
+        : csvTemplate.replace('/0/response/download/csv/', `/${executionId}/response/download/csv/`);
+    const link = document.createElement('a');
+    link.href = url;
+    link.click();
+}
+
+function getCsrfToken() {
+    const tokenFromCookie = getCookie('csrftoken');
+    if (tokenFromCookie) {
+        return tokenFromCookie;
+    }
+    const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    return tokenInput ? tokenInput.value : '';
+}
+
+function editFolder(folderId, folderName) {
+    document.getElementById('editFolderName').value = folderName;
+    document.getElementById('editFolderForm').action = `/testcases/projects/${folderId}/edit/`;
+    const modal = new bootstrap.Modal(document.getElementById('editFolderModal'));
+    modal.show();
+}
+
+function openDeleteFolderModal(folderId, folderName, testCaseCount) {
+    document.getElementById('deleteFolderModalTitle').textContent = `Delete "${folderName}"?`;
+    const msg = document.getElementById('deleteFolderModalMsg');
+    if (testCaseCount > 0) {
+        const action = (folderId === 'ungrouped')
+            ? `<strong>${testCaseCount}</strong> test case(s) will be <strong class="text-danger">permanently deleted</strong>.`
+            : `<strong>${testCaseCount}</strong> test case(s) inside will be moved to <strong>Ungrouped</strong>.`;
+        msg.innerHTML = `<span class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>${action}</span>`;
+    } else {
+        msg.innerHTML = `<span class="text-muted">This folder is empty and will be permanently removed.</span>`;
+    }
+    document.getElementById('deleteFolderConfirmBtn').onclick = function() {
+        const formId = (folderId === 'ungrouped') ? 'deleteFolderForm_ungrouped' : 'deleteFolderForm_' + folderId;
+        document.getElementById(formId).submit();
+    };
+    new bootstrap.Modal(document.getElementById('deleteFolderModal')).show();
+}
+
+function openDeleteTestCaseModal(testCaseId, testCaseName) {
+    document.getElementById('deleteTestCaseModalTitle').textContent = `Delete test case \"${testCaseName}\"?`;
+    document.getElementById('deleteTestCaseModalMsg').innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>This action is permanent and cannot be undone.</span>';
+    document.getElementById('deleteTestCaseConfirmBtn').onclick = function() {
+        const form = document.getElementById('deleteTestCaseForm_' + testCaseId);
+        if (form) {
+            form.submit();
+        }
+    };
+    new bootstrap.Modal(document.getElementById('deleteTestCaseModal')).show();
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    startListResultsPolling();
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+(function () {
+    const csrfToken = getCsrfToken();
+
+    function postOrder(url, ids) {
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ ids: ids })
+        });
+    }
+
+    // Drag folders
+    const folderContainer = document.querySelector('.card .card-body > div:last-of-type') || document.querySelector('.card .card-body');
+    const folderWrapper = document.getElementById('folderSortableContainer');
+    if (folderWrapper) {
+        Sortable.create(folderWrapper, {
+            animation: 150,
+            handle: '.folder-drag-handle',
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            onEnd: function () {
+                const ids = Array.from(folderWrapper.children)
+                    .map(el => el.dataset.id)
+                    .filter(id => id && id !== 'ungrouped')
+                    .map(Number);
+                postOrder('{% url "api:reorder_projects" %}', ids);
+            }
+        });
+    }
+
+    // Drag test cases within each folder
+    document.querySelectorAll('.tc-sortable').forEach(function (tbody) {
+        Sortable.create(tbody, {
+            animation: 150,
+            handle: '.tc-drag-handle',
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            onEnd: function () {
+                const ids = Array.from(tbody.querySelectorAll('tr[data-id]'))
+                    .map(tr => parseInt(tr.dataset.id, 10));
+                postOrder('{% url "api:reorder_testcases" %}', ids);
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}
+
+

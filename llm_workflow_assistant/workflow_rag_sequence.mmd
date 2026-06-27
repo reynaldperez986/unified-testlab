@@ -1,0 +1,93 @@
+sequenceDiagram
+    participant U as User / Browser
+    participant V as Django Views
+    participant R as rag_service
+    participant F as finetune_service
+    participant D as document_builder
+    participant PG as PostgreSQL + pgvector
+    participant O as Ollama API
+
+    note over U,O: ── Ask (Q&A) ──
+    U->>V: POST /api/workflow-assistant/query/
+    V->>R: query_workflow_assistant(question)
+    R->>O: POST /api/embed (nomic-embed-text)
+    O-->>R: query vector [768]
+    R->>PG: hybrid search (vec*0.62 + kw*0.38)
+    PG-->>R: top-12 documents
+    R->>O: POST /api/generate (llama3)
+    O-->>R: answer text
+    R-->>V: {answer, sources}
+    V-->>U: JSON response
+
+    note over U,O: ── Search (no LLM) ──
+    U->>V: POST /api/workflow-assistant/search/
+    V->>F: search_rag_documents(query)
+    F->>O: POST /api/embed (nomic-embed-text)
+    O-->>F: query vector [768]
+    F->>PG: hybrid search (vec*0.62 + kw*0.38)
+    PG-->>F: ranked results
+    F-->>V: {query, count, results}
+    V-->>U: JSON response
+
+    note over U,O: ── Generate (Robot Framework) ──
+    U->>V: POST /api/workflow-assistant/generate/
+    V->>F: generate_test_script(prompt)
+    F->>O: POST /api/generate (llama3-finetuned)
+    O-->>F: .robot script text
+    F-->>V: {script, model, elapsed_ms}
+    V-->>U: JSON response
+
+    note over U,O: ── Fine-tune: Build Dataset ──
+    U->>V: POST /api/workflow-assistant/finetune/ {action: build_dataset}
+    V->>F: build_finetune_dataset()
+    F->>PG: SELECT * FROM ai_rag_document
+    PG-->>F: all embedded rows
+    F-->>V: {count, jsonl}
+    V-->>U: JSONL download
+
+    note over U,O: ── Fine-tune: Create Model ──
+    U->>V: POST /api/workflow-assistant/finetune/ {action: create_model}
+    V->>F: create_finetuned_model()
+    F->>O: POST /api/create (FROM llama3 + SYSTEM prompt)
+    O-->>F: ok
+    F-->>V: {ok, model, base_model, elapsed_ms}
+    V-->>U: JSON response
+
+    note over U,O: ── Fine-tune: Check Status ──
+    U->>V: GET /api/workflow-assistant/finetune/status/
+    V->>F: get_finetune_status()
+    F->>O: GET /api/tags
+    O-->>F: model list
+    F-->>V: {exists, model}
+    V-->>U: JSON response
+
+    note over U,O: ── Index Rebuild (background) ──
+    U->>V: POST /api/workflow-assistant/rebuild/
+    V->>R: queue_rag_rebuild()
+    R->>R: set status=queued, spawn thread
+    R->>D: build_rag_documents()
+    D->>PG: SELECT steps, ai_workflow, ai_databank
+    PG-->>D: source rows
+    D-->>R: normalised documents
+    R->>PG: TRUNCATE ai_rag_document_staging
+    R->>PG: INSERT INTO ai_rag_document_staging
+    loop each batch
+        R->>O: POST /api/embed (nomic-embed-text)
+        O-->>R: embeddings
+        R->>PG: UPDATE staging SET embedding
+        R->>PG: UPDATE ai_rag_sync_state (progress)
+    end
+    R->>PG: TRUNCATE ai_rag_document
+    R->>PG: INSERT INTO ai_rag_document SELECT * FROM staging
+    R->>PG: UPDATE ai_rag_sync_state → idle
+
+    note over U,O: ── Poll Rebuild Status ──
+    U->>V: GET /api/workflow-assistant/status/ (every 3s)
+    V->>R: get_rag_status()
+    R->>PG: SELECT FROM ai_rag_sync_state
+    alt stale running (no live thread)
+        R->>PG: reset status → idle
+    end
+    PG-->>R: {status, progress, counts}
+    R-->>V: sync dict
+    V-->>U: JSON response

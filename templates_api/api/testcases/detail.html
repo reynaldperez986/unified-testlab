@@ -1,0 +1,426 @@
+{% extends 'api/base.html' %}
+
+{% block title %}{{ test_case.name }} - API TestLab{% endblock %}
+{% block page_title %}Test Case Detail{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <span class="method-badge method-{{ test_case.http_method }}">{{ test_case.http_method }}</span>
+                    {{ test_case.name }}
+                </h6>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex gap-2">
+                        <button id="btn-report-csv" class="btn btn-sm btn-outline-secondary" type="button" disabled title="Download CSV report"><i class="bi bi-filetype-csv"></i> CSV</button>
+                        <button id="btn-report-pdf" class="btn btn-sm btn-outline-danger" type="button" disabled title="Download PDF report"><i class="bi bi-filetype-pdf"></i> PDF</button>
+                        <button id="btn-report-doc" class="btn btn-sm btn-outline-primary" type="button" disabled title="Download DOC report"><i class="bi bi-file-earmark-word"></i> DOC</button>
+                    </div>
+                    {% if user.api_profile.role != 'viewer' %}
+                    <a href="{% url 'api:testcase_edit' test_case.pk %}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-pencil"></i> Edit
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-header border-top-0 pb-0">
+                <ul class="nav nav-tabs card-header-tabs" id="detailTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="details-tab" data-bs-toggle="tab" data-bs-target="#details-pane" type="button" role="tab" aria-controls="details-pane" aria-selected="true">Details</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="executions-tab" data-bs-toggle="tab" data-bs-target="#executions-pane" type="button" role="tab" aria-controls="executions-pane" aria-selected="false">Recent Executions</button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="detailTabsContent">
+                    <div class="tab-pane fade show active" id="details-pane" role="tabpanel" aria-labelledby="details-tab" tabindex="0">
+                        <table class="table table-sm">
+                            <tr><th width="200">Endpoint</th><td><code>{{ test_case.endpoint }}</code></td></tr>
+                            <tr><th>Module</th><td>{{ test_case.module|default:"-" }}</td></tr>
+                            <tr><th>Project</th><td>{{ test_case.project|default:"-" }}</td></tr>
+                            <tr><th>Description</th><td>{{ test_case.description|default:"-" }}</td></tr>
+                            <tr><th>Auth Type</th><td>{{ test_case.get_auth_type_display }}</td></tr>
+                            <tr><th>Expected Status</th><td>{{ test_case.expected_status_code|default:"-" }}</td></tr>
+                            <tr><th>Max Response Time</th><td>{{ test_case.expected_response_time_ms|default:"-" }} ms</td></tr>
+                            <tr><th>Created By</th><td>{{ test_case.created_by.username|default:"-" }}</td></tr>
+                            <tr><th>Created At</th><td>{{ test_case.created_at|date:"M d, Y H:i" }}</td></tr>
+                        </table>
+
+                        {% if test_case.headers and test_case.headers != '{}' %}
+                        <h6 class="mt-3">Headers</h6>
+                        <pre class="bg-light p-3 rounded"><code>{{ test_case.headers }}</code></pre>
+                        {% endif %}
+
+                        {% if test_case.query_params and test_case.query_params != '{}' %}
+                        <h6 class="mt-3">Query Parameters</h6>
+                        <pre class="bg-light p-3 rounded"><code>{{ test_case.query_params }}</code></pre>
+                        {% endif %}
+
+                        {% if test_case.request_body %}
+                        <h6 class="mt-3">Request Body</h6>
+                        <pre class="bg-light p-3 rounded"><code>{{ test_case.request_body }}</code></pre>
+                        {% endif %}
+
+                        {% if test_case.expected_response_content %}
+                        <h6 class="mt-3">Expected Response Content</h6>
+                        <pre class="bg-light p-3 rounded"><code>{{ test_case.expected_response_content }}</code></pre>
+                        {% endif %}
+
+                    </div>
+
+                    <div class="tab-pane fade" id="executions-pane" role="tabpanel" aria-labelledby="executions-tab" tabindex="0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Environment</th>
+                                        <th>Result</th>
+                                        <th>Status Code</th>
+                                        <th>Time</th>
+                                        <th>Executed By</th>
+                                        <th>Date</th>
+                                        <th>Reports</th>
+                                        <th>View</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-executions-body">
+                                    {% for ex in executions %}
+                                    <tr>
+                                        <td>{{ ex.environment.name|default:"-" }}</td>
+                                        <td><span class="badge badge-{{ ex.result_status }}">{{ ex.result_status|upper }}</span></td>
+                                        <td>{{ ex.response_status_code|default:"-" }}</td>
+                                        <td>{{ ex.response_time_ms|default:"-" }} ms</td>
+                                        <td>{{ ex.executed_by.username|default:"-" }}</td>
+                                        <td>{{ ex.executed_at|date:"M d, H:i" }}</td>
+                                        <td class="text-nowrap">
+                                            <a href="{% url 'api:execution_download_csv' ex.pk %}" class="btn btn-sm btn-outline-secondary" title="CSV Report"><i class="bi bi-filetype-csv"></i></a>
+                                            <a href="{% url 'api:execution_download_pdf' ex.pk %}" class="btn btn-sm btn-outline-danger" title="PDF Report"><i class="bi bi-filetype-pdf"></i></a>
+                                            <a href="{% url 'api:execution_download_docx' ex.pk %}" class="btn btn-sm btn-outline-primary" title="DOC Report"><i class="bi bi-file-earmark-word"></i></a>
+                                        </td>
+                                        <td>
+                                            <a href="{% url 'api:execution_detail' ex.pk %}" class="btn btn-sm btn-outline-secondary" title="View Execution">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr><td colspan="8" class="text-center text-muted py-3">No executions yet.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Execute Panel -->
+    <div class="col-md-4">
+        {% if user.api_profile.role != 'viewer' %}
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0"><i class="bi bi-play-circle"></i> Execute Test</h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info py-2 mb-3" role="alert">
+                    Environment is selected automatically from active environments. Module/test authentication rules will be applied.
+                </div>
+                <button id="btn-execute" class="btn btn-primary w-100" onclick="executeTest()">
+                    <i class="bi bi-play-fill"></i> Run Test
+                </button>
+                <div id="exec-loading" class="text-center mt-3 d-none">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="text-muted small mt-2">Executing...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Panel -->
+        <div id="exec-result" class="card mt-3 d-none">
+            <div class="card-header">
+                <h6 class="mb-0">Execution Result <span id="live-refresh-indicator" class="badge bg-secondary ms-2">Auto-refresh ON</span></h6>
+            </div>
+            <div class="card-body">
+                <div id="result-status" class="mb-3"></div>
+                <table class="table table-sm">
+                    <tr><th>Environment</th><td id="res-environment"></td></tr>
+                    <tr><th>Auth Source</th><td id="res-auth-source"></td></tr>
+                    <tr><th>Status Code</th><td id="res-status-code"></td></tr>
+                    <tr><th>Response Time</th><td id="res-time"></td></tr>
+                    <tr><th>Status Match</th><td id="res-status-match"></td></tr>
+                    <tr><th>Content Match</th><td id="res-content-match"></td></tr>
+                    <tr><th>Time Check</th><td id="res-time-check"></td></tr>
+                </table>
+                <h6 class="mt-3">Response Body</h6>
+                <pre id="res-body" class="bg-light p-3 rounded" style="max-height:300px;overflow:auto;font-size:0.8rem;"></pre>
+                <div id="res-error" class="text-danger d-none"></div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let recentExecutionsPoller = null;
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderRecentExecutions(rows) {
+    const tbody = document.getElementById('recent-executions-body');
+    if (!tbody) return;
+
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No executions yet.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = rows.map(row => {
+        const statusCode = row.response_status_code == null ? '-' : row.response_status_code;
+        const responseTime = row.response_time_ms == null ? '-' : `${row.response_time_ms} ms`;
+        const statusClass = `badge-${(row.result_status || '').toLowerCase()}`;
+        const statusLabel = (row.result_status || '-').toUpperCase();
+        const reportCsvTemplate = "{% url 'api:execution_download_csv' 0 %}";
+        const reportPdfTemplate = "{% url 'api:execution_download_pdf' 0 %}";
+        const reportDocTemplate = "{% url 'api:execution_download_docx' 0 %}";
+        const reportCsvUrl = reportCsvTemplate.replace('/0/download/csv/', `/${row.id}/download/csv/`);
+        const reportPdfUrl = reportPdfTemplate.replace('/0/download/pdf/', `/${row.id}/download/pdf/`);
+        const reportDocUrl = reportDocTemplate.replace('/0/download/docx/', `/${row.id}/download/docx/`);
+        return `
+            <tr>
+                <td>${row.environment || '-'}</td>
+                <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+                <td>${statusCode}</td>
+                <td>${responseTime}</td>
+                <td>${row.executed_by || '-'}</td>
+                <td>${row.executed_at || '-'}</td>
+                <td class="text-nowrap">
+                    <a href="${reportCsvUrl}" class="btn btn-sm btn-outline-secondary" title="CSV Report"><i class="bi bi-filetype-csv"></i></a>
+                    <a href="${reportPdfUrl}" class="btn btn-sm btn-outline-danger" title="PDF Report"><i class="bi bi-filetype-pdf"></i></a>
+                    <a href="${reportDocUrl}" class="btn btn-sm btn-outline-primary" title="DOC Report"><i class="bi bi-file-earmark-word"></i></a>
+                </td>
+                <td>
+                    <a href="${row.detail_url}" class="btn btn-sm btn-outline-secondary" title="View Execution">
+                        <i class="bi bi-eye"></i>
+                    </a>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function refreshRecentExecutions() {
+    fetch('{% url "api:testcase_recent_executions" test_case.pk %}', { cache: 'no-store' })
+        .then(response => response.json())
+        .then(data => {
+            renderRecentExecutions(data.rows || []);
+        })
+        .catch(() => {
+            // Silent fail; polling will retry.
+        });
+}
+
+function prependExecutionFromRunResult(data) {
+    const tbody = document.getElementById('recent-executions-body');
+    if (!tbody || !data || !data.execution_id) return;
+
+    const noRows = tbody.querySelectorAll('tr td.text-center.text-muted').length > 0;
+    if (noRows) {
+        tbody.innerHTML = '';
+    }
+
+    const row = document.createElement('tr');
+    const statusClass = `badge-${String(data.result_status || '').toLowerCase()}`;
+    const statusLabel = String(data.result_status || '-').toUpperCase();
+    const statusCode = data.response_status_code == null ? '-' : data.response_status_code;
+    const responseTime = data.response_time_ms == null ? '-' : `${data.response_time_ms} ms`;
+    const now = new Date();
+    const executedAt = now.toLocaleString('en-US', {
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).replace(',', '');
+
+    const detailTemplate = "{% url 'api:execution_detail' 0 %}";
+    row.innerHTML = `
+        <td>${escapeHtml(data.environment_name || '-')}</td>
+        <td><span class="badge ${statusClass}">${escapeHtml(statusLabel)}</span></td>
+        <td>${escapeHtml(statusCode)}</td>
+        <td>${escapeHtml(responseTime)}</td>
+        <td>{{ user.username }}</td>
+        <td>${escapeHtml(executedAt)}</td>
+        <td>
+            <a href="${detailTemplate.replace('/0/', `/${encodeURIComponent(data.execution_id)}/`)}" class="btn btn-sm btn-outline-secondary" title="View Execution">
+                <i class="bi bi-eye"></i>
+            </a>
+        </td>
+    `;
+
+    if (tbody.firstChild) {
+        tbody.insertBefore(row, tbody.firstChild);
+    } else {
+        tbody.appendChild(row);
+    }
+
+    const rows = tbody.querySelectorAll('tr');
+    if (rows.length > 20) {
+        tbody.removeChild(rows[rows.length - 1]);
+    }
+}
+
+function downloadResponseFile(executionId, format) {
+    const jsonTemplate = "{% url 'api:execution_download_response_json' 0 %}";
+    const csvTemplate = "{% url 'api:execution_download_response_csv' 0 %}";
+    const url = format === 'json'
+        ? jsonTemplate.replace('/0/response/download/json/', `/${executionId}/response/download/json/`)
+        : csvTemplate.replace('/0/response/download/csv/', `/${executionId}/response/download/csv/`);
+    const link = document.createElement('a');
+    link.href = url;
+    link.click();
+}
+
+function downloadExecutionReport(executionId, format) {
+    const csvTemplate = "{% url 'api:execution_download_csv' 0 %}";
+    const pdfTemplate = "{% url 'api:execution_download_pdf' 0 %}";
+    const docTemplate = "{% url 'api:execution_download_docx' 0 %}";
+
+    let url = csvTemplate.replace('/0/download/csv/', `/${executionId}/download/csv/`);
+    if (format === 'pdf') {
+        url = pdfTemplate.replace('/0/download/pdf/', `/${executionId}/download/pdf/`);
+    } else if (format === 'doc') {
+        url = docTemplate.replace('/0/download/docx/', `/${executionId}/download/docx/`);
+    }
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.click();
+}
+
+function bindExecutionReportButtons(executionId) {
+    const csvBtn = document.getElementById('btn-report-csv');
+    const pdfBtn = document.getElementById('btn-report-pdf');
+    const docBtn = document.getElementById('btn-report-doc');
+    if (!csvBtn || !pdfBtn || !docBtn) return;
+
+    [csvBtn, pdfBtn, docBtn].forEach(btn => {
+        btn.disabled = !executionId;
+    });
+
+    if (!executionId) return;
+    csvBtn.onclick = () => downloadExecutionReport(executionId, 'csv');
+    pdfBtn.onclick = () => downloadExecutionReport(executionId, 'pdf');
+    docBtn.onclick = () => downloadExecutionReport(executionId, 'doc');
+}
+
+function executeTest() {
+    const btn = document.getElementById('btn-execute');
+    const loading = document.getElementById('exec-loading');
+    const resultPanel = document.getElementById('exec-result');
+
+    btn.disabled = true;
+    loading.classList.remove('d-none');
+    resultPanel.classList.add('d-none');
+
+    fetch('{% url "api:execute_test" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            test_case_id: {{ test_case.pk }}
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        btn.disabled = false;
+        loading.classList.add('d-none');
+        resultPanel.classList.remove('d-none');
+
+        const statusDiv = document.getElementById('result-status');
+        if (data.result_status === 'passed') {
+            statusDiv.innerHTML = '<span class="badge badge-passed fs-6">PASSED</span>';
+        } else if (data.result_status === 'failed') {
+            statusDiv.innerHTML = '<span class="badge badge-failed fs-6">FAILED</span>';
+        } else {
+            statusDiv.innerHTML = '<span class="badge badge-error fs-6">ERROR</span>';
+        }
+
+        document.getElementById('res-environment').textContent = data.environment_name || '-';
+        document.getElementById('res-auth-source').textContent = data.auth_source || '-';
+        document.getElementById('res-status-code').textContent = data.response_status_code || '-';
+        document.getElementById('res-time').textContent = data.response_time_ms ? data.response_time_ms + ' ms' : '-';
+
+        const checkIcon = (val) => {
+            if (val === true) return '<i class="bi bi-check-circle-fill text-success"></i> Pass';
+            if (val === false) return '<i class="bi bi-x-circle-fill text-danger"></i> Fail';
+            return '<span class="text-muted">N/A</span>';
+        };
+        document.getElementById('res-status-match').innerHTML = checkIcon(data.status_code_match);
+        document.getElementById('res-content-match').innerHTML = checkIcon(data.content_match);
+        document.getElementById('res-time-check').innerHTML = checkIcon(data.time_within_threshold);
+
+        const resBody = document.getElementById('res-body');
+        const resError = document.getElementById('res-error');
+
+        if (data.error_message) {
+            resError.classList.remove('d-none');
+            resError.textContent = data.error_message;
+            resBody.textContent = '';
+        } else {
+            resError.classList.add('d-none');
+            try {
+                resBody.textContent = JSON.stringify(JSON.parse(data.response_body), null, 2);
+            } catch {
+                resBody.textContent = data.response_body;
+            }
+        }
+
+        prependExecutionFromRunResult(data);
+        bindExecutionReportButtons(data.execution_id);
+        refreshRecentExecutions();
+        setTimeout(refreshRecentExecutions, 600);
+        setTimeout(refreshRecentExecutions, 1500);
+        
+        // Auto-download response files
+        if (data.execution_id) {
+            setTimeout(() => {
+                downloadResponseFile(data.execution_id, 'json');
+                setTimeout(() => downloadResponseFile(data.execution_id, 'csv'), 300);
+            }, 500);
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        loading.classList.add('d-none');
+        alert('Error executing test: ' + err.message);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    startRecentExecutionsAutoRefresh();
+    bindExecutionReportButtons(null);
+});
+</script>
+{% endblock %}
+
+

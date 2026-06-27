@@ -1,0 +1,236 @@
+{% extends "recorder/base.html" %}
+
+{% block title %}AI{% endblock %}
+
+{% block content %}
+<style>
+  .aihub-shell { display: grid; gap: 1rem; }
+  .aihub-hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .aihub-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .35rem .75rem;
+    border-radius: 999px;
+    background: rgba(31, 111, 182, 0.12);
+    color: #1f6fb6;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    margin-bottom: .7rem;
+  }
+  .aihub-subtitle {
+    max-width: 60rem;
+    margin: .6rem 0 0;
+    color: #5f748a;
+    font-size: .96rem;
+    line-height: 1.6;
+  }
+  .aihub-stat {
+    display: inline-flex;
+    flex-direction: column;
+    min-width: 12rem;
+    padding: .95rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(31,111,182,0.14);
+    background: rgba(255,255,255,0.72);
+    box-shadow: 0 14px 24px rgba(20,52,87,0.08);
+  }
+  .aihub-stat-label {
+    font-size: .75rem;
+    color: #60758b;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: .25rem;
+  }
+  .aihub-stat-value {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #17324f;
+  }
+  .aihub-tabs {
+    display: inline-flex;
+    gap: .55rem;
+    padding: .35rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.76);
+    border: 1px solid rgba(31,111,182,0.12);
+    box-shadow: 0 12px 24px rgba(20,52,87,0.06);
+    flex-wrap: wrap;
+  }
+  .aihub-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    border: 0;
+    border-radius: 999px;
+    padding: .6rem 1rem;
+    background: transparent;
+    color: #4f6479;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .aihub-tab.is-active {
+    background: linear-gradient(135deg, #1f6fb6, #154f85);
+    color: #fff;
+    box-shadow: 0 10px 18px rgba(20, 79, 133, 0.22);
+  }
+  .aihub-panel {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(31,111,182,0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.84), rgba(245,249,253,0.96));
+    box-shadow: 0 18px 34px rgba(20,52,87,0.08);
+    overflow: hidden;
+  }
+  .aihub-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1rem 0;
+    flex-wrap: wrap;
+  }
+  .aihub-panel-title {
+    color: #17324f;
+    font-size: .92rem;
+    font-weight: 800;
+  }
+  .aihub-panel-note {
+    color: #60758b;
+    font-size: .82rem;
+  }
+  .aihub-panel-body {
+    padding: 1rem;
+  }
+  .aihub-section {
+    scroll-margin-top: 1rem;
+  }
+  @media (max-width: 767.98px) {
+    .aihub-tabs { display: grid; width: 100%; }
+    .aihub-tab { width: 100%; text-align: left; }
+  }
+</style>
+
+<div class="aihub-shell">
+  <div class="page-header-shell">
+    <div class="aihub-hero">
+      <div>
+        <div class="aihub-kicker"><i class="bi bi-stars"></i> Unified AI Workspace</div>
+        <h1 class="page-title"><i class="bi bi-stars"></i> AI</h1>
+        <p class="aihub-subtitle">Use one page for AI Databank objects, locator usage stats, AI Databank flow, and AI RAG. Switch panels without leaving the AI workspace.</p>
+      </div>
+      <div class="aihub-stat">
+        <span class="aihub-stat-label">Active Panel</span>
+        <span class="aihub-stat-value" id="aihubActiveLabel">AI Databank</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="aihub-tabs" role="tablist" aria-label="AI sections">
+    <a href="#ai-section-databank" class="aihub-tab{% if active_ai_tab == 'databank' %} is-active{% endif %}" data-tab="databank"><i class="bi bi-database"></i> AI Databank</a>
+    <a href="#ai-section-flow" class="aihub-tab{% if active_ai_tab == 'flow' %} is-active{% endif %}" data-tab="flow"><i class="bi bi-diagram-3"></i> AI Flow</a>
+    <a href="#ai-section-workflow" class="aihub-tab{% if active_ai_tab == 'workflow' %} is-active{% endif %}" data-tab="workflow"><i class="bi bi-cpu"></i> AI RAG</a>
+    <a href="#ai-section-stats" class="aihub-tab{% if active_ai_tab == 'stats' %} is-active{% endif %}" data-tab="stats"><i class="bi bi-bar-chart-line"></i> Locator Stats</a>
+  </div>
+
+  <section class="aihub-panel aihub-section" id="ai-section-databank">
+    <div class="aihub-panel-head">
+      <div>
+        <div class="aihub-panel-title">AI Databank</div>
+        <div class="aihub-panel-note">Captured objects, locators, screenshots, and filters now live directly in the unified AI page.</div>
+      </div>
+    </div>
+    <div class="aihub-panel-body">
+      {% include "recorder/partials/ai_databank_content.html" %}
+    </div>
+  </section>
+
+  <section class="aihub-panel aihub-section" id="ai-section-flow">
+    <div class="aihub-panel-head">
+      <div>
+        <div class="aihub-panel-title">AI Databank Flow</div>
+        <div class="aihub-panel-note">Page relationships and saved workflow maps are rendered natively here without an embedded panel.</div>
+      </div>
+    </div>
+    <div class="aihub-panel-body">
+      {% include "recorder/partials/ai_databank_flow_content.html" %}
+    </div>
+  </section>
+
+  <section class="aihub-panel aihub-section" id="ai-section-workflow">
+    <div class="aihub-panel-head">
+      <div>
+        <div class="aihub-panel-title">AI RAG</div>
+        <div class="aihub-panel-note">Ask, search, generate, and fine-tune inside the same AI workspace.</div>
+      </div>
+    </div>
+    <div class="aihub-panel-body">
+      {% include "recorder/partials/workflow_assistant_content.html" %}
+    </div>
+  </section>
+
+  <section class="aihub-panel aihub-section" id="ai-section-stats">
+    <div class="aihub-panel-head">
+      <div>
+        <div class="aihub-panel-title">Locator Stats</div>
+        <div class="aihub-panel-note">Track which locator strategies actually succeeded during replay, grouped and filterable by record name.</div>
+      </div>
+    </div>
+    <div class="aihub-panel-body">
+      {% include "recorder/partials/ai_locator_stats_content.html" %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "recorder/partials/ai_databank_scripts.html" %}
+{% include "recorder/partials/ai_databank_flow_scripts.html" %}
+{% include "recorder/partials/workflow_assistant_scripts.html" %}
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.aihub-tab'));
+  var activeLabel = document.getElementById('aihubActiveLabel');
+  var tabTargets = {
+    databank: document.getElementById('ai-section-databank'),
+    flow: document.getElementById('ai-section-flow'),
+    stats: document.getElementById('ai-section-stats'),
+    workflow: document.getElementById('ai-section-workflow')
+  };
+
+  function setActive(tab, push) {
+    if (!tab) return;
+    tabs.forEach(function (btn) { btn.classList.toggle('is-active', btn === tab); });
+    var key = tab.getAttribute('data-tab') || 'databank';
+    var labels = { databank: 'AI Databank', flow: 'AI Databank Flow', stats: 'Locator Stats', workflow: 'AI RAG' };
+    var title = labels[key] || 'AI';
+    if (activeLabel) activeLabel.textContent = title;
+    if (tabTargets[key]) {
+      tabTargets[key].scrollIntoView({ behavior: push ? 'smooth' : 'auto', block: 'start' });
+    }
+    if (push) {
+      var url = new URL(window.location.href);
+      url.searchParams.set('tab', key);
+      window.history.replaceState({}, '', url.toString());
+    }
+  }
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function (event) {
+      event.preventDefault();
+      setActive(tab, true);
+    });
+  });
+
+  var initial = document.querySelector('.aihub-tab.is-active') || tabs[0];
+  window.setTimeout(function () { setActive(initial, false); }, 0);
+})();
+</script>
+{% endblock %}

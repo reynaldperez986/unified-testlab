@@ -1,0 +1,244 @@
+{% extends "recorder/base.html" %}
+{% block title %}Last Run — {{ record_name|default:record_id }}{% endblock %}
+
+{% block content %}
+<style>
+  .last-run-record-name {
+    min-width: 0;
+    word-break: break-word;
+  }
+  .last-run-progress-legend {
+    row-gap: .35rem;
+  }
+  @media (max-width: 768px) {
+    .last-run-meta {
+      align-items: stretch !important;
+    }
+    .last-run-meta .btn,
+    .last-run-meta .text-muted {
+      width: 100%;
+    }
+  }
+</style>
+<div class="page-header-shell">
+  <div class="d-flex align-items-center flex-wrap gap-2">
+    <a href="{% url 'sessions_list' %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Projects
+    </a>
+    <a href="{% url 'session_steps' record_id %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-list-ul"></i> Steps
+    </a>
+    <h5 class="page-title fw-bold mb-0 ms-1"><i class="bi bi-clock-history"></i> Last Run</h5>
+    {% if record_name %}<span class="fw-semibold ms-1 last-run-record-name">{{ record_name }}</span>{% endif %}
+  </div>
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <a href="{% url 'ai_locator_stats' %}?record_name={{ record_name|default:record_id|urlencode }}{% if latest_run_day %}&date_from={{ latest_run_day|urlencode }}&date_to={{ latest_run_day|urlencode }}{% endif %}" class="btn btn-sm btn-outline-success">
+      <i class="bi bi-bar-chart-line"></i> <span class="d-none d-sm-inline">Locator Stats</span>
+    </a>
+    {% if run_id %}
+    <a href="{% url 'download_run' run_id 'pdf' %}" class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-download"></i> <span class="d-none d-sm-inline">Download</span>
+    </a>
+    {% endif %}
+
+  </div>
+</div>
+
+{% if not run_id %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle"></i>
+  No replay runs found for this session yet.
+  <a href="{% url 'replay' record_id %}" class="alert-link ms-1">
+    <i class="bi bi-play-circle"></i> Start a Replay
+  </a>
+</div>
+
+{% else %}
+
+{# ── Summary bar ─────────────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-sm-6 col-md-3">
+    <div class="card text-center shadow-sm border-0 bg-light">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold">{{ total }}</div>
+        <div class="text-muted small">Total Steps</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-6 col-md-3">
+    <div class="card text-center shadow-sm border-0 bg-success bg-opacity-10">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold text-success">{{ passed }}</div>
+        <div class="text-muted small">Passed</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-6 col-md-3">
+    <div class="card text-center shadow-sm border-0 bg-danger bg-opacity-10">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold text-danger">{{ failed }}</div>
+        <div class="text-muted small">Failed</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-6 col-md-3">
+    <div class="card text-center shadow-sm border-0 bg-secondary bg-opacity-10">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold text-secondary">{{ not_executed }}</div>
+        <div class="text-muted small">Not Executed</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Progress bar ─────────────────────────────────────────────── #}
+{% if total %}
+<div class="mb-4">
+  <div class="progress" style="height:18px; border-radius:8px;">
+    {% if passed %}
+    <div class="progress-bar bg-success" style="width:{% widthratio passed total 100 %}%"
+         title="{{ passed }} passed">
+      {% if passed > 1 %}{{ passed }}{% endif %}
+    </div>
+    {% endif %}
+    {% if failed %}
+    <div class="progress-bar bg-danger" style="width:{% widthratio failed total 100 %}%"
+         title="{{ failed }} failed">
+      {% if failed > 1 %}{{ failed }}{% endif %}
+    </div>
+    {% endif %}
+    {% if not_executed %}
+    <div class="progress-bar bg-secondary bg-opacity-50" style="width:{% widthratio not_executed total 100 %}%"
+         title="{{ not_executed }} not executed">
+    </div>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-3 mt-1 small text-muted flex-wrap last-run-progress-legend">
+    <span><span class="badge bg-success">&nbsp;</span> Pass</span>
+    <span><span class="badge bg-danger">&nbsp;</span> Fail</span>
+    <span><span class="badge bg-secondary">&nbsp;</span> Not Executed</span>
+  </div>
+</div>
+{% endif %}
+
+{# ── Run metadata ─────────────────────────────────────────────── #}
+<div class="mb-3 d-flex align-items-center flex-wrap gap-3 last-run-meta">
+  <a href="{% url 'replay' record_id %}" class="btn btn-sm btn-outline-success">
+    <i class="bi bi-arrow-repeat"></i> Play Again
+  </a>
+  {% with first_row=rows.object_list|first %}
+  {% if first_row and first_row.run_date %}
+  <span class="text-muted small"><i class="bi bi-calendar3 me-1"></i>Run date: <strong>{{ first_row.run_date|date:"Y-m-d H:i:s" }}</strong></span>
+  {% endif %}
+  {% if first_row and first_row.runner %}
+  <span class="text-muted small"><i class="bi bi-person me-1"></i>Runner: <strong>{{ first_row.runner }}</strong></span>
+  {% endif %}
+  {% endwith %}
+</div>
+
+{# ── Step results table ───────────────────────────────────────── #}
+<div class="card shadow-sm">
+  <div class="table-responsive" style="max-height:65vh;overflow-y:auto;">
+    <table class="table table-sm align-middle mb-0 mobile-stack-table">
+      <thead class="table-dark" style="position:sticky;top:0;z-index:1;">
+        <tr>
+          <th style="width:40px" class="text-center"><i class="bi bi-cpu"></i></th>
+          <th style="width:55px">#</th>
+          <th>Page URL</th>
+          <th>Action</th>
+          <th>Steps</th>
+          <th style="width:110px" class="text-center">Status</th>
+          <th style="width:60px" class="text-center">Screenshot</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{% if r.status == 'pass' %}table-success{% elif r.status == 'fail' %}table-danger{% else %}table-secondary{% endif %}">
+          <td class="text-center" data-label="Engine">
+            {% if r.engine == 'playwright' %}
+              <i class="bi bi-lightning-charge-fill text-success" title="Playwright"></i>
+            {% else %}
+              <i class="bi bi-browser-chrome text-warning" title="Selenium"></i>
+            {% endif %}
+          </td>
+          <td class="small text-muted mobile-compact-cell" data-label="#">{{ r.step_no }}</td>
+          <td class="small text-truncate" data-label="Page URL" style="max-width:120px;">
+            <a href="{{ r.page_url }}" target="_blank" class="text-decoration-none" title="{{ r.page_url }}">{{ r.page_url|truncatechars:30 }}</a>
+          </td>
+          <td data-label="Action">
+            {% with action=r.action %}
+            <span class="badge
+              {% if action == 'click' %}bg-primary
+              {% elif action == 'dblclick' %}bg-info text-dark
+              {% elif action == 'input' or action == 'change' %}bg-warning text-dark
+              {% elif action == 'keydown' %}bg-secondary
+              {% elif action == 'submit' %}bg-success
+              {% else %}bg-light text-dark{% endif %}">
+              {% if action == 'click' %}<i class="bi bi-cursor-fill"></i>
+              {% elif action == 'dblclick' %}<i class="bi bi-cursor"></i>
+              {% elif action == 'input' or action == 'change' %}<i class="bi bi-keyboard"></i>
+              {% elif action == 'keydown' %}<i class="bi bi-keyboard"></i>
+              {% elif action == 'submit' %}<i class="bi bi-send-fill"></i>
+              {% else %}<i class="bi bi-lightning-fill"></i>{% endif %}
+              {{ action|capfirst }}
+            </span>
+            {% endwith %}
+          </td>
+          <td class="small" data-label="Steps">{{ r.steps_description|default:r.message|default:"—" }}</td>
+          <td class="text-center" data-label="Status">
+            {% if r.status == 'pass' %}
+              <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Pass</span>
+            {% elif r.status == 'fail' %}
+              <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> Fail</span>
+            {% else %}
+              <span class="badge bg-secondary"><i class="bi bi-dash-circle"></i> Not Executed</span>
+            {% endif %}
+          </td>
+          <td class="text-center" data-label="Screenshot">
+            {% if r.screenshot %}
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 btn-ss"
+                    data-ss-url="{% url 'run_step_screenshot' r.run_id r.record_id r.step_no %}"
+                    data-bs-toggle="modal" data-bs-target="#ssModal"
+                    title="View screenshot">
+              <i class="bi bi-camera-fill"></i>
+            </button>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── Screenshot modal ─────────────────────────────────────────── #}
+<div class="modal fade" id="ssModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0"><i class="bi bi-camera-fill me-1"></i> Step Screenshot</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2 text-center">
+        <img id="ssModalImg" src="" alt="screenshot" class="img-fluid rounded" style="max-height:80vh;">
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('ssModal').addEventListener('show.bs.modal', function (event) {
+  var btn = event.relatedTarget;
+  document.getElementById('ssModalImg').src = btn ? btn.dataset.ssUrl : '';
+});
+document.getElementById('ssModal').addEventListener('hide.bs.modal', function () {
+  document.getElementById('ssModalImg').src = '';
+});
+
+</script>
+
+{% endif %}
+{% include 'recorder/_pagination.html' %}
+{% endblock %}
+{% block hotkey_data %}<script>window._hotkeyRecordId = '{{ record_id }}';</script>{% endblock %}

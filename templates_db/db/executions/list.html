@@ -1,0 +1,48 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 mb-md-4">
+    <h1 class="page-title h3 mb-0">Execution History</h1>
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-primary" href="/db-lab/executions/export/csv/">Export CSV</a>
+        <a class="btn btn-outline-success" href="/db-lab/executions/export/excel/">Export Excel</a>
+    </div>
+</div>
+<section class="section-card">
+    <div class="table-responsive modern-table-wrap">
+        <table class="table modern-table align-middle mb-0">
+            <thead>
+                <tr><th>Test Case</th><th>Status</th><th>Actual</th><th>Details</th><th>Executed At</th><th class="text-end">Action</th></tr>
+            </thead>
+            <tbody>
+                {% for ex in executions %}
+                <tr>
+                    <td>{{ ex.test_case.name }}</td>
+                    <td><span class="status-pill status-{{ ex.status|lower }}">{{ ex.status }}</span></td>
+                    <td>
+                        <div class="d-inline-flex align-items-center gap-2">
+                            <a class="btn btn-sm btn-outline-success btn-icon" href="/db-lab/executions/{{ ex.id }}/actual/csv/" title="Download actual value as CSV" aria-label="Download actual value as CSV">
+                                <i class="bi bi-filetype-csv"></i>
+                            </a>
+                            <a class="btn btn-sm btn-outline-primary btn-icon" href="/db-lab/executions/{{ ex.id }}/actual/json/" title="Download actual value as JSON" aria-label="Download actual value as JSON">
+                                <i class="bi bi-file-earmark-code"></i>
+                            </a>
+                        </div>
+                    </td>
+                    <td>{{ ex.details|default:"-" }}</td>
+                    <td>{{ ex.executed_at }}</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/executions/{{ ex.id }}/" title="View execution" aria-label="View execution">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-muted">No executions yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+

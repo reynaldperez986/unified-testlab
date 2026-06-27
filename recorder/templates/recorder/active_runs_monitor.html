@@ -1,0 +1,1246 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Active Runs Monitor</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  /* ── Reset & base ────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    /* Base bg — shell covers this on ≥769px; shows through on mobile */
+    background:
+      radial-gradient(circle at top, rgba(26,82,118,.18), transparent 30%),
+      linear-gradient(180deg, #edf2f7 0%, #dfe7f1 100%);
+    font-size: 15px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Segoe UI Variable", Tahoma, Geneva, Verdana, sans-serif;
+    color: #17324f;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  /* Minimized: body bg matches the header toolbar — any leftover window height
+     above the strip is the same colour so there is no visible gap.              */
+  body.body-minimized {
+    background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%) !important;
+  }
+
+  /* ── Shell: always covers the full viewport exactly ─────── */
+  .monitor-shell {
+    position: fixed;
+    inset: 0;                     /* top/right/bottom/left = 0 */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  /* ── Card panel ──────────────────────────────────────────── */
+  .monitor-modal {
+    flex: 1 1 0;                  /* fill the shell */
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: rgba(255,255,255,.97);
+    position: relative;
+    /* On large screens the card floats — see @media below */
+  }
+
+  .monitor-modal::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 160px;
+    background:
+      radial-gradient(circle at top right, rgba(255, 198, 92, .16), transparent 34%),
+      radial-gradient(circle at top left, rgba(42, 110, 168, .16), transparent 36%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .monitor-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, .5rem);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), .5rem);
+  }
+
+  /* ── Toolbar ─────────────────────────────────────────────── */
+  #activeRunsHeader {
+    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .38rem;
+    padding: .42rem .85rem;
+    padding-left: max(.85rem, env(safe-area-inset-left));
+    padding-right: max(.85rem, env(safe-area-inset-right));
+    background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%);
+    box-shadow: 0 2px 12px rgba(0,0,0,.26);
+    overflow: hidden;
+  }
+  #activeRunsHeader::after {
+    content: "";
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.18) 30%, rgba(99,179,237,.22) 60%, transparent 100%);
+    pointer-events: none;
+  }
+
+  #activeRunsHeader .btn {
+    box-shadow: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: .45rem;
+    background: rgba(255,255,255,.11);
+    color: rgba(255,255,255,.9);
+    border: 1px solid rgba(255,255,255,.11);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background .15s, transform .1s;
+    flex-shrink: 0;
+  }
+
+  .btn-icon:hover { background: rgba(255,255,255,.22); color: #fff; }
+  .btn-icon:active { transform: scale(.91); background: rgba(255,255,255,.28); color: #fff; }
+
+  /* ── Run cards ───────────────────────────────────────────── */
+  #list {
+    max-width: 940px;
+    margin: 0 auto;
+    padding: .38rem .52rem .12rem;
+    display: flex;
+    flex-direction: column;
+    gap: .32rem;
+  }
+
+  .run-card {
+    background: #fff;
+    border: 1px solid rgba(0, 41, 86, .08);
+    border-left: 3px solid #e2e6ea;
+    border-radius: 10px;
+    box-shadow: 0 1px 5px rgba(0,0,0,.045);
+    overflow: hidden;
+    transition: box-shadow .18s ease, transform .18s ease;
+  }
+  .run-card:hover,
+  .run-card:focus-within {
+    box-shadow: 0 4px 16px rgba(0,0,0,.1);
+    transform: translateY(-1px);
+  }
+  .run-card[data-status="running"]          { border-left-color: #10b981; }
+  .run-card[data-status="paused"]           { border-left-color: #f59e0b; }
+  .run-card[data-status="done"]             { border-left-color: #3b82f6; }
+  .run-card[data-status="error"]            { border-left-color: #ef4444; }
+  .run-card[data-status="stopped"]          { border-left-color: #9ca3af; }
+  .run-card[data-status="recording"]        { border-left-color: #dc2626; }
+  .run-card[data-status="recording_paused"] { border-left-color: #f59e0b; }
+
+  .run-card.finished-spotlight {
+    position: relative;
+    border-color: rgba(59, 130, 246, .5);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, .18), 0 16px 32px rgba(15, 23, 42, .14);
+    animation: finishedSpotlightDone 1.5s ease;
+  }
+
+  .run-card.finished-spotlight[data-status="error"] {
+    border-color: rgba(239, 68, 68, .72);
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, .24), 0 18px 36px rgba(127, 29, 29, .18);
+    animation: finishedSpotlightError 1.75s ease;
+  }
+
+  .run-card.finished-spotlight[data-status="stopped"] {
+    border-color: rgba(107, 114, 128, .62);
+    box-shadow: 0 0 0 3px rgba(107, 114, 128, .16), 0 14px 28px rgba(15, 23, 42, .12);
+    animation: finishedSpotlightStopped 1.45s ease;
+  }
+
+  .run-card.finished-spotlight::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(59, 130, 246, .14), transparent 42%);
+    animation: spotlightSheen 1.1s ease;
+  }
+
+  .run-card.finished-spotlight[data-status="error"]::after {
+    background: linear-gradient(135deg, rgba(239, 68, 68, .2), rgba(248, 113, 113, .08) 35%, transparent 60%);
+  }
+
+  .run-card.finished-spotlight[data-status="stopped"]::after {
+    background: linear-gradient(135deg, rgba(148, 163, 184, .16), transparent 50%);
+  }
+
+  @keyframes finishedSpotlightDone {
+    0%   { transform: translateY(-2px) scale(1.004); }
+    40%  { transform: translateY(-1px) scale(1.008); }
+    100% { transform: translateY(0) scale(1); }
+  }
+
+  @keyframes finishedSpotlightError {
+    0%   { transform: translateY(-2px) scale(1.005); }
+    18%  { transform: translateX(-2px) scale(1.01); }
+    36%  { transform: translateX(2px) scale(1.01); }
+    54%  { transform: translateX(-1px) scale(1.006); }
+    100% { transform: translateX(0) scale(1); }
+  }
+
+  @keyframes finishedSpotlightStopped {
+    0%   { transform: scale(1.003); opacity: .94; }
+    55%  { transform: scale(1.007); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes spotlightSheen {
+    0%   { opacity: 0; }
+    22%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  .run-card-header {
+    padding: .36rem .68rem .3rem;
+    border-bottom: 1px solid rgba(0,41,86,.055);
+  }
+
+  .run-card-body {
+    padding: .3rem .68rem .36rem;
+  }
+
+  /* ── Status pills ────────────────────────────────────────── */
+  .pill-running    { background:#d1fae5; color:#065f46; }
+  .pill-paused     { background:#fef3c7; color:#92400e; }
+  .pill-done       { background:#dbeafe; color:#1e40af; }
+  .pill-error      { background:#fee2e2; color:#991b1b; }
+  .pill-stopped    { background:#f3f4f6; color:#4b5563; }
+  .pill-recording  { background:#fee2e2; color:#dc2626; animation:pill-rec-pulse 1.1s ease-in-out infinite; }
+  .pill-rec-paused { background:#fef3c7; color:#92400e; }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .17rem;
+    padding: .11rem .36rem;
+    border-radius: 99px;
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .025em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .status-badge i { font-size: .6rem; }
+
+  /* ── Progress ────────────────────────────────────────────── */
+  .track {
+    height: 5px;
+    border-radius: 99px;
+    background: #eef0f3;
+    overflow: hidden;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .bar {
+    height: 100%;
+    border-radius: 99px;
+    transition: width .45s cubic-bezier(.4,0,.2,1);
+    min-width: 2px;
+  }
+  .bar-running          { box-shadow: 0 0 6px rgba(16,185,129,.55); }
+  .bar-error            { box-shadow: 0 0 6px rgba(239,68,68,.45); }
+  .bar-paused           { box-shadow: 0 0 5px rgba(245,158,11,.4); }
+  .bar-recording        { box-shadow: 0 0 8px rgba(220,38,38,.6); }
+  .bar-recording_paused { box-shadow: 0 0 5px rgba(245,158,11,.4); }
+
+  /* ── Card control buttons ────────────────────────────────── */
+  .card-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.7rem;
+    min-height: 1.7rem;
+    padding: 0 .26rem;
+    border-radius: .38rem;
+    border: 1px solid;
+    font-size: .77rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background .12s, opacity .12s, transform .1s;
+    -webkit-user-select: none;
+    user-select: none;
+    background: transparent;
+    flex-shrink: 0;
+  }
+  .card-btn:active { transform: scale(.91); }
+  .card-btn-outline-secondary {
+    border-color: #9ca3af;
+    color: #374151;
+  }
+  .card-btn-outline-secondary:hover, .card-btn-outline-secondary:active {
+    background: #f3f4f6;
+  }
+  .card-btn-outline-danger {
+    border-color: #fca5a5;
+    color: #dc2626;
+  }
+  .card-btn-outline-danger:hover, .card-btn-outline-danger:active {
+    background: #fee2e2;
+  }
+  .card-btn-outline-primary {
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+  .card-btn-outline-primary:hover, .card-btn-outline-primary:active {
+    background: #dbeafe;
+  }
+
+  /* ── Animate spin ────────────────────────────────────────── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; animation: spin 1.2s linear infinite; }
+  @keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  .rec-dot { display: inline-block; animation: rec-pulse .9s ease-in-out infinite; }
+  @keyframes pill-rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+  @keyframes rec-bar-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+  .rec-mini-bar { animation: rec-bar-pulse 1s ease-in-out infinite; }
+
+  /* ── Empty state ─────────────────────────────────────────── */
+  #empty {
+    display: none;
+    text-align: center;
+    padding: 2rem 1rem 1.5rem;
+    color: #6b7280;
+  }
+  .empty-icon {
+    width: 3.2rem; height: 3.2rem;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #edf2f7 0%, #dde6f0 100%);
+    border: 1px solid rgba(0,41,86,.07);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: .6rem;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,.06);
+  }
+  #empty i { font-size: 1.5rem; color: #94a3b8; }
+  #empty p { margin: 0; font-size: .88rem; font-weight: 600; color: #4b5563; }
+  #empty .sub { font-size: .77rem; margin-top: .18rem; color: #9ca3af; font-weight: 400; }
+
+  /* ── Notification bar ────────────────────────────────────── */
+  #notif-bar {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    background: #fff3cd;
+    color: #664d03;
+    border-bottom: 2px solid #ffc107;
+    padding: .5rem 1rem;
+    font-size: .82rem;
+    box-shadow: 0 4px 14px rgba(0,0,0,.12);
+    align-items: center;
+    gap: .5rem;
+  }
+
+  #notif-bar.notif-done {
+    background: #e0f2fe;
+    color: #0c4a6e;
+    border-bottom-color: #38bdf8;
+  }
+
+  #notif-bar.notif-error {
+    background: #fee2e2;
+    color: #7f1d1d;
+    border-bottom-color: #ef4444;
+  }
+
+  #notif-bar.notif-stopped {
+    background: #e5e7eb;
+    color: #374151;
+    border-bottom-color: #6b7280;
+  }
+
+  /* ── Minimized state ─────────────────────────────────────── */
+  .monitor-modal.is-minimized .monitor-body { display: none; }
+
+  /* Minimized shell: header pinned to the TOP so the gap (if any) is below,
+     never above the toolbar.  Background is set on <body> to match.           */
+  .monitor-shell.is-minimized-shell {
+    inset: auto;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: auto;                 /* shrinks to header height */
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 0;
+    background: transparent;
+    pointer-events: all;
+    overflow: visible;
+  }
+  .monitor-shell.is-minimized-shell .monitor-modal {
+    flex: 0 0 auto;               /* only as tall as the header */
+    width: 100%;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    pointer-events: all;
+  }
+  .monitor-shell.is-minimized-shell .monitor-modal::before { display: none; }
+
+  /* ── Minimized ticker ───────────────────────────────────────── */
+  #mini-ticker {
+    display: none;                 /* hidden in full mode */
+    flex-direction: column;
+    gap: 0;
+    /* Must have explicit dark bg: it sits inside the white .monitor-modal */
+    background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%);
+    border-top: 1px solid rgba(255,255,255,.10);
+  }
+  .monitor-shell.is-minimized-shell #mini-ticker { display: flex; }
+
+  .mini-row {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .22rem .85rem;
+    font-size: .72rem;
+    color: rgba(255,255,255,.88);
+    background: rgba(255,255,255,.045);
+    min-width: 0;
+    overflow: hidden;
+  }
+  .mini-row + .mini-row { border-top: 1px solid rgba(255,255,255,.07); }
+
+  .mini-name {
+    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+
+  .mini-track {
+    width: 80px;
+    height: 4px;
+    border-radius: 99px;
+    background: rgba(255,255,255,.18);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .mini-bar {
+    height: 100%;
+    border-radius: 99px;
+    transition: width .4s ease;
+    min-width: 2px;
+  }
+
+  .mini-pct {
+    font-weight: 700;
+    min-width: 2.4rem;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .mini-step {
+    color: rgba(255,255,255,.5);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* empty ticker message */
+  .mini-empty {
+    padding: .22rem .85rem;
+    font-size: .7rem;
+    color: rgba(255,255,255,.45);
+    font-style: italic;
+    background: transparent;
+  }
+
+  /* ── Card meta row (folder/session breadcrumb) ──────────── */
+  .card-meta {
+    margin-top: .25rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .2rem;
+    color: #6b7280;
+    font-size: .72rem;
+    min-width: 0;
+  }
+  .card-meta span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Toolbar: hide low-priority items on narrow viewports ── */
+  /* Clock hidden on ≤640px; pulse hidden on ≤480px */
+  @media (max-width: 640px) {
+    #updated { display: none !important; }
+  }
+  @media (max-width: 480px) {
+    #activeRunsHeader .hdr-pulse { display: none !important; }
+    #activeRunsHeader .hdr-brand-user { display: none !important; }
+  }
+
+  /* ──────────────────────────────────────────────────────────
+     Tablet  (≤ 768 px)  — full-bleed, card fills the window
+  ────────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    #list {
+      max-width: 100%;
+      padding: .35rem .45rem .15rem;
+      gap: .4rem;
+    }
+    #activeRunsHeader {
+      padding: .45rem .75rem !important;
+    }
+    #activeRunsHeader .hdr-spacer { display: none; }
+
+    /* Minimized: full-width top strip */
+    .monitor-shell.is-minimized-shell {
+      padding: 0;
+      height: auto;
+    }
+    .monitor-shell.is-minimized-shell .monitor-modal {
+      width: 100%;
+      border-radius: 0;
+      box-shadow: none;
+    }
+  }
+
+  /* ──────────────────────────────────────────────────────────
+     Phone  (≤ 576 px)
+  ────────────────────────────────────────────────────────── */
+  @media (max-width: 576px) {
+    html, body { font-size: 13px; }
+    #activeRunsHeader {
+      padding: .42rem .7rem !important;
+      gap: .3rem !important;
+    }
+    .run-card { border-radius: 10px; }
+    .run-card-header { padding: .38rem .65rem .32rem; }
+    .run-card-body   { padding: .32rem .65rem .38rem; }
+    .run-name        { font-size: .88rem; }
+    .card-meta       { display: none; }
+    #empty { padding: 1.5rem .75rem 1rem; }
+    #empty i { font-size: 2rem; }
+  }
+
+  /* ── Large screens: floating card + grid tiling ───────── */
+  @media (min-width: 769px) {
+    .monitor-shell {
+      align-items: flex-start;
+      justify-content: center;
+      padding: 1rem;
+      background:
+        radial-gradient(circle at top, rgba(26,82,118,.18), transparent 30%),
+        linear-gradient(180deg, #edf2f7 0%, #dfe7f1 100%);
+    }
+    .monitor-modal {
+      flex: 0 1 auto;             /* shrink to content, don't force-fill height */
+      max-height: calc(100vh - 2rem);
+      max-height: calc(100dvh - 2rem);
+      width: min(980px, 100%);
+      border: 1px solid rgba(0,41,86,.12);
+      border-radius: 1.25rem;
+      box-shadow: 0 24px 70px rgba(7,32,68,.18), 0 8px 24px rgba(7,32,68,.12);
+      backdrop-filter: blur(10px);
+    }
+    #list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      align-items: start;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="monitor-shell">
+  <div class="monitor-modal">
+
+<!-- ── Toolbar ──────────────────────────────────────────────── -->
+<div id="activeRunsHeader" class="text-white" role="toolbar" aria-label="Monitor controls">
+
+  <!-- Brand -->
+  <i class="bi bi-activity text-success" style="font-size:1.05rem;flex-shrink:0;"></i>
+  <span class="fw-semibold" style="font-size:.9rem;letter-spacing:.02em;white-space:nowrap;flex-shrink:0;">Active Runs</span>
+
+  <!-- User chip (hidden on very small screens) -->
+  <span class="hdr-brand-user text-white-50" style="font-size:.74rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;">
+    <i class="bi bi-person-circle"></i> {{ current_username }}
+  </span>
+
+  <!-- Spacer -->
+  <span class="hdr-spacer flex-grow-1"></span>
+
+  <!-- Badge -->
+  <span id="badge" class="badge rounded-pill" style="background:rgba(255,255,255,.22);font-size:.74rem;padding:.18rem .5rem;flex-shrink:0;">0</span>
+
+  <!-- Clock (hidden ≤640px via media query) -->
+  <span id="updated" class="text-white-50" style="font-size:.67rem;white-space:nowrap;"></span>
+
+  <!-- Stop All -->
+  <button id="btnStopAll" class="btn-icon d-none"
+          title="Stop all running runs" onclick="stopAll()" aria-label="Stop all"
+          style="background:rgba(220,53,69,.75);border-color:rgba(255,255,255,.18);">
+    <i class="bi bi-stop-circle-fill" style="font-size:.88rem;"></i>
+  </button>
+
+  <!-- Clear All -->
+  <button id="btnClearAll" class="btn-icon d-none"
+          title="Clear finished runs" onclick="clearAll()" aria-label="Clear all">
+    <i class="bi bi-x-circle" style="font-size:.88rem;"></i>
+  </button>
+
+  <!-- Notifications -->
+  <button id="btnNotif" class="btn-icon" title="Enable notifications"
+          style="opacity:.7;" onclick="requestNotifPermission()" aria-label="Notifications">
+    <i class="bi bi-bell" style="font-size:.88rem;"></i>
+  </button>
+
+  <!-- Minimize -->
+  <button id="btnMinimize" class="btn-icon" title="Minimize"
+          onclick="toggleMinimize()" aria-label="Minimize">
+    <i class="bi bi-dash-lg"></i>
+  </button>
+
+  <!-- Close -->
+  <button class="btn-icon" title="Close monitor" aria-label="Close"
+          onclick="window.close(); if (!window.closed) { window.history.back(); }">
+    <i class="bi bi-x-lg"></i>
+  </button>
+
+  <!-- Live pulse (hidden ≤480px) -->
+  <i class="bi bi-arrow-repeat spin text-white-50 hdr-pulse" style="font-size:.8rem;flex-shrink:0;"
+     aria-hidden="true"></i>
+</div>
+<!-- ── Minimized ticker: one line per running session ─────────── -->
+<div id="mini-ticker" aria-live="polite"></div>
+<!-- ── /Toolbar ──────────────────────────────────────────────── -->
+
+<div class="monitor-body">
+
+<!-- Run list -->
+<div id="list" role="list" aria-label="Active runs"></div>
+
+<!-- Empty state -->
+<div id="empty" role="status" aria-live="polite">
+  <div class="empty-icon"><i class="bi bi-activity" aria-hidden="true"></i></div>
+  <p>No active runs</p>
+  <p class="sub">Updates automatically every 2 s</p>
+</div>
+
+<!-- Bottom notification bar -->
+<div id="notif-bar" role="alert" aria-live="assertive">
+  <i class="bi bi-info-circle" aria-hidden="true"></i>
+  <span id="notif-msg" class="flex-grow-1"></span>
+  <button class="btn-close btn-sm ms-auto" aria-label="Dismiss"
+          onclick="document.getElementById('notif-bar').style.display='none'"></button>
+</div>
+
+</div><!-- /monitor-body -->
+</div><!-- /monitor-modal -->
+</div><!-- /monitor-shell -->
+
+<script>
+const isSuperuser    = {{ is_superuser|yesno:'true,false' }};
+const currentUsername = '{{ current_username|escapejs }}';
+(function () {
+  'use strict';
+
+  // ── Single-instance guard ─────────────────────────────────
+  // Each tab gets a unique ID; the alive key stores {id, ts}.
+  // If another tab's heartbeat is fresh when we load, close this tab.
+  const TAB_ID = Math.random().toString(36).slice(2);
+  const HB_KEY = 'arMonitorAlive';
+
+  function readHb() {
+    try { return JSON.parse(localStorage.getItem(HB_KEY) || 'null'); } catch(e) { return null; }
+  }
+  function writeHb() {
+    localStorage.setItem(HB_KEY, JSON.stringify({ id: TAB_ID, ts: Date.now() }));
+  }
+
+  var existing = readHb();
+  if (existing && existing.id !== TAB_ID && (Date.now() - existing.ts) < 4000) {
+    // Another instance is alive — close this one
+    document.body.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#374151;">'
+      + '<div style="text-align:center;">'
+      + '<p style="font-size:1.1rem;font-weight:600;">Active Runs Monitor is already open.</p>'
+      + '<p style="color:#6b7280;font-size:.9rem;">This tab will close automatically.</p>'
+      + '</div></div>';
+    setTimeout(function() { window.close(); }, 1500);
+    return; // stop the rest of the script
+  }
+
+  // Claim the slot immediately
+  writeHb();
+  setInterval(writeHb, 2000);
+  window.addEventListener('beforeunload', function() { localStorage.removeItem(HB_KEY); });
+
+  const POLL_MS = 2000;
+
+  const STATUS_PILL = {
+    running: 'pill-running', paused: 'pill-paused',
+    done:    'pill-done',    error:  'pill-error',
+    stopped: 'pill-stopped', recording: 'pill-recording', recording_paused: 'pill-rec-paused'
+  };
+  const STATUS_BAR_COLOR = {
+    running: '#10b981', paused: '#f59e0b',
+    done:    '#3b82f6', error:  '#ef4444',
+    stopped: '#9ca3af', recording: '#dc2626', recording_paused: '#f59e0b'
+  };
+  const STATUS_ICON = {
+    running: 'bi-play-fill',  paused: 'bi-pause-fill',
+    done:    'bi-check-circle-fill', error: 'bi-exclamation-triangle-fill',
+    stopped: 'bi-stop-circle', recording: 'bi-record-fill', recording_paused: 'bi-pause-fill'
+  };
+  const STATUS_LABEL = {
+    running: 'Running', paused: 'Paused', done: 'Done', error: 'Error', stopped: 'Stopped',
+    recording: 'Recording', recording_paused: 'Rec·Paused'
+  };
+
+  let prevStatuses = {};
+  let prevActiveCount = null;
+
+  /* ── Notifications ──────────────────────────────────────── */
+  function requestNotifPermission() {
+    if (!('Notification' in window)) return;
+    Notification.requestPermission().then(function(p) {
+      const btn = document.getElementById('btnNotif');
+      btn.style.opacity = p === 'granted' ? '1' : '.4';
+      btn.querySelector('i').className = p === 'granted' ? 'bi bi-bell-fill' : 'bi bi-bell-slash';
+    });
+  }
+  window.requestNotifPermission = requestNotifPermission;
+
+  function notify(title, body) {
+    if (Notification.permission !== 'granted') return;
+    try { new Notification(title, { body: body }); } catch(e) {}
+  }
+
+  function flashNotif(msg, kind) {
+    const bar = document.getElementById('notif-bar');
+    bar.classList.remove('notif-done', 'notif-error', 'notif-stopped');
+    if (kind) { bar.classList.add('notif-' + kind); }
+    document.getElementById('notif-msg').textContent = msg;
+    bar.style.display = 'flex';
+    setTimeout(function() { bar.style.display = 'none'; }, 6000);
+  }
+
+  /* ── CSRF ────────────────────────────────────────────────── */
+  function getCsrf() {
+    const m = document.cookie.match(/csrftoken[^=]*=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  const MONITOR_TOKEN = '{{ monitor_token|default:""|escapejs }}';
+  function withMonitorToken(url) {
+    if (!MONITOR_TOKEN) return url;
+    return url + (url.indexOf('?') === -1 ? '?' : '&') + 'monitor_token=' + encodeURIComponent(MONITOR_TOKEN);
+  }
+
+  /* ── Clear run(s) ───────────────────────────────────────── */
+  window.clearRun = function(runId) {
+    fetch(withMonitorToken('/api/active-runs/' + runId + '/clear/'), {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf(), 'X-Monitor-Token': MONITOR_TOKEN }
+    }).then(poll).catch(function(){});
+  };
+
+  window.clearAll = function() {
+    fetch(withMonitorToken('/api/active-runs/clear/'), {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf(), 'X-Monitor-Token': MONITOR_TOKEN }
+    }).then(poll).catch(function(){});
+  };
+
+  window.stopAll = function() {
+    fetch(withMonitorToken('/api/active-runs/stop-all/'), {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf(), 'X-Monitor-Token': MONITOR_TOKEN }
+    }).then(poll).catch(function(){});
+  };
+
+  /* ── Minimize / Restore ───────────────────────────────── */
+  // Store the raw outerHeight we want to return to — no chrome math needed.
+  var _savedOuterH = window.outerHeight;
+  var _savedOuterW = window.outerWidth;
+  var _isPopup = (window.opener !== null || window.history.length <= 1);
+
+  /* Watch run — open the run-results page in a new tab.
+     Always append the monitor_token so the replay_run view can authenticate
+     without a separate Django session.  Using '_blank' ensures the tab opens
+     in the foreground regardless of whether this is a popup or a regular tab.
+     Named target 'arRun_<id>' prevents duplicates: clicking the same run a
+     second time re-focuses the already-open results tab instead of opening
+     a new one.                                                               */
+  window.watchRun = function(url, runId) {
+    var dest   = withMonitorToken(url);
+    var target = runId ? 'arRun_' + String(runId).replace(/-/g, '') : '_blank';
+    window.open(dest, target);
+  };
+
+  function _headerH() {
+    var h = document.getElementById('activeRunsHeader');
+    return h ? h.offsetHeight : 52;
+  }
+
+  function _shell() {
+    return document.querySelector('.monitor-shell');
+  }
+
+  function _applyMinimized() {
+    var modal = document.querySelector('.monitor-modal');
+    var icon  = document.querySelector('#btnMinimize i');
+    modal.classList.add('is-minimized');
+    _shell().classList.add('is-minimized-shell');
+    document.body.classList.add('body-minimized');
+    icon.className = 'bi bi-plus-lg';
+    document.getElementById('btnMinimize').title = 'Restore';
+  }
+
+  function _applyRestored() {
+    var modal = document.querySelector('.monitor-modal');
+    var icon  = document.querySelector('#btnMinimize i');
+    modal.classList.remove('is-minimized');
+    _shell().classList.remove('is-minimized-shell');
+    document.body.classList.remove('body-minimized');
+    icon.className = 'bi bi-dash-lg';
+    document.getElementById('btnMinimize').title = 'Minimize';
+  }
+
+  function _resizeToHeader() {
+    if (!_isPopup) return;
+    try {
+      // chromeH = outerHeight - innerHeight, measured right now while window is full size
+      var chromeH = _savedOuterH - window.innerHeight;
+      window.resizeTo(_savedOuterW, _headerH() + Math.max(0, chromeH));
+    } catch(e) {}
+  }
+
+  function _resizeToFull() {
+    if (!_isPopup) return;
+    try { window.resizeTo(_savedOuterW, _savedOuterH); } catch(e) {}
+  }
+
+  function _isMinimized() {
+    var modal = document.querySelector('.monitor-modal');
+    return !!(modal && modal.classList.contains('is-minimized'));
+  }
+
+  function _restoreAndFocus() {
+    if (!_isMinimized()) return;
+    _applyRestored();
+    _resizeToFull();
+    try {
+      setTimeout(function() { window.focus(); }, 80);
+    } catch(e) {}
+  }
+
+  function _spotlightFinishedRun(runId) {
+    if (!runId) return;
+    requestAnimationFrame(function() {
+      var card = document.querySelector('.run-card[data-run-id="' + runId + '"]');
+      if (!card) return;
+      try {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch(e) {
+        card.scrollIntoView();
+      }
+      card.classList.remove('finished-spotlight');
+      void card.offsetWidth;
+      card.classList.add('finished-spotlight');
+      setTimeout(function() { card.classList.remove('finished-spotlight'); }, 1800);
+    });
+  }
+
+  window.toggleMinimize = function() {
+    var modal = document.querySelector('.monitor-modal');
+    var isMin = !modal.classList.contains('is-minimized');
+    if (isMin) {
+      // Snapshot full size before shrinking
+      _savedOuterH = Math.max(200, window.outerHeight);
+      _savedOuterW = window.outerWidth;
+      _applyMinimized();
+      _resizeToHeader();
+    } else {
+      _applyRestored();
+      _resizeToFull();
+    }
+  };
+
+  /* Start minimized when opened via ?minimized=1 */
+  (function() {
+    if (new URLSearchParams(window.location.search).get('minimized') === '1') {
+      // Save the outer size NOW (before any resize) so restore knows the target
+      _savedOuterH = window.outerHeight;
+      _savedOuterW = window.outerWidth;
+      _applyMinimized();
+      requestAnimationFrame(function() {
+        requestAnimationFrame(_resizeToHeader);
+      });
+    }
+  })();
+
+  /* ── Pause / Stop controls ───────────────────────────────── */
+  window.postAction = function(url) {
+    fetch(withMonitorToken(url), {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf(), 'Content-Type': 'application/json', 'X-Monitor-Token': MONITOR_TOKEN }
+    }).catch(function(){});
+  };
+
+  /* ── Render one run card ─────────────────────────────────── */
+  function renderRun(r) {
+    const isRecording = r.status === 'recording' || r.status === 'recording_paused';
+    const pct    = isRecording ? 100 : (r.total > 0 ? Math.round(r.done / r.total * 100) : 0);
+    const pill   = STATUS_PILL[r.status]      || 'pill-stopped';
+    const barClr = STATUS_BAR_COLOR[r.status] || '#9ca3af';
+    const name   = (r.folder_name ? r.folder_name + ' / ' : '') + (r.record_name || r.record_id.replace('rec:', '').substring(0, 8));
+    const isLive = r.status === 'running' || r.status === 'paused' || isRecording;
+
+    // Status dot — pulsing red for recording, spinning for replay
+    const dot = isLive
+      ? (isRecording
+          ? '<span class="rec-dot" style="display:inline-block;width:.55rem;height:.55rem;border-radius:50%;background:' + barClr + ';flex-shrink:0;"></span>'
+          : '<span class="spin" style="display:inline-block;width:.55rem;height:.55rem;border-radius:50%;background:' + barClr + ';flex-shrink:0;"></span>')
+      : '';
+
+    // Meta breadcrumb (hidden on phones via .card-meta CSS rule)
+    const parts = [];
+    if (r.folder_name) parts.push('<i class="bi bi-folder2"></i> ' + _esc(r.folder_name));
+    if (r.session_name) parts.push('<i class="bi bi-file-earmark"></i> ' + _esc(r.session_name));
+    const metaHtml = parts.length
+      ? '<div class="card-meta">'
+        + parts.map(function(p) { return '<span>' + p + '</span>'; }).join('<span style="opacity:.4;">›</span>')
+        + '</div>'
+      : '';
+
+    const canControl = isSuperuser || (r.runner === currentUsername);
+
+    // Control buttons
+    var ctrlHtml = '';
+    if (canControl) {
+      if (isRecording) {
+        ctrlHtml +=
+          '<button class="card-btn card-btn-outline-danger" title="Stop Recording"'
+          + ' onclick="postAction(\'/api/hotkey/stop/\')" aria-label="Stop Recording">'
+          + '<i class="bi bi-stop-fill"></i></button>';
+      } else if (isLive) {
+        ctrlHtml +=
+          '<button class="card-btn card-btn-outline-secondary" title="' + (r.status === 'paused' ? 'Resume' : 'Pause') + '"'
+          + ' onclick="postAction(\'/replay/' + r.run_id + '/pause/\')" aria-label="' + (r.status === 'paused' ? 'Resume' : 'Pause') + '">'
+          + '<i class="bi bi-' + (r.status === 'paused' ? 'play' : 'pause') + '-fill"></i></button>'
+          + '<button class="card-btn card-btn-outline-danger" title="Stop"'
+          + ' onclick="postAction(\'/replay/' + r.run_id + '/stop/\')" aria-label="Stop">'
+          + '<i class="bi bi-stop-fill"></i></button>';
+      } else {
+        ctrlHtml +=
+          '<button class="card-btn card-btn-outline-secondary" title="Clear"'
+          + ' onclick="clearRun(\'' + r.run_id + '\')" aria-label="Clear" style="opacity:.75;">'
+          + '<i class="bi bi-x-lg"></i></button>';
+      }
+      if (!isRecording) {
+        ctrlHtml +=
+          '<button class="card-btn card-btn-outline-primary" title="Watch run" aria-label="Watch run"'
+          + ' onclick="watchRun(\'/replay/' + r.run_id + '/\',\'' + r.run_id + '\')">'
+          + '<i class="bi bi-arrow-up-right-square"></i></button>';
+      }
+    }
+
+    // Progress footer — step counter + pct + runner chip
+    const runnerChip = r.runner
+      ? '<span class="d-inline-flex align-items-center gap-1 text-muted" style="font-size:.7rem;white-space:nowrap;">'
+        + '<i class="bi bi-person"></i>' + _esc(r.runner) + '</span>'
+      : '';
+
+    const pctLabel = isRecording ? '' : '<span style="font-size:.74rem;font-weight:700;color:' + barClr + ';white-space:nowrap;min-width:2rem;text-align:right;">' + pct + '%</span>';
+    const stepLabel = isRecording
+      ? '<span style="font-size:.7rem;font-weight:600;color:' + barClr + ';white-space:nowrap;animation:rec-pulse .9s ease-in-out infinite;">Recording\u2026</span>'
+      : '<span class="text-muted" style="font-size:.7rem;white-space:nowrap;">' + r.done + '/' + r.total + '</span>';
+
+    const stripedCls = isLive ? 'progress-bar-striped progress-bar-animated' : '';
+
+    return '<div class="run-card" data-run-id="' + r.run_id + '" data-status="' + r.status + '" role="listitem">'
+
+      // ── Header: name + status ─────────────────────────────────
+      + '<div class="run-card-header">'
+      +   '<div class="d-flex align-items-center gap-2" style="min-width:0;">'
+      +     (isLive ? dot + ' ' : '')
+      +     '<span class="fw-semibold run-name text-truncate" style="font-size:.88rem;min-width:0;flex:1 1 0;" title="' + _esc(name) + '">' + _esc(name) + '</span>'
+      +     '<span class="status-badge ' + pill + '"><i class="bi ' + (STATUS_ICON[r.status] || 'bi-circle') + '"></i> ' + (STATUS_LABEL[r.status] || r.status) + '</span>'
+      +   '</div>'
+      +   metaHtml
+      + '</div>'
+
+      // ── Body: progress bar + controls on one tidy row ─────────
+      + '<div class="run-card-body">'
+      +   '<div class="d-flex align-items-center gap-2 mb-1">'
+      +     '<div class="track" style="flex:1 1 0;"><div class="bar bar-' + r.status + ' ' + stripedCls + '" style="width:' + pct + '%;background:' + barClr + ';"></div></div>'
+      +     pctLabel
+      +     stepLabel
+      +   '</div>'
+      +   '<div class="d-flex align-items-center gap-1" style="min-width:0;">'
+      +     runnerChip
+      +     '<div class="d-flex align-items-center gap-1 ms-auto">' + ctrlHtml + '</div>'
+      +   '</div>'
+      + '</div>'
+
+      + '</div>';
+  }
+
+  function _esc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* ── Poll ────────────────────────────────────────────────── */
+  function poll() {
+    fetch(withMonitorToken('/api/active-runs/'), {
+      headers: { 'X-Monitor-Token': MONITOR_TOKEN }
+    })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        const runs = data.runs || [];
+        const visible = runs.filter(function(r) {
+          return ['running','paused','done','error','stopped','recording','recording_paused'].indexOf(r.status) !== -1;
+        });
+        /* newest first — running/paused at top, then by started_at descending */
+        visible.sort(function(a, b) {
+          var aActive = (a.status === 'running' || a.status === 'paused' || a.status === 'recording' || a.status === 'recording_paused') ? 1 : 0;
+          var bActive = (b.status === 'running' || b.status === 'paused' || b.status === 'recording' || b.status === 'recording_paused') ? 1 : 0;
+          if (bActive !== aActive) return bActive - aActive;
+          return (b.started_at || 0) - (a.started_at || 0);
+        });
+        const activeCount = runs.filter(function(r) {
+          return r.status === 'running' || r.status === 'paused' || r.status === 'recording' || r.status === 'recording_paused';
+        }).length;
+        var newestFinishedRun = visible.find(function(r) {
+          return r.status === 'done' || r.status === 'error' || r.status === 'stopped';
+        }) || null;
+        var shouldSpotlightFinished = prevActiveCount !== null && prevActiveCount > 0 && activeCount === 0 && !!newestFinishedRun;
+
+        /* status transition notifications */
+        runs.forEach(function(r) {
+          const prev = prevStatuses[r.run_id];
+          if (prev && prev !== r.status) {
+            const nm = (r.folder_name ? r.folder_name + ' / ' : '') + (r.record_name || r.run_id.substring(0, 8));
+            if (r.status === 'done') {
+              notify('Run finished', nm + ' completed successfully.');
+              flashNotif(nm + ' completed successfully.', 'done');
+            } else if (r.status === 'error') {
+              notify('Run failed', nm + ' encountered an error.');
+              flashNotif(nm + ' failed. Review the replay result for details.', 'error');
+            } else if (r.status === 'stopped') {
+              notify('Run stopped', nm + ' was stopped before completion.');
+              flashNotif(nm + ' was stopped before completion.', 'stopped');
+            }
+          }
+          prevStatuses[r.run_id] = r.status;
+        });
+
+        /* ── update minimized ticker ─────────────────────────── */
+        (function() {
+          var ticker = document.getElementById('mini-ticker');
+          if (!ticker) return;
+          var liveRuns = visible.filter(function(r) {
+            return r.status === 'running' || r.status === 'paused' || r.status === 'recording' || r.status === 'recording_paused';
+          });
+          if (liveRuns.length === 0) {
+            // Show most recent finished run if nothing active
+            var finished = visible.filter(function(r) {
+              return r.status === 'done' || r.status === 'error' || r.status === 'stopped';
+            });
+            if (finished.length > 0) {
+              liveRuns = [finished[0]];
+            }
+          }
+          if (liveRuns.length === 0) {
+            ticker.innerHTML = '<div class="mini-empty">No active runs</div>';
+            return;
+          }
+          ticker.innerHTML = liveRuns.map(function(r) {
+            var isRec  = r.status === 'recording' || r.status === 'recording_paused';
+            var pct    = isRec ? 100 : (r.total > 0 ? Math.round(r.done / r.total * 100) : 0);
+            var barClr = STATUS_BAR_COLOR[r.status] || '#9ca3af';
+            var nm     = (r.folder_name ? r.folder_name + ' / ' : '') + (r.record_name || r.run_id.replace('rec:', '').substring(0, 8));
+            var icon   = r.status === 'paused' || r.status === 'recording_paused'
+              ? '<i class="bi bi-pause-fill" style="color:#f59e0b;flex-shrink:0;"></i>'
+              : r.status === 'running'
+                ? '<span class="spin" style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:' + barClr + ';flex-shrink:0;"></span>'
+                : r.status === 'recording'
+                  ? '<span class="rec-dot" style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:' + barClr + ';flex-shrink:0;"></span>'
+                  : '<i class="bi bi-check-circle-fill" style="color:' + barClr + ';flex-shrink:0;"></i>';
+            return '<div class="mini-row">'
+              + icon
+              + '<span class="mini-name" title="' + _esc(nm) + '">' + _esc(nm) + '</span>'
+              + '<div class="mini-track"><div class="mini-bar' + (isRec ? ' rec-mini-bar' : '') + '" style="width:' + pct + '%;background:' + barClr + ';"></div></div>'
+              + (isRec ? '' : '<span class="mini-pct" style="color:' + barClr + ';">' + pct + '%</span>')
+              + (isRec ? '' : '<span class="mini-step">' + r.done + '/' + r.total + '</span>')
+              + '</div>';
+          }).join('');
+        })();
+
+        if (shouldSpotlightFinished) {
+          _restoreAndFocus();
+        }
+        prevActiveCount = activeCount;
+
+        /* update badge + title */
+        document.getElementById('badge').textContent = activeCount;
+        document.title = activeCount > 0
+          ? 'Active Runs (' + activeCount + ') — Monitor'
+          : 'Active Runs Monitor';
+
+        /* show/hide Stop All and Clear All buttons (superuser only) */
+        const activeCount2 = visible.filter(function(r) {
+          return r.status === 'running' || r.status === 'paused' || r.status === 'recording' || r.status === 'recording_paused';
+        }).length;
+        document.getElementById('btnStopAll').classList.toggle('d-none', !isSuperuser || activeCount2 === 0);
+        const finishedCount = visible.filter(function(r) {
+          return ['done','error','stopped'].indexOf(r.status) !== -1;
+        }).length;
+        document.getElementById('btnClearAll').classList.toggle('d-none', finishedCount === 0);
+
+        /* last-updated timestamp */
+        const now = new Date();
+        document.getElementById('updated').textContent =
+          'updated ' + now.getHours().toString().padStart(2,'0')
+          + ':' + now.getMinutes().toString().padStart(2,'0')
+          + ':' + now.getSeconds().toString().padStart(2,'0');
+
+        /* list / empty state */
+        const listEl  = document.getElementById('list');
+        const emptyEl = document.getElementById('empty');
+        if (visible.length > 0) {
+          listEl.innerHTML = visible.map(renderRun).join('');
+          emptyEl.style.display = 'none';
+          if (shouldSpotlightFinished && newestFinishedRun) {
+            _spotlightFinishedRun(newestFinishedRun.run_id);
+          }
+        } else {
+          listEl.innerHTML = '';
+          emptyEl.style.display = 'block';
+        }
+      })
+      .catch(function() {});
+  }
+
+  /* ── Init ────────────────────────────────────────────────── */
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    const btn = document.getElementById('btnNotif');
+    btn.style.opacity = '1';
+    btn.querySelector('i').className = 'bi bi-bell-fill';
+  }
+
+
+  poll();
+  setInterval(poll, POLL_MS);
+
+  // Session heartbeat: auto-redirect if this window's session is gone
+  var hbFails = 0;
+  setInterval(function () {
+    fetch(withMonitorToken('/api/session-check/'), {
+      credentials: 'same-origin',
+      headers: { 'X-Monitor-Token': MONITOR_TOKEN }
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) {
+          var nextPath = window.location.pathname + window.location.search;
+          window.location.href = '/login/?next=' + encodeURIComponent(nextPath);
+        } else {
+          hbFails = 0;
+        }
+      })
+      .catch(function () {
+        if (++hbFails >= 3) {
+          window.location.href = '/login/';
+        }
+      });
+  }, 5000);
+})();
+</script>
+<script>
+  // ── Auto-refresh after action buttons ──────────────────────────
+  (function() {
+    const AUTO_REFRESH_DELAY = 2000; // 2 seconds
+    const actionButtons = [
+      'button[onclick*="pauseReplay"]',
+      'button[onclick*="stopReplay"]',
+      'button[onclick*="clearRun"]'
+    ];
+
+    function showLoadingState(btn) {
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      var originalHTML = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner-grow spinner-grow-sm me-1"></span>Processing...';
+      return originalHTML;
+    }
+
+    actionButtons.forEach(function(selector) {
+      document.querySelectorAll(selector).forEach(function(btn) {
+        ['click', 'touchstart'].forEach(function(event) {
+          btn.addEventListener(event, function(e) {
+            if (e.type === 'touchstart') {
+              e.preventDefault();
+              showLoadingState(btn);
+            } else if (e.type === 'click') {
+              showLoadingState(btn);
+            }
+            setTimeout(function() {
+              location.reload();
+            }, AUTO_REFRESH_DELAY);
+          }, { passive: false });
+        });
+      });
+    });
+
+    // Poll for remote action status
+    let lastRemoteActionTime = 0;
+    setInterval(function() {
+      fetch('/api/remote-action-status/?since=' + lastRemoteActionTime)
+        .then(r => r.json())
+        .then(d => {
+          lastRemoteActionTime = d.last_action;
+          if (d.should_refresh) {
+            console.log('Remote action detected, refreshing...');
+            location.reload();
+          }
+        })
+        .catch(e => console.error('Remote action polling error:', e));
+    }, 3000); // Poll every 3 seconds
+  });
+</script>
+</body>
+</html>

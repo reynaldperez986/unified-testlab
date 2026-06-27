@@ -1,0 +1,369 @@
+{% extends "recorder/base.html" %}
+{% block title %}Replay  {{ record_name|default:record_id }}{% endblock %}
+
+{% block content %}
+<style>
+  .replay-record-name {
+    min-width: 0;
+    word-break: break-word;
+  }
+  .replay-ctrl-buttons .btn {
+    min-width: 8.25rem;
+  }
+  @media (max-width: 768px) {
+    .replay-ctrl-buttons .btn {
+      flex: 1 1 calc(50% - .5rem);
+      min-width: 0;
+    }
+    #paginationBar {
+      justify-content: center;
+    }
+  }
+  @media (max-width: 480px) {
+    .replay-ctrl-buttons .btn {
+      flex-basis: 100%;
+    }
+  }
+</style>
+<div class="page-header-shell">
+  <div class="d-flex align-items-center flex-wrap gap-2">
+    <a href="{% url 'session_steps' record_id %}" class="btn btn-sm btn-outline-secondary me-2">
+      <i class="bi bi-arrow-left"></i> Steps
+    </a>
+    <h5 class="page-title fw-bold mb-0"><i class="bi bi-play-circle"></i> Replay Session</h5>
+    {% if record_name %}<span class="fw-semibold ms-2 replay-record-name">{{ record_name }}</span>{% endif %}
+  </div>
+  <div class="page-header-meta">Run the recording and review live step-by-step results on desktop or mobile.</div>
+</div>
+
+{% if not has_job %}
+<div class="card shadow-sm">
+  <div class="card-body py-4 text-center">
+    <div class="spinner-border text-success mb-3" role="status" aria-hidden="true"></div>
+    <h5 class="mb-2"><i class="bi bi-play-circle text-success"></i> Starting Replay</h5>
+    <p class="text-muted mb-3">Launching <strong>{{ step_count }}</strong> recorded step{{ step_count|pluralize }} for {% if record_name %}<strong>{{ record_name }}</strong>{% else %}this session{% endif %}.</p>
+    <p class="text-muted small mb-0">If nothing happens, use the manual start button below.</p>
+  </div>
+  <div class="card-footer bg-transparent border-0 pt-0 pb-4 text-center">
+    <form id="replayForm" method="post" class="d-inline-block">
+      {% csrf_token %}
+      <input type="hidden" name="replay_engine" value="{{ session_engine|default:'selenium' }}">
+      <button type="submit" class="btn btn-success">
+        <i class="bi bi-play-fill"></i> Start Manually
+      </button>
+      <a href="{% url 'sessions_list' %}" class="btn btn-outline-secondary ms-2">Cancel</a>
+    </form>
+  </div>
+</div>
+
+{% else %}
+{# Live progress panel #}
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap replay-ctrl-bar">
+  <span id="statusBadge" class="badge fs-6 px-3 py-2 bg-primary">Running...</span>
+  <span class="text-muted small">Step <span id="doneCount">0</span> / <span id="totalCount">{{ step_count }}</span></span>
+  <div class="ms-auto d-flex gap-2 flex-wrap replay-ctrl-buttons">
+    <button id="btnPause" class="btn btn-warning btn-sm" onclick="togglePause()">
+      <i class="bi bi-pause-fill"></i> Pause
+    </button>
+    <button id="btnStop" class="btn btn-danger btn-sm" onclick="stopReplay()">
+      <i class="bi bi-stop-fill"></i> Stop
+    </button>
+    <button type="button" class="btn btn-outline-success btn-sm" id="btnReplayAgain" style="display:none" onclick="doReplayAgain()">
+      <i class="bi bi-arrow-repeat"></i> Play Again
+    </button>
+    <a href="{% url 'sessions_list' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-collection"></i> Projects
+    </a>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive" style="max-height:65vh;overflow-y:auto;" id="tableWrapper">
+    <table class="table table-sm align-middle mb-0 mobile-stack-table" id="resultsTable">
+      <thead class="table-dark" style="position:sticky;top:0;z-index:1;">
+        <tr>
+          <th style="width:40px" class="text-center"><i class="bi bi-cpu"></i></th>
+          <th style="width:55px">#</th>
+          <th style="width:180px">Page URL</th>
+          <th style="width:80px">Action</th>
+          <th>Steps</th>
+          <th>Fieldname</th>
+          <th>Data</th>
+          <th>Validation</th>
+          <th style="width:70px">Status</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+</div>
+<div id="paginationBar" class="mt-2 d-flex align-items-center gap-2 flex-wrap" style="display:none"></div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not has_job %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('replayForm');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      fetch('/api/open-detached-monitor/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value }
+      }).catch(function() {})
+        .finally(function() {
+          HTMLFormElement.prototype.submit.call(form);
+        });
+    }, { once: true });
+    window.setTimeout(function () {
+      form.requestSubmit();
+    }, 50);
+  });
+</script>
+{% else %}
+<script>
+  const record_id = "{{ record_id }}";
+  const RUN_ID     = "{{ job_run_id }}";
+  const SESSION_ENGINE = "{{ session_engine|default:'selenium'|escapejs }}";
+  const _MONITOR_TOKEN = new URLSearchParams(window.location.search).get("monitor_token") || "";
+  const _TOKEN_QS = _MONITOR_TOKEN ? "?monitor_token=" + encodeURIComponent(_MONITOR_TOKEN) : "";
+  const STATUS_URL = "/replay/" + RUN_ID + "/status/" + _TOKEN_QS;
+  const PAUSE_URL  = "/replay/" + RUN_ID + "/pause/" + _TOKEN_QS;
+  const STOP_URL   = "/replay/" + RUN_ID + "/stop/" + _TOKEN_QS;
+  const CSRF         = "{{ csrf_token }}";
+  const ADD_STEP_AFTER = {% if add_step_after %}true{% else %}false{% endif %};
+  const CONTINUE_URL   = "/sessions/" + record_id + "/continue/";
+  const PAGE_SIZE  = 100;
+  let expectedRunId = RUN_ID;
+
+  let pollTimer   = null;
+  let lastCount   = 0;
+  let allRows     = [];
+  let currentPage = 1;
+  let isRunning   = true;
+
+  const statusBadge    = document.getElementById("statusBadge");
+  const doneCount      = document.getElementById("doneCount");
+  const totalCount     = document.getElementById("totalCount");
+  const resultsBody    = document.getElementById("resultsBody");
+  const tableWrapper   = document.getElementById("tableWrapper");
+  const paginationBar  = document.getElementById("paginationBar");
+  const btnPause       = document.getElementById("btnPause");
+  const btnStop        = document.getElementById("btnStop");
+  const btnReplayAgain = document.getElementById("btnReplayAgain");
+
+  // Clear everything for a brand-new run
+  function resetDisplay() {
+    allRows     = [];
+    lastCount   = 0;
+    currentPage = 1;
+    isRunning   = true;
+    resultsBody.innerHTML = "";
+    paginationBar.innerHTML = "";
+    paginationBar.style.display = "none";
+    doneCount.textContent = "0";
+    btnPause.disabled = false;
+    btnStop.disabled  = false;
+    btnReplayAgain.style.display = "none";
+    statusBadge.textContent = "Running...";
+    statusBadge.className   = "badge fs-6 px-3 py-2 bg-primary";
+    btnPause.innerHTML = "<i class='bi bi-pause-fill'></i> Pause";
+    btnPause.className = "btn btn-warning btn-sm";
+  }
+
+  const ACTION_COLORS = {
+    click:   "bg-primary",
+    dblclick:"bg-info text-dark",
+    input:   "bg-warning text-dark",
+    change:  "bg-warning text-dark",
+    keydown: "bg-secondary",
+    submit:  "bg-success",
+  };
+
+  function badgeClass(action) {
+    return "badge " + (ACTION_COLORS[action] || "bg-light text-dark");
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function truncateText(value, maxLength) {
+    const text = String(value || "");
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength - 1) + "\u2026";
+  }
+
+  function buildRow(r) {
+    const tr = document.createElement("tr");
+    tr.className = r.ok ? "step-ok" : "step-fail";
+    const engineIcon = SESSION_ENGINE === "playwright"
+      ? "<i class='bi bi-lightning-charge-fill text-success' title='Playwright'></i>"
+      : "<i class='bi bi-browser-chrome text-warning' title='Selenium'></i>";
+    // Locator cell: strategy badge + truncated value
+    const locVal = r.locator_value || "";
+    const locTrunc = locVal.length > 30 ? locVal.slice(0, 30) + "\u2026" : locVal;
+    const locCell = r.locator_strategy
+      ? "<span class='badge bg-secondary me-1'>" + escHtml(r.locator_strategy) + "</span>" +
+        "<span class='font-monospace' style='font-size:.75em'>" + escHtml(locTrunc) + "</span>"
+      : "";
+    const stepsText = r.steps_description ? String(r.steps_description) : "";
+    const stepsCell = stepsText
+      ? "<span title='" + escHtml(stepsText) + "'>" + escHtml(truncateText(stepsText, 40)) + "</span>"
+      : locCell;
+    // Field Name and Data cells (only populated for input/change/keydown steps)
+    const fieldNameText = r.field_name ? String(r.field_name) : "";
+    const fieldNameCell = fieldNameText
+      ? "<span title='" + escHtml(fieldNameText) + "'>" + escHtml(truncateText(fieldNameText, 40)) + "</span>"
+      : "";
+    const dataCell      = r.field_value ? "<code>" + escHtml(String(r.field_value).slice(0, 60)) + "</code>" : "";
+    const validationCell = r.validation ? escHtml(r.validation) : "";
+    const pageUrl = r.page_url ? escHtml(r.page_url) : "";
+    const pageUrlCell = pageUrl
+      ? "<a href='" + pageUrl + "' target='_blank' class='text-decoration-none' title='" + pageUrl + "'>" + pageUrl + "</a>"
+      : "";
+    tr.innerHTML =
+      "<td class='text-center' data-label='Engine'>" + engineIcon + "</td>" +
+      "<td class='small text-muted mobile-compact-cell' data-label='#'>" + r.step_no + "</td>" +
+      "<td class='small text-truncate' data-label='Page URL' style='max-width:180px;'>" + pageUrlCell + "</td>" +
+      "<td data-label='Action'><span class='" + badgeClass(r.action) + "'>" + r.action + "</span></td>" +
+      "<td class='small' data-label='Steps'>" + stepsCell + "</td>" +
+      "<td class='small' data-label='Fieldname'>" + fieldNameCell + "</td>" +
+      "<td class='small' data-label='Data'>" + dataCell + "</td>" +
+      "<td class='small' data-label='Validation'>" + validationCell + "</td>" +
+      "<td class='text-center' data-label='Status'>" + (r.ok ? "<i class='bi bi-check-circle-fill text-success'></i>" : "<i class='bi bi-x-circle-fill text-danger'></i>") + "</td>";
+    return tr;
+  }
+
+  function totalPages() { return Math.max(1, Math.ceil(allRows.length / PAGE_SIZE)); }
+
+  function renderPage(page) {
+    currentPage = Math.min(Math.max(1, page), totalPages());
+    const start = (currentPage - 1) * PAGE_SIZE;
+    resultsBody.innerHTML = "";
+    allRows.slice(start, start + PAGE_SIZE).forEach(r => resultsBody.appendChild(buildRow(r)));
+    tableWrapper.scrollTop = 0;
+    renderPagination();
+  }
+
+  function renderPagination() {
+    const tp = totalPages();
+    if (tp <= 1) { paginationBar.style.display = "none"; return; }
+    paginationBar.style.display = "";
+    const start = (currentPage - 1) * PAGE_SIZE + 1;
+    const end = Math.min(currentPage * PAGE_SIZE, allRows.length);
+    let html = "<span class='text-muted small me-2'>Showing " + start + "-" + end + " of " + allRows.length + "</span><nav><ul class='pagination pagination-sm mb-0'>";
+    html += "<li class='page-item" + (currentPage===1?" disabled":"") + "'><a class='page-link' href='#' onclick='goPage(1);return false;'>&laquo;</a></li>";
+    html += "<li class='page-item" + (currentPage===1?" disabled":"") + "'><a class='page-link' href='#' onclick='goPage(" + (currentPage-1) + ");return false;'>&lsaquo;</a></li>";
+    for (let p = Math.max(1,currentPage-2); p <= Math.min(tp,currentPage+2); p++) {
+      html += "<li class='page-item" + (p===currentPage?" active":"") + "'><a class='page-link' href='#' onclick='goPage(" + p + ");return false;'>" + p + "</a></li>";
+    }
+    html += "<li class='page-item" + (currentPage===tp?" disabled":"") + "'><a class='page-link' href='#' onclick='goPage(" + (currentPage+1) + ");return false;'>&rsaquo;</a></li>";
+    html += "<li class='page-item" + (currentPage===tp?" disabled":"") + "'><a class='page-link' href='#' onclick='goPage(" + tp + ");return false;'>&raquo;</a></li>";
+    html += "</ul></nav>";
+    paginationBar.innerHTML = html;
+  }
+
+  function goPage(p) { isRunning = false; renderPage(p); }
+
+  function updateStatusBadge(status) {
+    const MAP = { running:["Running...","bg-primary"], failing:["Failing...","bg-danger"], paused:["Paused","bg-warning text-dark"], stopped:["Stopped","bg-secondary"], done:["Completed","bg-success"], failed:["Failed","bg-danger"], error:["Error","bg-danger"] };
+    const [label, cls] = MAP[status] || [status, "bg-secondary"];
+    statusBadge.textContent = label;
+    statusBadge.className = "badge fs-6 px-3 py-2 " + cls;
+    if (status === "paused") {
+      btnPause.innerHTML = "<i class='bi bi-play-fill'></i> Resume";
+      btnPause.className = "btn btn-success btn-sm";
+    } else {
+      btnPause.innerHTML = "<i class='bi bi-pause-fill'></i> Pause";
+      btnPause.className = "btn btn-warning btn-sm";
+    }
+    if (["done","stopped","failed","error"].includes(status)) {
+      isRunning = false;
+      btnPause.disabled = true;
+      btnStop.disabled = true;
+      btnReplayAgain.style.display = "";
+      clearInterval(pollTimer);
+      renderPage(currentPage);
+      if (status === "done" && ADD_STEP_AFTER) {
+        statusBadge.textContent = "Starting recorder\u2026";
+        statusBadge.className   = "badge fs-6 px-3 py-2 bg-info text-dark";
+        btnReplayAgain.style.display = "none";
+        fetch(CONTINUE_URL, {
+          method: "POST",
+          headers: {"X-CSRFToken": CSRF, "X-Requested-With": "XMLHttpRequest"}
+        }).then(function(r) { return r.json(); }).then(function() {
+          window.location.href = "/sessions/" + record_id + "/";
+        }).catch(function() {
+          window.location.href = "/sessions/" + record_id + "/";
+        });
+      } else if (status === "done" || status === "failed") {
+        setTimeout(function() {
+          window.location.href = "/sessions/" + record_id + "/last-run/";
+        }, 1500);
+      }
+    }
+  }
+
+  function poll() {
+    fetch(STATUS_URL).then(r => r.json()).then(data => {
+      // New run detected (e.g. Replay Again fired while old poll was in-flight)
+      if (data.run_id && data.run_id !== expectedRunId) {
+        expectedRunId = data.run_id;
+        resetDisplay();
+      }
+      totalCount.textContent = data.total;
+      const newRows = data.results.slice(lastCount);
+      newRows.forEach(r => allRows.push(r));
+      lastCount = data.results.length;
+      doneCount.textContent = lastCount;
+      if (isRunning) {
+        currentPage = totalPages();
+        newRows.forEach(r => { const tr = buildRow(r); resultsBody.appendChild(tr); tr.scrollIntoView({behavior:"smooth",block:"nearest"}); });
+        renderPagination();
+      }
+      const hasFailures = Array.isArray(data.results) && data.results.some(r => r && r.ok === false);
+      const displayStatus = data.status === "running" && hasFailures ? "failing" : data.status;
+      updateStatusBadge(displayStatus);
+    }).catch(() => {});
+  }
+
+  function togglePause() {
+    fetch(PAUSE_URL, {method:"POST", headers:{"X-CSRFToken":CSRF,"Content-Type":"application/json"}}).then(r=>r.json()).then(d=>updateStatusBadge(d.status));
+  }
+
+  function stopReplay() {
+    fetch(STOP_URL, {method:"POST", headers:{"X-CSRFToken":CSRF,"Content-Type":"application/json"}}).then(r=>r.json()).then(d=>updateStatusBadge(d.status));
+  }
+
+  function doReplayAgain() {
+    var form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/sessions/" + record_id + "/replay/";
+    var csrfInput = document.createElement("input");
+    csrfInput.type = "hidden";
+    csrfInput.name = "csrfmiddlewaretoken";
+    csrfInput.value = CSRF;
+    form.appendChild(csrfInput);
+    var engineInput = document.createElement("input");
+    engineInput.type = "hidden";
+    engineInput.name = "replay_engine";
+    engineInput.value = "{{ session_engine|default:'selenium' }}";
+    form.appendChild(engineInput);
+    document.body.appendChild(form);
+    fetch('/api/open-detached-monitor/', { method: 'POST', headers: { 'X-CSRFToken': CSRF } })
+      .catch(function() {})
+      .finally(function() {
+        form.submit();
+      });
+  }
+
+  pollTimer = setInterval(poll, 500);
+  poll();
+</script>
+{% endif %}
+{% endblock %}
+{% block hotkey_data %}<script>window._hotkeyRecordId = '{{ record_id }}';</script>{% endblock %}

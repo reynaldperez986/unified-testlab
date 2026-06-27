@@ -1,0 +1,38 @@
+sequenceDiagram
+    participant U as User
+    participant UI as Workflow AI Page
+    participant DJ as Django View/API
+    participant RAG as rag_service.py
+    participant DB as PostgreSQL
+    participant DOC as document_builder.py
+    participant OE as Ollama Embeddings
+    participant OG as Ollama Llama3
+
+    U->>UI: Enter workflow question
+    UI->>DJ: POST /api/workflow-assistant/query/
+    DJ->>RAG: query_workflow_assistant(question)
+
+    RAG->>DB: Ensure pgvector extension and ai_rag_document schema
+    RAG->>DOC: build_rag_documents()
+    DOC->>DB: Read steps, ai_workflow, ai_databank
+    DB-->>DOC: Source rows
+    DOC-->>RAG: Normalized documents
+
+    RAG->>DB: Upsert documents into ai_rag_document
+    RAG->>DB: Find stale or missing embeddings
+    alt stale documents exist
+        RAG->>OE: Embed document_text with nomic-embed-text
+        OE-->>RAG: Vectors
+        RAG->>DB: Store vectors in ai_rag_document.embedding
+    end
+
+    RAG->>OE: Embed user query
+    OE-->>RAG: Query vector
+    RAG->>DB: Hybrid search (FTS + pgvector similarity)
+    DB-->>RAG: Top K retrieved documents
+    RAG->>RAG: Build grounded prompt with citations
+    RAG->>OG: POST /api/generate with llama3
+    OG-->>RAG: Final answer
+    RAG-->>DJ: Answer + retrieved context
+    DJ-->>UI: JSON response
+    UI-->>U: Render answer and sources

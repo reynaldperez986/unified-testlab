@@ -1,0 +1,60 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 mb-md-4">
+    <h1 class="page-title h3 mb-0">Administration - Themes</h1>
+    <a class="btn btn-primary" href="/db-lab/administration/themes/new/">New Theme</a>
+</div>
+
+<div class="theme-grid">
+    {% for t in themes %}
+    <article class="theme-card">
+        <div class="theme-card-top" style="background: linear-gradient(135deg, {{ t.sidebar_start_color }}, {{ t.sidebar_end_color }});"></div>
+        <div class="theme-card-body">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <h2 class="h6 mb-0">{{ t.name }}</h2>
+                <div class="d-flex gap-1">
+                    {% if t.is_default %}
+                        <span class="chip">Default</span>
+                    {% endif %}
+                    {% if current_theme_id == t.id %}
+                        <span class="chip">In Use</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="theme-swatches mb-3">
+                <span class="theme-swatch" title="Primary" style="background: {{ t.primary_color }};"></span>
+                <span class="theme-swatch" title="Accent" style="background: {{ t.accent_color }};"></span>
+                <span class="theme-swatch" title="Background" style="background: {{ t.background_color }};"></span>
+                <span class="theme-swatch" title="Surface" style="background: {{ t.surface_color }};"></span>
+                <span class="theme-swatch" title="Text" style="background: {{ t.text_color }};"></span>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <form method="post" action="/db-lab/administration/themes/{{ t.id }}/apply-me/">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-primary" type="submit">Use Theme</button>
+                </form>
+                <form method="post" action="/db-lab/administration/themes/{{ t.id }}/set-default/">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-success" type="submit">Set Default</button>
+                </form>
+                <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/administration/themes/{{ t.id }}/edit/" title="Edit" aria-label="Edit theme">
+                    <i class="bi bi-pencil-square"></i>
+                </a>
+            </div>
+        </div>
+    </article>
+    {% empty %}
+    <section class="section-card form-card text-muted">No themes found.</section>
+    {% endfor %}
+</div>
+
+<section class="hint-card mt-3">
+    <h3 class="hint-title">How Dynamic Themes Work</h3>
+    <p class="mb-1">Use Theme: applies selected theme to your account immediately.</p>
+    <p class="mb-0">Set Default: theme used by users without personal preference.</p>
+</section>
+{% endblock %}
+

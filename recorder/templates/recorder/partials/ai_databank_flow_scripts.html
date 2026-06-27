@@ -1,0 +1,2255 @@
+<script>
+(function () {
+  function getCsrf() {
+    var m = document.cookie.match(/(?:^|; )csrftoken[^=]*=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : ((document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '');
+  }
+
+  function parseFetchResponse(response) {
+    var contentType = response.headers.get('content-type') || '';
+    if (contentType.indexOf('application/json') >= 0) {
+      return response.json().then(function (data) {
+        return { ok: response.ok, data: data };
+      });
+    }
+    return response.text().then(function (text) {
+      var cleaned = (text || '').replace(/\s+/g, ' ').trim();
+      return {
+        ok: false,
+        data: {
+          ok: false,
+          error: cleaned ? cleaned.slice(0, 220) : 'Server returned a non-JSON response.'
+        }
+      };
+    });
+  }
+
+  var board = document.getElementById('adbFlowBoard');
+  var cardsHost = document.getElementById('adbFlowCards');
+  var scene = document.getElementById('adbFlowScene');
+  var svg = document.getElementById('adbFlowSvg');
+  var statusEl = document.getElementById('adbFlowStatus');
+  var emptyStateEl = document.getElementById('adbFlowEmptyState');
+  var connectBtn = document.getElementById('adbFlowConnectBtn');
+  var addCardBtn = document.getElementById('adbFlowAddCardBtn');
+  var resetBtn = document.getElementById('adbFlowResetBtn');
+  var clearBtn = document.getElementById('adbFlowClearBtn');
+  var zoomOutBtn = document.getElementById('adbFlowZoomOutBtn');
+  var zoomInBtn = document.getElementById('adbFlowZoomInBtn');
+  var zoomResetBtn = document.getElementById('adbFlowZoomResetBtn');
+  var compactToggle = document.getElementById('adbFlowCompactToggle');
+  var minimap = document.getElementById('adbFlowMinimap');
+  var minimapBody = document.getElementById('adbFlowMinimapBody');
+  var minimapCards = document.getElementById('adbFlowMinimapCards');
+  var minimapWindow = document.getElementById('adbFlowMinimapWindow');
+  var minimapScale = document.getElementById('adbFlowMinimapScale');
+  var workflowTabsHost = document.getElementById('adbWorkflowTabs');
+  var workflowSelect = document.getElementById('adbWorkflowSelect');
+  var workflowNameInput = document.getElementById('adbWorkflowName');
+  var workflowNewTabBtn = document.getElementById('adbWorkflowNewTabBtn');
+  var workflowDeleteBtn = document.getElementById('adbWorkflowDeleteBtn');
+  var workflowSaveBtn = document.getElementById('adbWorkflowSaveBtn');
+  var workflowNewTabModalEl = document.getElementById('adbWorkflowNewTabModal');
+  var workflowNewTabNameInput = document.getElementById('adbWorkflowNewTabName');
+  var workflowNewTabConfirmBtn = document.getElementById('adbWorkflowNewTabConfirmBtn');
+  var workflowDeleteModalEl = document.getElementById('adbWorkflowDeleteModal');
+  var workflowDeleteModalName = document.getElementById('adbWorkflowDeleteModalName');
+  var workflowDeleteConfirmBtn = document.getElementById('adbWorkflowDeleteConfirmBtn');
+  var workflowRecordSelect = document.getElementById('adbWorkflowRecordSelect');
+  var workflowUpdateBtn = document.getElementById('adbWorkflowUpdateBtn');
+  var workflowNameList = document.getElementById('adbWorkflowNameList');
+  var dataScript = document.getElementById('adbFlowCardsData');
+  if (!board || !cardsHost || !scene || !svg || !dataScript) return;
+
+  var pageParams = new URLSearchParams(window.location.search || '');
+  var requestedWorkflowName = (pageParams.get('workflow_name') || '').trim();
+  var openAsNewWorkflow = pageParams.get('new') === '1';
+
+  var storageKeyPrefix = 'aiDatabankFlowState.v2:';
+  var viewStorageKeyPrefix = 'aiDatabankFlowViewState.v2:';
+  var legacyViewStorageKey = 'aiDatabankFlowViewState.v1';
+  var lastActiveWorkflowKey = 'aiDatabankFlow.lastActiveWorkflow';
+  var baseCards = JSON.parse(dataScript.textContent || '[]');
+  var cards = cloneCards(baseCards);
+  var state = { positions: {}, connections: [], cardSelections: {} };
+  var viewState = { scale: 1, panX: 0, panY: 0, compact: false };
+  var connectMode = false;
+  var selectedSourceId = '';
+  var autoSaveTimer = 0;
+  var autoSaveEnabled = true;
+  var autoSavePendingReason = '';
+  var lastLoadedWorkflow = '';
+  var pointerCache = new Map();
+  var pinchState = null;
+  var panState = null;
+  var ignoreWorkflowNameSync = false;
+  var workflowTabs = [];
+  var activeWorkflowTabId = '';
+  var workflowTabSequence = 0;
+  var pendingDeleteWorkflowName = '';
+  var workflowNewTabModal = (window.bootstrap && workflowNewTabModalEl)
+    ? new bootstrap.Modal(workflowNewTabModalEl)
+    : null;
+  var workflowDeleteModal = (window.bootstrap && workflowDeleteModalEl)
+    ? new bootstrap.Modal(workflowDeleteModalEl)
+    : null;
+
+  function cloneCards(source) {
+    return (Array.isArray(source) ? source : []).map(function (card) {
+      var next = Object.assign({}, card || {});
+      next.elements = Array.isArray(card && card.elements)
+        ? card.elements.map(function (element) { return Object.assign({}, element || {}); })
+        : [];
+      next.is_custom = !!(card && card.is_custom);
+      return next;
+    });
+  }
+
+  function cloneFlowState(source) {
+    var snapshot = source && typeof source === 'object' ? source : {};
+    return {
+      positions: JSON.parse(JSON.stringify(snapshot.positions || {})),
+      connections: JSON.parse(JSON.stringify(Array.isArray(snapshot.connections) ? snapshot.connections : [])),
+      cardSelections: JSON.parse(JSON.stringify(snapshot.cardSelections || {}))
+    };
+  }
+
+  function cloneFlowViewState(source) {
+    var snapshot = source && typeof source === 'object' ? source : {};
+    return {
+      scale: Number(snapshot.scale || 1) || 1,
+      panX: Number(snapshot.panX || 0) || 0,
+      panY: Number(snapshot.panY || 0) || 0,
+      compact: !!snapshot.compact
+    };
+  }
+
+  function currentWorkflowSnapshot() {
+    return {
+      workflowName: getCommittedWorkflowName(),
+      cards: cloneCards(cards),
+      state: cloneFlowState(state),
+      viewState: cloneFlowViewState(viewState),
+      lastLoadedWorkflow: lastLoadedWorkflow || ''
+    };
+  }
+
+  function makeEmptyWorkflowSnapshot(workflowName) {
+    return {
+      workflowName: (workflowName || '').trim(),
+      cards: [],
+      state: { positions: {}, connections: [], cardSelections: {} },
+      viewState: { scale: 1, panX: 0, panY: 0, compact: false },
+      lastLoadedWorkflow: ''
+    };
+  }
+
+  function makeWorkflowTabLabel(workflowName) {
+    return (workflowName || '').trim() || 'Initial Workflow';
+  }
+
+  function isWorkflowTabBlank(tab) {
+    if (!tab) {
+      return false;
+    }
+    var snapshot = tab.snapshot || {};
+    var snapshotCards = Array.isArray(snapshot.cards) ? snapshot.cards : [];
+    var snapshotState = snapshot.state && typeof snapshot.state === 'object' ? snapshot.state : {};
+    var snapshotConnections = Array.isArray(snapshotState.connections) ? snapshotState.connections : [];
+    var snapshotPositions = snapshotState.positions && typeof snapshotState.positions === 'object' ? snapshotState.positions : {};
+    var snapshotSelections = snapshotState.cardSelections && typeof snapshotState.cardSelections === 'object' ? snapshotState.cardSelections : {};
+    return !(tab.workflowName || '').trim()
+      && snapshotCards.length === 0
+      && snapshotConnections.length === 0
+      && Object.keys(snapshotPositions).length === 0
+      && Object.keys(snapshotSelections).length === 0;
+  }
+
+  function findWorkflowTab(tabId) {
+    return workflowTabs.find(function (tab) { return tab.id === tabId; }) || null;
+  }
+
+  function findWorkflowTabByName(workflowName) {
+    var target = String(workflowName || '').trim().toLowerCase();
+    if (!target) {
+      return null;
+    }
+    return workflowTabs.find(function (tab) {
+      return String(tab.workflowName || '').trim().toLowerCase() === target;
+    }) || null;
+  }
+
+  function makeNextWorkflowName(baseName) {
+    var root = String(baseName || '').trim() || 'New Workflow';
+    var existingNames = {};
+    if (workflowSelect) {
+      Array.prototype.forEach.call(workflowSelect.options, function (option) {
+        var optionName = String(option.value || '').trim().toLowerCase();
+        if (optionName) {
+          existingNames[optionName] = true;
+        }
+      });
+    }
+    workflowTabs.forEach(function (tab) {
+      var tabName = String(tab.workflowName || '').trim().toLowerCase();
+      if (tabName) {
+        existingNames[tabName] = true;
+      }
+    });
+
+    var candidate = root;
+    var index = 2;
+    while (existingNames[String(candidate).trim().toLowerCase()]) {
+      candidate = root + ' ' + index;
+      index += 1;
+    }
+    return candidate;
+  }
+
+  function renderWorkflowTabs() {
+    if (!workflowTabsHost) {
+      return;
+    }
+    workflowTabsHost.innerHTML = '';
+    workflowTabs.forEach(function (tab) {
+      var tabButton = document.createElement('button');
+      tabButton.type = 'button';
+      tabButton.className = 'nav-link adb-flow-tab-link' + (tab.id === activeWorkflowTabId ? ' active' : '');
+      tabButton.setAttribute('role', 'tab');
+      tabButton.setAttribute('aria-selected', tab.id === activeWorkflowTabId ? 'true' : 'false');
+
+      var label = document.createElement('span');
+      label.className = 'adb-flow-tab-name';
+      label.textContent = makeWorkflowTabLabel(tab.workflowName);
+      tabButton.appendChild(label);
+
+      if (workflowTabs.length > 1) {
+        var closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'adb-flow-tab-close';
+        closeButton.title = 'Close tab';
+        closeButton.setAttribute('aria-label', 'Close workflow tab ' + makeWorkflowTabLabel(tab.workflowName));
+        closeButton.innerHTML = '<i class="bi bi-x-lg"></i>';
+        closeButton.addEventListener('click', function (event) {
+          event.stopPropagation();
+          closeWorkflowTab(tab.id);
+        });
+        tabButton.appendChild(closeButton);
+      }
+
+      tabButton.addEventListener('click', function () {
+        activateWorkflowTab(tab.id);
+      });
+      workflowTabsHost.appendChild(tabButton);
+    });
+  }
+
+  function updateActiveWorkflowTabMeta() {
+    if (!activeWorkflowTabId) {
+      return;
+    }
+    var activeTab = findWorkflowTab(activeWorkflowTabId);
+    if (!activeTab) {
+      return;
+    }
+    activeTab.workflowName = getPersistWorkflowName() || activeTab.workflowName || '';
+    renderWorkflowTabs();
+  }
+
+  function snapshotActiveWorkflowTab() {
+    if (!activeWorkflowTabId) {
+      return;
+    }
+    var activeTab = findWorkflowTab(activeWorkflowTabId);
+    if (!activeTab) {
+      return;
+    }
+    activeTab.workflowName = getPersistWorkflowName() || activeTab.workflowName || '';
+    activeTab.snapshot = currentWorkflowSnapshot();
+  }
+
+  function restoreWorkflowSnapshot(tab) {
+    var snapshot = tab && tab.snapshot ? tab.snapshot : makeEmptyWorkflowSnapshot(tab && tab.workflowName || '');
+    cards = cloneCards(snapshot.cards || baseCards);
+    state = cloneFlowState(snapshot.state || {});
+    viewState = cloneFlowViewState(snapshot.viewState || {});
+    lastLoadedWorkflow = snapshot.lastLoadedWorkflow || '';
+    selectedSourceId = '';
+    connectMode = false;
+    syncWorkflowControls(snapshot.workflowName || tab.workflowName || '', { clearInput: true });
+    applyViewState();
+    renderCards();
+    renderConnections();
+    renderMinimap();
+    refreshEmptyState();
+  }
+
+  function createWorkflowTab(workflowName, snapshot) {
+    var tab = {
+      id: 'adb_workflow_tab_' + String(workflowTabSequence += 1),
+      workflowName: (workflowName || '').trim(),
+      snapshot: snapshot || makeEmptyWorkflowSnapshot(workflowName)
+    };
+    workflowTabs.push(tab);
+    return tab;
+  }
+
+  function ensureActiveWorkflowTab() {
+    if (!activeWorkflowTabId && workflowTabs.length) {
+      activeWorkflowTabId = workflowTabs[0].id;
+    }
+  }
+
+  function activateWorkflowTab(tabId) {
+    var nextTab = findWorkflowTab(tabId);
+    if (!nextTab) {
+      return;
+    }
+    if (activeWorkflowTabId === tabId) {
+      renderWorkflowTabs();
+      return;
+    }
+    flushAutoSave('Workflow');
+    snapshotActiveWorkflowTab();
+    activeWorkflowTabId = tabId;
+    restoreWorkflowSnapshot(nextTab);
+    renderWorkflowTabs();
+    setStatus('Switched to workflow tab "' + makeWorkflowTabLabel(nextTab.workflowName) + '".');
+  }
+
+  function closeWorkflowTab(tabId, options) {
+    var settings = options || {};
+    var index = workflowTabs.findIndex(function (tab) { return tab.id === tabId; });
+    if (index < 0) {
+      return;
+    }
+    if (!settings.skipSave && activeWorkflowTabId === tabId) {
+      flushAutoSave('Workflow');
+    }
+    var wasActive = activeWorkflowTabId === tabId;
+    workflowTabs.splice(index, 1);
+    if (!workflowTabs.length) {
+      var fallbackTab = createWorkflowTab('', currentWorkflowSnapshot());
+      activeWorkflowTabId = fallbackTab.id;
+      restoreWorkflowSnapshot(fallbackTab);
+      renderWorkflowTabs();
+      return;
+    }
+    if (wasActive) {
+      activeWorkflowTabId = '';
+      ensureActiveWorkflowTab();
+      restoreWorkflowSnapshot(findWorkflowTab(activeWorkflowTabId));
+    }
+    renderWorkflowTabs();
+  }
+
+  function openWorkflowTab(workflowName, options) {
+    var settings = options || {};
+    var normalizedName = (workflowName || '').trim();
+    var existingTab = normalizedName ? findWorkflowTabByName(normalizedName) : null;
+    var activeTab = findWorkflowTab(activeWorkflowTabId);
+    if (existingTab && !settings.forceNewState) {
+      activateWorkflowTab(existingTab.id);
+      if (settings.loadSaved) {
+        loadWorkflow(normalizedName);
+      }
+      return existingTab;
+    }
+
+    if (settings.loadSaved && normalizedName && activeTab && isWorkflowTabBlank(activeTab)) {
+      activeTab.workflowName = normalizedName;
+      activeTab.snapshot = makeEmptyWorkflowSnapshot(normalizedName);
+      activeWorkflowTabId = activeTab.id;
+      renderWorkflowTabs();
+      restoreWorkflowSnapshot(activeTab);
+      loadWorkflow(normalizedName);
+      return activeTab;
+    }
+
+    flushAutoSave('Workflow');
+    snapshotActiveWorkflowTab();
+    var nextTab = createWorkflowTab(normalizedName, settings.snapshot || makeEmptyWorkflowSnapshot(normalizedName));
+    activeWorkflowTabId = nextTab.id;
+    if (settings.clean) {
+      initializeNewWorkflowTab(normalizedName);
+      nextTab.snapshot = currentWorkflowSnapshot();
+    } else {
+      restoreWorkflowSnapshot(nextTab);
+      if (settings.loadSaved && normalizedName) {
+        loadWorkflow(normalizedName);
+      }
+    }
+    renderWorkflowTabs();
+    return nextTab;
+  }
+
+  function refreshEmptyState() {
+    if (!emptyStateEl) {
+      return;
+    }
+    emptyStateEl.style.display = cards.length ? 'none' : 'flex';
+    emptyStateEl.textContent = cards.length
+      ? ''
+      : 'No cards yet. Add a card or scrape a few pages first, then return here to connect them.';
+  }
+
+  function loadState(explicitName) {
+    try {
+      var key = getStateStorageKey(explicitName || getActiveWorkflowName() || requestedWorkflowName);
+      var raw = window.localStorage.getItem(key);
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        state.positions = parsed.positions || {};
+        state.connections = Array.isArray(parsed.connections) ? parsed.connections.map(function (c) {
+          return { from: c.from || '', to: c.to || '', from_page_name: c.from_page_name || '', to_page_name: c.to_page_name || '' };
+        }) : [];
+        state.cardSelections = parsed.cardSelections && typeof parsed.cardSelections === 'object' ? parsed.cardSelections : {};
+      }
+    } catch (err) {
+      state = { positions: {}, connections: [], cardSelections: {} };
+    }
+  }
+
+  function getActiveWorkflowName() {
+    return getPersistWorkflowName();
+  }
+
+  function getDraftWorkflowName() {
+    return (workflowNameInput && workflowNameInput.value || '').trim();
+  }
+
+  function getCommittedWorkflowName() {
+    var activeTab = findWorkflowTab(activeWorkflowTabId);
+    return String(
+      (activeTab && activeTab.workflowName) ||
+      lastLoadedWorkflow ||
+      (workflowSelect && workflowSelect.value) ||
+      ''
+    ).trim();
+  }
+
+  function getPersistWorkflowName() {
+    return getCommittedWorkflowName();
+  }
+
+  function getStateStorageKey(name) {
+    return storageKeyPrefix + ((name || '').trim() || '__draft__');
+  }
+
+  function updateDocumentTitle(name) {
+    var workflowName = (name || getActiveWorkflowName() || '').trim();
+    document.title = workflowName ? (workflowName + ' - AI Databank Flow') : 'AI Databank Flow';
+  }
+
+  function getViewStorageKey(name) {
+    return viewStorageKeyPrefix + ((name || '').trim() || '__draft__');
+  }
+
+  function loadViewState(workflowName) {
+    try {
+      var raw = window.localStorage.getItem(getViewStorageKey(workflowName));
+      if (!raw && !workflowName) {
+        raw = window.localStorage.getItem(legacyViewStorageKey);
+      }
+      if (!raw) {
+        return false;
+      }
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        viewState.scale = Number(parsed.scale || 1) || 1;
+        viewState.panX = Number(parsed.panX || 0) || 0;
+        viewState.panY = Number(parsed.panY || 0) || 0;
+        viewState.compact = !!parsed.compact;
+        return true;
+      }
+    } catch (err) {
+      viewState = { scale: 1, panX: 0, panY: 0, compact: false };
+    }
+    return false;
+  }
+
+  function saveState() {
+    try {
+      var enrichedConnections = state.connections.map(function (c) {
+        var fromCard = findCardById(c.from) || findCardByPageName(c.from_page_name || '') || {};
+        var toCard = findCardById(c.to) || findCardByPageName(c.to_page_name || '') || {};
+        return { from: fromCard.id || c.from, to: toCard.id || c.to, from_page_name: fromCard.page_name || c.from_page_name || '', to_page_name: toCard.page_name || c.to_page_name || '' };
+      });
+      var stateToSave = { positions: state.positions, connections: enrichedConnections, cardSelections: state.cardSelections };
+      window.localStorage.setItem(getStateStorageKey(getActiveWorkflowName() || requestedWorkflowName), JSON.stringify(stateToSave));
+    } catch (err) {
+      return;
+    }
+  }
+
+  function getConnectionsBackupKey(name) {
+    return 'aiDatabankFlowConnections.v1:' + ((name || '').trim() || '__draft__');
+  }
+
+  function saveConnectionsBackup() {
+    try {
+      var name = getActiveWorkflowName() || requestedWorkflowName;
+      if (!name || !state.connections.length) return;
+      var enriched = state.connections.map(function (c) {
+        var fromCard = findCardById(c.from) || findCardByPageName(c.from_page_name || '') || {};
+        var toCard = findCardById(c.to) || findCardByPageName(c.to_page_name || '') || {};
+        return { from: fromCard.id || c.from, to: toCard.id || c.to, from_page_name: fromCard.page_name || c.from_page_name || '', to_page_name: toCard.page_name || c.to_page_name || '' };
+      });
+      window.localStorage.setItem(getConnectionsBackupKey(name), JSON.stringify(enriched));
+    } catch (err) {}
+  }
+
+  function loadConnectionsBackup(name) {
+    try {
+      var raw = window.localStorage.getItem(getConnectionsBackupKey(name));
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function saveViewState() {
+    try {
+      window.localStorage.setItem(getViewStorageKey(getActiveWorkflowName()), JSON.stringify(viewState));
+    } catch (err) {
+      return;
+    }
+  }
+
+  function applyViewState() {
+    viewState.scale = Math.min(1.8, Math.max(0.65, viewState.scale || 1));
+    scene.style.transform = 'translate(' + viewState.panX + 'px, ' + viewState.panY + 'px) scale(' + viewState.scale + ')';
+    board.classList.toggle('is-compact', !!viewState.compact);
+    if (compactToggle) {
+      compactToggle.checked = !!viewState.compact;
+    }
+    if (zoomResetBtn) {
+      zoomResetBtn.textContent = Math.round(viewState.scale * 100) + '%';
+    }
+    updateDocumentTitle();
+  }
+
+  function updateViewState(partial) {
+    viewState = Object.assign({}, viewState, partial || {});
+    applyViewState();
+    saveViewState();
+    renderConnections();
+    renderMinimap();
+    queueAutoSave('Workflow');
+  }
+
+  function pointerDistance(a, b) {
+    var dx = a.clientX - b.clientX;
+    var dy = a.clientY - b.clientY;
+    return Math.sqrt((dx * dx) + (dy * dy));
+  }
+
+  function zoomBy(delta) {
+    updateViewState({ scale: Math.min(1.8, Math.max(0.65, viewState.scale + delta)) });
+  }
+
+  function resetViewport() {
+    updateViewState({ scale: 1, panX: 0, panY: 0 });
+  }
+
+  function truncateCardLinkText(text, maxLength) {
+    var source = String(text || '');
+    var limit = Number(maxLength || 30);
+    if (source.length <= limit) {
+      return source;
+    }
+    return source.slice(0, Math.max(0, limit)).trimEnd() + '...';
+  }
+
+  function truncateFlowText(text, maxLength) {
+    var source = String(text || '').replace(/\s+/g, ' ').trim();
+    var limit = Number(maxLength || 90);
+    if (source.length <= limit) {
+      return source;
+    }
+    return source.slice(0, Math.max(0, limit - 3)).trimEnd() + '...';
+  }
+
+  function findCardById(cardId) {
+    return cards.find(function (card) { return card.id === cardId; }) || null;
+  }
+
+  function findCardByPageName(pageName) {
+    return cards.find(function (card) { return card.page_name === pageName; }) || null;
+  }
+
+  function findBaseCardByPageName(pageName) {
+    return baseCards.find(function (card) { return card.page_name === pageName; }) || null;
+  }
+
+  function availableWorkflowRecordNames() {
+    return availableWorkflowRecords().map(function (record) {
+      return record.record_name;
+    });
+  }
+
+  function availableWorkflowRecords() {
+    if (!workflowRecordSelect) {
+      return [];
+    }
+    var seen = {};
+    var result = [];
+    Array.prototype.forEach.call(workflowRecordSelect.options, function (option) {
+      var recordId = String(option && option.value || '').trim();
+      var recordName = String(option && option.textContent || '').replace(/\s*\([^)]*steps\)\s*$/i, '').trim();
+      if (!recordId || !recordName || recordName === '\u2014 select test case \u2014' || seen[recordId]) {
+        return;
+      }
+      seen[recordId] = true;
+      result.push({
+        record_id: recordId,
+        record_name: recordName
+      });
+    });
+    return result;
+  }
+
+  function findWorkflowRecordByName(pageName) {
+    var target = String(pageName || '').trim().toLowerCase();
+    if (!target) {
+      return null;
+    }
+    var records = availableWorkflowRecords();
+    for (var index = 0; index < records.length; index += 1) {
+      if (String(records[index].record_name || '').trim().toLowerCase() === target) {
+        return records[index];
+      }
+    }
+    return null;
+  }
+
+  function isWorkflowRecordName(pageName) {
+    return !!findWorkflowRecordByName(pageName);
+  }
+
+  function availablePageNames() {
+    var seen = {};
+    var result = [];
+
+    function appendName(card) {
+      var name = String(card && card.page_name || '').trim();
+      if (!name || seen[name]) {
+        return;
+      }
+      seen[name] = true;
+      result.push(name);
+    }
+
+    availableWorkflowRecordNames().forEach(function (name) {
+      appendName({ page_name: name });
+    });
+
+    return result;
+  }
+
+  function makeCardId() {
+    return 'card_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function nextCardName(baseName) {
+    var root = (baseName || 'Custom Page').trim() || 'Custom Page';
+    var index = 1;
+    var candidate = root;
+    while (findCardByPageName(candidate)) {
+      index += 1;
+      candidate = root + ' ' + index;
+    }
+    return candidate;
+  }
+
+  function addCard(sourceCardId) {
+    var sourceCard = sourceCardId ? findCardById(sourceCardId) : null;
+    var index = sourceCard ? cards.findIndex(function (card) { return card.id === sourceCardId; }) : cards.length - 1;
+    var copyCount = 0;
+    var cardName = sourceCard ? nextCardName(sourceCard.page_name + ' Copy') : nextCardName('Custom Page');
+    var newCard = {
+      id: makeCardId(),
+      page_name: cardName,
+      page_url: sourceCard ? (sourceCard.page_url || '') : '',
+      source_record_id: sourceCard ? (sourceCard.source_record_id || '') : '',
+      source_record_name: sourceCard ? (sourceCard.source_record_name || sourceCard.page_name || '') : '',
+      item_count: sourceCard ? Number(sourceCard.item_count || 0) : 0,
+      elements: sourceCard && Array.isArray(sourceCard.elements)
+        ? sourceCard.elements.map(function (element) { return Object.assign({}, element || {}); })
+        : [],
+      is_custom: true
+    };
+    cards.splice(Math.max(0, index + 1), 0, newCard);
+    if (sourceCard) {
+      var sourcePos = state.positions[sourceCard.id] || defaultPosition(index);
+      state.positions[newCard.id] = clampPosition(sourcePos.x + 34, sourcePos.y + 34, 260, 130);
+      var selected = getCardSelection(sourceCard.id);
+      if (selected) {
+        state.cardSelections[newCard.id] = Object.assign({}, selected);
+      }
+    }
+    saveState();
+    renderCards();
+    renderConnections();
+    setStatus('Card added. Drag it into place and save the workflow to keep it.');
+    queueAutoSave('Workflow');
+  }
+
+  function updateCardFromPageName(cardId, pageName) {
+    var card = findCardById(cardId);
+    var sourceCard = findBaseCardByPageName(pageName);
+    var sourceRecord = findWorkflowRecordByName(pageName);
+    if (!card) {
+      return;
+    }
+    if (sourceRecord) {
+      card.page_name = sourceRecord.record_name;
+      card.page_url = '';
+      card.source_record_id = sourceRecord.record_id;
+      card.source_record_name = sourceRecord.record_name;
+      card.elements = [];
+      delete state.cardSelections[cardId];
+      saveState();
+      renderCards();
+      renderConnections();
+      setStatus('Updated card to test case "' + card.page_name + '".');
+      queueAutoSave('Workflow');
+      return;
+    }
+    if (!sourceCard) {
+      card.page_name = String(pageName || '').trim() || card.page_name;
+      card.source_record_id = '';
+      card.source_record_name = '';
+      saveState();
+      renderCards();
+      renderConnections();
+      setStatus('Updated card to test case "' + card.page_name + '".');
+      queueAutoSave('Workflow');
+      return;
+    }
+    card.page_name = sourceCard.page_name;
+    card.page_url = sourceCard.page_url || '';
+    card.source_record_id = sourceCard.source_record_id || '';
+    card.source_record_name = sourceCard.source_record_name || '';
+    card.item_count = Number(sourceCard.item_count || 0);
+    card.elements = Array.isArray(sourceCard.elements)
+      ? sourceCard.elements.map(function (element) { return Object.assign({}, element || {}); })
+      : [];
+
+    var currentSelection = getCardSelection(cardId);
+    var nextSelection = currentSelection ? findElementOption(card, currentSelection.id) : null;
+    if (nextSelection) {
+      state.cardSelections[cardId] = nextSelection;
+    } else {
+      delete state.cardSelections[cardId];
+    }
+
+    saveState();
+    renderCards();
+    renderConnections();
+    setStatus('Updated card to page "' + sourceCard.page_name + '".');
+    queueAutoSave('Workflow');
+  }
+
+  function deleteCard(cardId) {
+    var index = cards.findIndex(function (card) { return card.id === cardId; });
+    if (index < 0) {
+      return;
+    }
+    var removed = cards[index];
+    cards.splice(index, 1);
+    delete state.positions[cardId];
+    delete state.cardSelections[cardId];
+    state.connections = state.connections.filter(function (connection) {
+      return connection.from !== cardId && connection.to !== cardId;
+    });
+    if (selectedSourceId === cardId) {
+      selectedSourceId = '';
+    }
+    saveState();
+    updateCardSelection();
+    renderCards();
+    renderConnections();
+    setStatus('Deleted card "' + (removed.page_name || 'Untitled') + '".');
+    queueAutoSave('Workflow');
+  }
+
+  function applySavedCards(savedCards, hasExplicitCards) {
+    if (hasExplicitCards && (!savedCards || savedCards.length === 0)) {
+      cards = [];
+      return;
+    }
+    var restored = [];
+    var byId = {};
+    cloneCards(baseCards).forEach(function (card) {
+      byId[card.id] = card;
+      restored.push(card);
+    });
+
+    (Array.isArray(savedCards) ? savedCards : []).forEach(function (savedCard) {
+      var current = byId[savedCard.id] || findCardByPageName(savedCard.page_name || '');
+      if (current) {
+        current.page_name = savedCard.page_name || current.page_name;
+        current.page_url = savedCard.page_url || current.page_url || '';
+        current.source_record_id = savedCard.source_record_id || current.source_record_id || '';
+        current.source_record_name = savedCard.source_record_name || current.source_record_name || '';
+        current.item_count = Number(savedCard.item_count || current.item_count || 0);
+        // For base (non-custom) cards, always use the freshly-scraped elements
+        // from baseCards as the source of truth — never overwrite with stale
+        // saved elements (which may be outdated after a re-scrape or a fix).
+        // Only restore saved elements for custom (user-added) cards.
+        if (savedCard.is_custom && Array.isArray(savedCard.elements) && savedCard.elements.length) {
+          current.elements = savedCard.elements.map(function (element) { return Object.assign({}, element || {}); });
+        }
+        current.is_custom = !!savedCard.is_custom || !!current.is_custom;
+        return;
+      }
+      restored.push({
+        id: savedCard.id || makeCardId(),
+        page_name: savedCard.page_name || nextCardName('Custom Page'),
+        page_url: savedCard.page_url || '',
+        source_record_id: savedCard.source_record_id || '',
+        source_record_name: savedCard.source_record_name || '',
+        item_count: Number(savedCard.item_count || 0),
+        elements: Array.isArray(savedCard.elements)
+          ? savedCard.elements.map(function (element) { return Object.assign({}, element || {}); })
+          : [],
+        is_custom: !!savedCard.is_custom || true
+      });
+    });
+
+    cards = restored;
+  }
+
+  function orderedCardsForSequence() {
+    return cards.slice().sort(function (left, right) {
+      var leftPos = state.positions[left.id] || { x: 0, y: 0 };
+      var rightPos = state.positions[right.id] || { x: 0, y: 0 };
+      var rowDelta = Math.abs(leftPos.y - rightPos.y);
+      if (rowDelta > 48) {
+        return leftPos.y - rightPos.y;
+      }
+      return leftPos.x - rightPos.x;
+    });
+  }
+
+  function buildWorkflowPayload() {
+    var sequenceCards = orderedCardsForSequence();
+    function resolveCard(id, pageName) {
+      return findCardById(id) || findCardByPageName(pageName || '') || {};
+    }
+    return {
+      page_connections: state.connections.map(function (connection) {
+        var fromCard = resolveCard(connection.from, connection.from_page_name);
+        var toCard = resolveCard(connection.to, connection.to_page_name);
+        var fromSelection = serializeCardSelection(fromCard);
+        var toSelection = serializeCardSelection(toCard);
+        return {
+          from: fromCard.id || connection.from,
+          to: toCard.id || connection.to,
+          from_page_name: fromCard.page_name || connection.from_page_name || '',
+	      to_page_name: toCard.page_name || connection.to_page_name || '',
+          from_element_id: fromSelection.selected_element_id,
+          from_element_label: fromSelection.selected_element_label,
+          from_element_strategy: fromSelection.selected_element_strategy,
+          from_element_locator: fromSelection.selected_element_locator,
+          to_element_id: toSelection.selected_element_id,
+          to_element_label: toSelection.selected_element_label,
+          to_element_strategy: toSelection.selected_element_strategy,
+          to_element_locator: toSelection.selected_element_locator
+        };
+      }),
+      page_sequence: sequenceCards.map(function (card, index) {
+        var pos = state.positions[card.id] || { x: 0, y: 0 };
+        return {
+          order: index + 1,
+          card_id: card.id,
+          page_name: card.page_name,
+          page_url: card.page_url || '',
+          source_record_id: card.source_record_id || '',
+          source_record_name: card.source_record_name || card.page_name || '',
+          x: pos.x,
+          y: pos.y
+        };
+      }),
+      workflow_payload: {
+        cards_explicit: true,
+        cards: cards.map(function (card) {
+          var pos = state.positions[card.id] || { x: 0, y: 0 };
+          var selected = serializeCardSelection(card);
+          return {
+            id: card.id,
+            page_name: card.page_name,
+            page_url: card.page_url || '',
+            source_record_id: card.source_record_id || '',
+            source_record_name: card.source_record_name || card.page_name || '',
+            item_count: card.item_count || 0,
+            is_custom: !!card.is_custom,
+            // Only persist elements for custom cards — base cards always reload
+            // their elements fresh from the DB on every page load.
+            elements: card.is_custom ? getCardElements(card).map(function (element) { return Object.assign({}, element || {}); }) : [],
+            x: pos.x,
+            y: pos.y,
+            selected_element_id: selected.selected_element_id,
+            selected_element_label: selected.selected_element_label,
+            selected_element_strategy: selected.selected_element_strategy,
+            selected_element_locator: selected.selected_element_locator
+          };
+        }),
+        connections: state.connections.map(function (connection) {
+          var fromCard = resolveCard(connection.from, connection.from_page_name);
+          var toCard = resolveCard(connection.to, connection.to_page_name);
+          return {
+            from: fromCard.id || connection.from,
+            to: toCard.id || connection.to,
+            from_page_name: fromCard.page_name || connection.from_page_name || '',
+            to_page_name: toCard.page_name || connection.to_page_name || ''
+          };
+        }),
+        selected_elements: cards.map(function (card) {
+          var selected = serializeCardSelection(card);
+          return {
+            card_id: card.id,
+            page_name: card.page_name,
+            source_record_id: card.source_record_id || '',
+            source_record_name: card.source_record_name || card.page_name || '',
+            selected_element_id: selected.selected_element_id,
+            selected_element_label: selected.selected_element_label,
+            selected_element_strategy: selected.selected_element_strategy,
+            selected_element_locator: selected.selected_element_locator
+          };
+        }),
+        element_relationships: state.connections.map(function (connection) {
+          var fromCard = resolveCard(connection.from, connection.from_page_name);
+          var toCard = resolveCard(connection.to, connection.to_page_name);
+          var fromSelection = serializeCardSelection(fromCard);
+          var toSelection = serializeCardSelection(toCard);
+          return {
+            from_card_id: connection.from,
+            to_card_id: connection.to,
+            from_page_name: fromCard.page_name || '',
+            to_page_name: toCard.page_name || '',
+            from_element_id: fromSelection.selected_element_id,
+            from_element_label: fromSelection.selected_element_label,
+            from_element_strategy: fromSelection.selected_element_strategy,
+            from_element_locator: fromSelection.selected_element_locator,
+            to_element_id: toSelection.selected_element_id,
+            to_element_label: toSelection.selected_element_label,
+            to_element_strategy: toSelection.selected_element_strategy,
+            to_element_locator: toSelection.selected_element_locator
+          };
+        }),
+        view_state: {
+          scale: viewState.scale,
+          pan_x: viewState.panX,
+          pan_y: viewState.panY,
+          compact: !!viewState.compact
+        }
+      }
+    };
+  }
+
+  function getCardElements(card) {
+    return Array.isArray(card && card.elements) ? card.elements : [];
+  }
+
+  function findElementOption(card, elementId) {
+    var target = String(elementId || '');
+    if (!target) {
+      return null;
+    }
+    var options = getCardElements(card);
+    for (var index = 0; index < options.length; index += 1) {
+      if (String(options[index].id || '') === target) {
+        return options[index];
+      }
+    }
+    return null;
+  }
+
+  function getCardSelection(cardId) {
+    var saved = state.cardSelections && state.cardSelections[cardId];
+    if (!saved) {
+      return null;
+    }
+    var card = findCardById(cardId);
+    var option = findElementOption(card, saved.id);
+    if (option) {
+      return option;
+    }
+    return saved;
+  }
+
+  function serializeCardSelection(card) {
+    var selected = getCardSelection(card && card.id);
+    return {
+      selected_element_id: selected ? selected.id : null,
+      selected_element_label: selected ? selected.label : '',
+      selected_element_strategy: selected ? selected.primary_strategy : '',
+      selected_element_locator: selected ? selected.primary_locator : ''
+    };
+  }
+
+  function buildWorkflowRequestBody(workflowName) {
+    var payload = buildWorkflowPayload();
+    payload.workflow_name = workflowName;
+    return JSON.stringify(payload);
+  }
+
+  function persistWorkflowOnUnload(workflowName) {
+    var requestBody = buildWorkflowRequestBody(workflowName);
+    if (navigator.sendBeacon) {
+      try {
+        var beaconQueued = navigator.sendBeacon(
+          '{% url "ai_workflow_save" %}',
+          new Blob([requestBody], { type: 'application/json; charset=UTF-8' })
+        );
+        if (beaconQueued) {
+          return true;
+        }
+      } catch (err) {
+        // Fall through to keepalive fetch when sendBeacon is unavailable.
+      }
+    }
+
+    try {
+      fetch('{% url "ai_workflow_save" %}', {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/json; charset=UTF-8'
+        },
+        body: requestBody,
+        keepalive: true
+      });
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function commitWorkflowName(name, options) {
+    var workflowName = String(name || '').trim();
+    var settings = options || {};
+    var activeTab;
+    if (!workflowName) {
+      return '';
+    }
+    lastLoadedWorkflow = workflowName;
+    activeTab = findWorkflowTab(activeWorkflowTabId);
+    if (activeTab) {
+      activeTab.workflowName = workflowName;
+    }
+    syncWorkflowControls(workflowName, { populateInput: settings.populateInput !== false });
+    if (settings.renderTabs !== false) {
+      renderWorkflowTabs();
+    }
+    return workflowName;
+  }
+
+  function persistWorkflow(options) {
+    var settings = options || {};
+    var workflowName = settings.workflowName
+      ? commitWorkflowName(settings.workflowName, { populateInput: true, renderTabs: false })
+      : String(getPersistWorkflowName() || '').trim();
+    if (!workflowName) {
+      return Promise.resolve(false);
+    }
+
+    if (settings.unload) {
+      clearAutoSaveTimer();
+      autoSavePendingReason = '';
+      var unloadSaved = persistWorkflowOnUnload(workflowName);
+      if (unloadSaved) {
+        commitWorkflowName(workflowName, { populateInput: true, renderTabs: false });
+        ensureWorkflowOption(lastLoadedWorkflow);
+        updateActiveWorkflowTabMeta();
+        snapshotActiveWorkflowTab();
+        try { window.localStorage.setItem(lastActiveWorkflowKey, workflowName); } catch (e) {}
+      }
+      return Promise.resolve(unloadSaved);
+    }
+
+    var requestBody = buildWorkflowRequestBody(workflowName);
+
+    if (workflowSaveBtn) {
+      workflowSaveBtn.disabled = true;
+    }
+
+    return fetch('{% url "ai_workflow_save" %}', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrf(),
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/json; charset=UTF-8'
+      },
+      body: requestBody,
+      keepalive: !!settings.keepalive
+    })
+    .then(parseFetchResponse)
+    .then(function (result) {
+      if (!result.ok || !result.data.ok) {
+        throw new Error(result.data.error || 'Workflow save failed.');
+      }
+      lastLoadedWorkflow = result.data.workflow_name || workflowName;
+      commitWorkflowName(lastLoadedWorkflow, { populateInput: true, renderTabs: false });
+      ensureWorkflowOption(lastLoadedWorkflow);
+      var activeTab = findWorkflowTab(activeWorkflowTabId);
+      if (activeTab) {
+        activeTab.dbId = result.data.workflow_id || activeTab.dbId;
+        activeTab.createdAt = result.data.created_at || activeTab.createdAt;
+        activeTab.savedAt = result.data.updated_at || activeTab.savedAt;
+      }
+      updateActiveWorkflowTabMeta();
+      snapshotActiveWorkflowTab();
+      try { window.localStorage.setItem(lastActiveWorkflowKey, lastLoadedWorkflow); } catch (e) {}
+      var savedAt = result.data.updated_at ? new Date(result.data.updated_at).toLocaleTimeString() : '';
+      var connCount = typeof result.data.page_connections_count === 'number' ? result.data.page_connections_count : null;
+      var countNote = connCount !== null ? ' (' + connCount + ' connection' + (connCount !== 1 ? 's' : '') + ')' : '';
+      setStatus((settings.reasonPrefix || 'Workflow') + ' "' + result.data.workflow_name + '" saved' + countNote + (savedAt ? ' at ' + savedAt : '') + '.');
+      return true;
+    })
+    .catch(function (err) {
+      setStatus(err.message || 'Workflow save failed.');
+      return false;
+    })
+    .finally(function () {
+      if (workflowSaveBtn) {
+        workflowSaveBtn.disabled = false;
+      }
+    });
+  }
+
+  function clearAutoSaveTimer() {
+    if (autoSaveTimer) {
+      window.clearTimeout(autoSaveTimer);
+      autoSaveTimer = 0;
+    }
+  }
+
+  function flushAutoSave(reasonPrefix) {
+    var options = arguments.length > 1 && arguments[1] ? arguments[1] : {};
+    if (!autoSaveEnabled) {
+      clearAutoSaveTimer();
+      autoSavePendingReason = '';
+      return Promise.resolve(false);
+    }
+    var workflowName = getPersistWorkflowName();
+    if (!workflowName) {
+      clearAutoSaveTimer();
+      autoSavePendingReason = '';
+      return Promise.resolve(false);
+    }
+    var nextReason = reasonPrefix || autoSavePendingReason || 'Workflow';
+    clearAutoSaveTimer();
+    autoSavePendingReason = '';
+    return persistWorkflow({ reasonPrefix: nextReason, unload: !!options.unload, keepalive: !!options.keepalive });
+  }
+
+  var syncProgressWrap = document.getElementById('adbSyncProgressWrap');
+  var syncProgressBar  = document.getElementById('adbSyncProgressBar');
+  var syncProgressLabel = document.getElementById('adbSyncProgressLabel');
+
+  function showSyncProgress(label) {
+    if (syncProgressWrap) {
+      syncProgressWrap.hidden = false;
+    }
+    if (syncProgressLabel && label) {
+      syncProgressLabel.textContent = label;
+    }
+  }
+
+  function hideSyncProgress() {
+    if (syncProgressWrap) {
+      syncProgressWrap.hidden = true;
+    }
+  }
+
+  function refreshWorkflowRecordOptions(sessions) {
+    if (!workflowRecordSelect) {
+      return 0;
+    }
+    var currentValue = (workflowRecordSelect.value || '').trim();
+    var previousValues = {};
+    Array.prototype.forEach.call(workflowRecordSelect.options, function (option) {
+      if (option.value) {
+        previousValues[option.value] = true;
+      }
+    });
+
+    workflowRecordSelect.innerHTML = '';
+
+    var blankOption = document.createElement('option');
+    blankOption.value = '';
+    blankOption.textContent = '— select test case —';
+    workflowRecordSelect.appendChild(blankOption);
+
+    var addedCount = 0;
+    (Array.isArray(sessions) ? sessions : []).forEach(function (session) {
+      if (!session || !session.record_id) {
+        return;
+      }
+      var option = document.createElement('option');
+      option.value = session.record_id;
+      option.title = session.record_id;
+      option.textContent = (session.record_name || session.record_id) + ' (' + String(session.step_count || 0) + ' steps)';
+      workflowRecordSelect.appendChild(option);
+      if (!previousValues[session.record_id]) {
+        addedCount += 1;
+      }
+    });
+
+    workflowRecordSelect.value = currentValue;
+    if (workflowRecordSelect.value !== currentValue) {
+      workflowRecordSelect.value = '';
+    }
+    return addedCount;
+  }
+
+  function updateWorkflowFromRecord() {
+    var label = 'Refreshing available test cases\u2026';
+
+    if (workflowUpdateBtn) workflowUpdateBtn.disabled = true;
+    showSyncProgress(label);
+    setStatus('Refreshing available test cases without changing the current workflow connections\u2026');
+
+    fetch('{% url "ai_workflow_source_sessions" %}', {
+      method: 'GET',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    })
+      .then(parseFetchResponse)
+      .then(function (result) {
+        if (!result.ok || !result.data.ok) {
+          throw new Error(result.data.error || 'Test case refresh failed.');
+        }
+        var addedCount = refreshWorkflowRecordOptions(result.data.sessions || []);
+        var totalCount = Number(result.data.count || 0);
+        setStatus('Refreshed test cases. Added ' + addedCount + ' new option' + (addedCount === 1 ? '' : 's') + '; ' + totalCount + ' available in the list.');
+      })
+      .catch(function (err) {
+        setStatus((err && err.message) || 'Test case refresh failed.');
+      })
+      .finally(function () {
+        hideSyncProgress();
+        if (workflowUpdateBtn) workflowUpdateBtn.disabled = false;
+      });
+  }
+
+  function queueAutoSave(reasonPrefix) {
+    if (!autoSaveEnabled) {
+      return;
+    }
+    var workflowName = getPersistWorkflowName();
+    if (!workflowName) {
+      return;
+    }
+    clearAutoSaveTimer();
+    autoSavePendingReason = reasonPrefix || 'Workflow';
+    autoSaveTimer = window.setTimeout(function () {
+      autoSaveTimer = 0;
+      var nextReason = autoSavePendingReason || reasonPrefix || 'Workflow';
+      autoSavePendingReason = '';
+      persistWorkflow({ reasonPrefix: nextReason });
+    }, 500);
+  }
+
+  function ensureWorkflowOption(name) {
+    var workflowName = (name || '').trim();
+    if (!workflowName || !workflowSelect) {
+      return;
+    }
+    var exists = Array.prototype.some.call(workflowSelect.options, function (option) {
+      return option.value === workflowName;
+    });
+    if (!exists) {
+      var option = document.createElement('option');
+      option.value = workflowName;
+      option.textContent = workflowName;
+      workflowSelect.appendChild(option);
+    }
+    workflowSelect.value = workflowName;
+
+    if (workflowNameList) {
+      var dataListExists = Array.prototype.some.call(workflowNameList.options, function (option) {
+        return option.value === workflowName;
+      });
+      if (!dataListExists) {
+        var dataListOption = document.createElement('option');
+        dataListOption.value = workflowName;
+        workflowNameList.appendChild(dataListOption);
+      }
+    }
+  }
+
+  function removeWorkflowOption(name) {
+    var workflowName = (name || '').trim();
+    if (!workflowName) {
+      return;
+    }
+    if (workflowSelect) {
+      Array.prototype.slice.call(workflowSelect.options).forEach(function (option) {
+        if (option.value === workflowName) {
+          option.remove();
+        }
+      });
+      if (workflowSelect.value === workflowName) {
+        workflowSelect.value = '';
+      }
+    }
+    if (workflowNameList) {
+      Array.prototype.slice.call(workflowNameList.options).forEach(function (option) {
+        if (option.value === workflowName) {
+          option.remove();
+        }
+      });
+    }
+  }
+
+  function syncWorkflowControls(name, options) {
+    var settings = options || {};
+    var workflowName = name || '';
+    ignoreWorkflowNameSync = true;
+    if (workflowNameInput) {
+      if (settings.clearInput) {
+        workflowNameInput.value = '';
+      } else if (settings.populateInput !== false) {
+        workflowNameInput.value = workflowName;
+      }
+    }
+    ensureWorkflowOption(workflowName);
+    ignoreWorkflowNameSync = false;
+    updateDocumentTitle(workflowName);
+  }
+
+  function initializeNewWorkflowTab(workflowName) {
+    cards = [];
+    state = { positions: {}, connections: [], cardSelections: {} };
+    viewState = { scale: 1, panX: 0, panY: 0, compact: false };
+    selectedSourceId = '';
+    connectMode = false;
+    syncWorkflowControls(workflowName, { populateInput: true });
+    applyViewState();
+    renderCards();
+    renderConnections();
+    renderMinimap();
+    refreshEmptyState();
+    setStatus('New workflow tab ready. Add connections and save when ready.');
+  }
+
+  function resetActiveWorkflowToInitialState() {
+    var activeTab = findWorkflowTab(activeWorkflowTabId);
+    if (activeTab) {
+      activeTab.workflowName = '';
+      activeTab.snapshot = makeEmptyWorkflowSnapshot('');
+    }
+    lastLoadedWorkflow = '';
+    initializeNewWorkflowTab('');
+    if (activeTab) {
+      activeTab.snapshot = currentWorkflowSnapshot();
+    }
+    renderWorkflowTabs();
+  }
+
+  function openNewWorkflowTab() {
+    var typedName = (workflowNameInput && workflowNameInput.value || '').trim();
+    var nextName = typedName || makeNextWorkflowName('New Workflow');
+    if (workflowNameInput) {
+      workflowNameInput.value = nextName;
+    }
+    openWorkflowTab(nextName, { clean: true, forceNewState: true });
+    persistWorkflow({ workflowName: nextName, reasonPrefix: 'Workflow' });
+  }
+
+  function getCurrentWorkflowDeleteName() {
+    return (lastLoadedWorkflow || (workflowSelect && workflowSelect.value) || (workflowNameInput && workflowNameInput.value) || '').trim();
+  }
+
+  function deleteCurrentWorkflow() {
+    var workflowName = getCurrentWorkflowDeleteName();
+    if (!workflowName) {
+      setStatus('Select or enter a saved workflow name before deleting.');
+      if (workflowNameInput) {
+        workflowNameInput.focus();
+      }
+      return;
+    }
+
+    pendingDeleteWorkflowName = workflowName;
+    if (workflowDeleteModalName) {
+      workflowDeleteModalName.textContent = workflowName;
+    }
+    if (!workflowDeleteModal) {
+      setStatus('Delete workflow dialog is unavailable on this page.');
+      return;
+    }
+    workflowDeleteModal.show();
+  }
+
+  function confirmDeleteCurrentWorkflow() {
+    var workflowName = (pendingDeleteWorkflowName || '').trim();
+    if (!workflowName) {
+      setStatus('Select or enter a saved workflow name before deleting.');
+      return;
+    }
+
+    clearAutoSaveTimer();
+    autoSavePendingReason = '';
+    autoSaveEnabled = false;
+
+    fetch('{% url "ai_workflow_delete" %}', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrf(),
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/json; charset=UTF-8'
+      },
+      body: JSON.stringify({ workflow_name: workflowName })
+    })
+    .then(parseFetchResponse)
+    .then(function (result) {
+      if (!result.ok || !result.data.ok) {
+        throw new Error(result.data.error || 'Workflow delete failed.');
+      }
+      pendingDeleteWorkflowName = '';
+      if (workflowDeleteModal) {
+        workflowDeleteModal.hide();
+      }
+      removeWorkflowOption(workflowName);
+      lastLoadedWorkflow = '';
+      try {
+        var remembered = (window.localStorage.getItem(lastActiveWorkflowKey) || '').trim();
+        if (remembered === workflowName) { window.localStorage.removeItem(lastActiveWorkflowKey); }
+      } catch (e) {}
+      var activeTab = findWorkflowTab(activeWorkflowTabId);
+      if (activeTab && String(activeTab.workflowName || '').trim() === workflowName) {
+        if (workflowTabs.length > 1) {
+          closeWorkflowTab(activeTab.id, { skipSave: true });
+        } else {
+          resetActiveWorkflowToInitialState();
+        }
+      } else {
+        workflowTabs = workflowTabs.filter(function (tab) {
+          return String(tab.workflowName || '').trim() !== workflowName;
+        });
+        renderWorkflowTabs();
+      }
+      setStatus('Workflow "' + workflowName + '" deleted.');
+    })
+    .catch(function (err) {
+      setStatus((err && err.message) || 'Workflow delete failed.');
+    })
+    .finally(function () {
+      autoSaveEnabled = true;
+    });
+  }
+
+  function applyWorkflowState(workflow) {
+    var payload = workflow && workflow.workflow_payload && typeof workflow.workflow_payload === 'object'
+      ? workflow.workflow_payload
+      : {};
+    var savedCards = Array.isArray(payload.cards) ? payload.cards : [];
+    var savedSelectedElements = Array.isArray(payload.selected_elements) ? payload.selected_elements : [];
+    var savedViewState = payload.view_state && typeof payload.view_state === 'object'
+      ? payload.view_state
+      : null;
+    var savedConnections = Array.isArray(workflow && workflow.page_connections) ? workflow.page_connections : [];
+    var payloadConnections = Array.isArray(payload.connections) ? payload.connections : [];
+    var hasExplicitCards = !!payload.cards_explicit;
+    var previousConnectionsEnriched = state.connections.map(function (c) {
+      var fromCard = findCardById(c.from) || findCardByPageName(c.from_page_name || '') || {};
+      var toCard = findCardById(c.to) || findCardByPageName(c.to_page_name || '') || {};
+      return { from: c.from, to: c.to, from_page_name: fromCard.page_name || c.from_page_name || '', to_page_name: toCard.page_name || c.to_page_name || '' };
+    });
+    applySavedCards(savedCards, hasExplicitCards);
+    state.cardSelections = {};
+    state.positions = {};
+    savedCards.forEach(function (savedCard) {
+      var currentCard = findCardById(savedCard.id) || findCardByPageName(savedCard.page_name || '');
+      if (!currentCard) {
+        return;
+      }
+      state.positions[currentCard.id] = {
+        x: Number(savedCard.x || 0),
+        y: Number(savedCard.y || 0)
+      };
+      if (savedCard.selected_element_id) {
+        var option = findElementOption(currentCard, savedCard.selected_element_id);
+        state.cardSelections[currentCard.id] = option || {
+          id: savedCard.selected_element_id,
+          label: savedCard.selected_element_label || '',
+          primary_strategy: savedCard.selected_element_strategy || '',
+          primary_locator: savedCard.selected_element_locator || ''
+        };
+      }
+    });
+    if (!Object.keys(state.cardSelections).length && savedSelectedElements.length) {
+      savedSelectedElements.forEach(function (savedSelection) {
+        var currentCard = findCardByPageName(savedSelection.page_name || '');
+        if (!currentCard || !savedSelection.selected_element_id) {
+          return;
+        }
+        var option = findElementOption(currentCard, savedSelection.selected_element_id);
+        state.cardSelections[currentCard.id] = option || {
+          id: savedSelection.selected_element_id,
+          label: savedSelection.selected_element_label || '',
+          primary_strategy: savedSelection.selected_element_strategy || '',
+          primary_locator: savedSelection.selected_element_locator || ''
+        };
+      });
+    }
+    state.connections = [];
+    savedConnections.forEach(function (connection) {
+      var fromCard = findCardById(connection.from) || findCardByPageName(connection.from_page_name || '');
+      var toCard = findCardById(connection.to) || findCardByPageName(connection.to_page_name || '');
+      if (!fromCard || !toCard || fromCard.id === toCard.id) {
+        return;
+      }
+      state.connections.push({ from: fromCard.id, to: toCard.id, from_page_name: fromCard.page_name || connection.from_page_name || '', to_page_name: toCard.page_name || connection.to_page_name || '' });
+    });
+    if (!state.connections.length && payloadConnections.length) {
+      payloadConnections.forEach(function (connection) {
+        var fromCard = findCardById(connection.from) || findCardByPageName(connection.from_page_name || '');
+        var toCard = findCardById(connection.to) || findCardByPageName(connection.to_page_name || '');
+        if (fromCard && toCard && fromCard.id !== toCard.id) {
+          state.connections.push({ from: fromCard.id, to: toCard.id, from_page_name: fromCard.page_name || connection.from_page_name || '', to_page_name: toCard.page_name || connection.to_page_name || '' });
+        }
+      });
+    }
+    applyWorkflowState._restoredFromLocal = false;
+    if (!state.connections.length && previousConnectionsEnriched.length) {
+      previousConnectionsEnriched.forEach(function (connection) {
+        var fromCard = findCardById(connection.from) || findCardByPageName(connection.from_page_name || '');
+        var toCard = findCardById(connection.to) || findCardByPageName(connection.to_page_name || '');
+        if (fromCard && toCard && fromCard.id !== toCard.id) {
+          state.connections.push({ from: fromCard.id, to: toCard.id, from_page_name: fromCard.page_name || connection.from_page_name || '', to_page_name: toCard.page_name || connection.to_page_name || '' });
+        }
+      });
+      if (state.connections.length) {
+        applyWorkflowState._restoredFromLocal = true;
+      }
+    }
+    if (!state.connections.length) {
+      var backupConnections = loadConnectionsBackup(
+        (workflow && workflow.workflow_name) || getActiveWorkflowName() || ''
+      );
+      backupConnections.forEach(function (connection) {
+        var fromCard = findCardById(connection.from) || findCardByPageName(connection.from_page_name || '');
+        var toCard = findCardById(connection.to) || findCardByPageName(connection.to_page_name || '');
+        if (fromCard && toCard && fromCard.id !== toCard.id) {
+          state.connections.push({ from: fromCard.id, to: toCard.id, from_page_name: fromCard.page_name || connection.from_page_name || '', to_page_name: toCard.page_name || connection.to_page_name || '' });
+        }
+      });
+      if (state.connections.length) {
+        applyWorkflowState._restoredFromLocal = true;
+      }
+    }
+    selectedSourceId = '';
+    saveState();
+    if (savedViewState) {
+      viewState = {
+        scale: Number(savedViewState.scale || 1) || 1,
+        panX: Number(savedViewState.pan_x || 0) || 0,
+        panY: Number(savedViewState.pan_y || 0) || 0,
+        compact: !!savedViewState.compact
+      };
+      saveViewState();
+      applyViewState();
+    } else {
+      loadViewState(workflow && workflow.workflow_name || '');
+      applyViewState();
+    }
+    renderCards();
+    renderConnections();
+    renderMinimap();
+  }
+
+  function loadWorkflow(workflowName) {
+    if (!workflowName) {
+      return;
+    }
+    setStatus('Loading workflow...');
+    fetch('{% url "ai_workflow_load" %}?workflow_name=' + encodeURIComponent(workflowName), {
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    })
+    .then(parseFetchResponse)
+    .then(function (result) {
+      if (!result.ok || !result.data.ok) {
+        throw new Error(result.data.error || 'Workflow load failed.');
+      }
+      autoSaveEnabled = false;
+      syncWorkflowControls(result.data.workflow.workflow_name || workflowName, { clearInput: true });
+      lastLoadedWorkflow = result.data.workflow.workflow_name || workflowName;
+      applyWorkflowState(result.data.workflow);
+      updateActiveWorkflowTabMeta();
+      snapshotActiveWorkflowTab();
+      try { window.localStorage.setItem(lastActiveWorkflowKey, lastLoadedWorkflow); } catch (e) {}
+      setStatus('Workflow "' + lastLoadedWorkflow + '" loaded.');
+    })
+    .catch(function (err) {
+      setStatus(err.message || 'Workflow load failed.');
+    })
+    .finally(function () {
+      autoSaveEnabled = true;
+      if (applyWorkflowState._restoredFromLocal) {
+        applyWorkflowState._restoredFromLocal = false;
+        persistWorkflow({ reasonPrefix: 'Workflow' });
+      }
+    });
+  }
+
+  function setStatus(message) {
+    if (statusEl) {
+      statusEl.textContent = message;
+    }
+  }
+
+  function boardMetrics() {
+    var rect = board.getBoundingClientRect();
+    return {
+      width: Math.max(320, rect.width),
+      height: Math.max(420, rect.height)
+    };
+  }
+
+  function defaultPosition(index) {
+    var metrics = boardMetrics();
+    var cols = Math.max(1, Math.floor(metrics.width / 408));
+    var column = index % cols;
+    var row = Math.floor(index / cols);
+    return {
+      x: 28 + (column * 388),
+      y: 32 + (row * 196)
+    };
+  }
+
+  function clampPosition(x, y, width, height) {
+    var metrics = boardMetrics();
+    return {
+      x: Math.max(8, Math.min(x, metrics.width - width - 8)),
+      y: Math.max(8, Math.min(y, metrics.height - height - 8))
+    };
+  }
+
+  function cardCenter(cardEl) {
+    return {
+      x: cardEl.offsetLeft + (cardEl.offsetWidth / 2),
+      y: cardEl.offsetTop + (cardEl.offsetHeight / 2)
+    };
+  }
+
+  function renderConnections() {
+    svg.innerHTML = '';
+    state.connections.forEach(function (connection) {
+      var fromCard = cardsHost.querySelector('[data-card-id="' + connection.from + '"]');
+      var toCard = cardsHost.querySelector('[data-card-id="' + connection.to + '"]');
+      if (!fromCard || !toCard) return;
+      var from = cardCenter(fromCard);
+      var to = cardCenter(toCard);
+
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', from.x);
+      line.setAttribute('y1', from.y);
+      line.setAttribute('x2', to.x);
+      line.setAttribute('y2', to.y);
+      line.setAttribute('class', 'adb-flow-line');
+      svg.appendChild(line);
+
+      var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', to.x);
+      dot.setAttribute('cy', to.y);
+      dot.setAttribute('r', 5);
+      dot.setAttribute('class', 'adb-flow-dot');
+      svg.appendChild(dot);
+    });
+  }
+
+  function currentViewportBounds() {
+    var metrics = boardMetrics();
+    var scale = Math.max(0.65, viewState.scale || 1);
+    return {
+      x: Math.max(0, (-viewState.panX) / scale),
+      y: Math.max(0, (-viewState.panY) / scale),
+      width: Math.min(metrics.width, metrics.width / scale),
+      height: Math.min(metrics.height, metrics.height / scale),
+    };
+  }
+
+  function centerViewportAt(localX, localY) {
+    var metrics = boardMetrics();
+    var scale = Math.max(0.65, viewState.scale || 1);
+    updateViewState({
+      panX: (metrics.width / 2) - (localX * scale),
+      panY: (metrics.height / 2) - (localY * scale)
+    });
+  }
+
+  function renderMinimap() {
+    if (!minimap || !minimapBody || !minimapCards || !minimapWindow) {
+      return;
+    }
+    var metrics = boardMetrics();
+    var bodyRect = minimapBody.getBoundingClientRect();
+    var bodyWidth = Math.max(120, bodyRect.width || minimapBody.clientWidth || 160);
+    var bodyHeight = Math.max(80, bodyRect.height || minimapBody.clientHeight || 120);
+    var scaleX = bodyWidth / metrics.width;
+    var scaleY = bodyHeight / metrics.height;
+    minimapCards.innerHTML = '';
+    cards.forEach(function (card, index) {
+      var cardEl = cardsHost.querySelector('[data-card-id="' + card.id + '"]');
+      var pos = state.positions[card.id] || defaultPosition(index);
+      var mini = document.createElement('div');
+      mini.className = 'adb-flow-minimap-card' + (selectedSourceId === card.id ? ' is-active' : '');
+      mini.style.left = Math.max(0, pos.x * scaleX) + 'px';
+      mini.style.top = Math.max(0, pos.y * scaleY) + 'px';
+      mini.style.width = Math.max(10, (cardEl ? cardEl.offsetWidth : 220) * scaleX) + 'px';
+      mini.style.height = Math.max(8, (cardEl ? cardEl.offsetHeight : 92) * scaleY) + 'px';
+      minimapCards.appendChild(mini);
+    });
+
+    var bounds = currentViewportBounds();
+    minimapWindow.style.left = Math.max(0, bounds.x * scaleX) + 'px';
+    minimapWindow.style.top = Math.max(0, bounds.y * scaleY) + 'px';
+    minimapWindow.style.width = Math.max(18, bounds.width * scaleX) + 'px';
+    minimapWindow.style.height = Math.max(14, bounds.height * scaleY) + 'px';
+    if (minimapScale) {
+      minimapScale.textContent = Math.round(viewState.scale * 100) + '%';
+    }
+  }
+
+  function updateCardSelection() {
+    cardsHost.querySelectorAll('.adb-flow-card').forEach(function (cardEl) {
+      cardEl.classList.toggle('is-selected', selectedSourceId && cardEl.getAttribute('data-card-id') === selectedSourceId);
+    });
+  }
+
+  function addConnection(fromId, toId) {
+    if (!fromId || !toId || fromId === toId) return;
+    var existingIndex = state.connections.findIndex(function (connection) {
+      return connection.from === fromId && connection.to === toId;
+    });
+    if (existingIndex >= 0) {
+      state.connections.splice(existingIndex, 1);
+      saveState();
+      saveConnectionsBackup();
+      renderConnections();
+      setStatus('Page connection removed.');
+      queueAutoSave('Workflow');
+      return;
+    }
+    var fromCard = findCardById(fromId) || {};
+    var toCard = findCardById(toId) || {};
+    state.connections.push({ from: fromId, to: toId, from_page_name: fromCard.page_name || '', to_page_name: toCard.page_name || '' });
+    saveState();
+    saveConnectionsBackup();
+    renderConnections();
+    setStatus('Connected pages. Drag cards to refine the sequence visually.');
+    queueAutoSave('Workflow');
+  }
+
+  function handleCardActivate(cardId) {
+    if (!connectMode) return;
+    if (!selectedSourceId) {
+      selectedSourceId = cardId;
+      updateCardSelection();
+      setStatus('Source selected. Click another card to complete the flow line.');
+      return;
+    }
+    if (selectedSourceId === cardId) {
+      selectedSourceId = '';
+      updateCardSelection();
+      setStatus('Connection source cleared.');
+      return;
+    }
+    addConnection(selectedSourceId, cardId);
+    selectedSourceId = '';
+    connectMode = false;
+    if (connectBtn) {
+      connectBtn.classList.remove('btn-danger');
+      connectBtn.classList.add('btn-primary');
+      connectBtn.innerHTML = '<i class="bi bi-link-45deg me-1"></i>Connect Pages';
+    }
+    updateCardSelection();
+  }
+
+  function renderCards() {
+    cardsHost.innerHTML = '';
+    refreshEmptyState();
+    cards.forEach(function (card, index) {
+      var cardEl = document.createElement('div');
+      cardEl.className = 'adb-flow-card';
+      cardEl.setAttribute('data-card-id', card.id);
+      cardEl.setAttribute('tabindex', '0');
+      cardEl.setAttribute('role', 'button');
+
+      var head = document.createElement('div');
+      head.className = 'adb-flow-card-head';
+
+      var titleWrap = document.createElement('div');
+      titleWrap.className = 'adb-flow-card-copy';
+      var title = document.createElement('select');
+      title.className = 'form-select adb-flow-card-title adb-flow-card-title-select';
+      title.setAttribute('aria-label', 'Page name for ' + card.page_name);
+      availablePageNames().forEach(function (pageName) {
+        var titleOption = document.createElement('option');
+        titleOption.value = pageName;
+        titleOption.textContent = pageName;
+        title.appendChild(titleOption);
+      });
+      if (card.page_name) {
+        title.value = card.page_name;
+      }
+      title.addEventListener('click', function (event) {
+        event.stopPropagation();
+      });
+      title.addEventListener('pointerdown', function (event) {
+        event.stopPropagation();
+      });
+      title.addEventListener('change', function (event) {
+        updateCardFromPageName(card.id, event.target.value || '');
+      });
+      titleWrap.appendChild(title);
+
+      var badge = document.createElement('span');
+      badge.className = 'adb-flow-badge';
+      badge.textContent = (card.item_count || 0) + ' items';
+
+      var actions = document.createElement('div');
+      actions.className = 'adb-flow-card-actions';
+
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'adb-flow-card-icon-btn';
+      addBtn.title = 'Add card after this';
+      addBtn.setAttribute('aria-label', 'Add card after ' + card.page_name);
+      addBtn.innerHTML = '<i class="bi bi-plus-lg"></i>';
+      addBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        addCard(card.id);
+      });
+      addBtn.addEventListener('pointerdown', function (event) {
+        event.stopPropagation();
+      });
+
+      var deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'adb-flow-card-icon-btn is-danger';
+      deleteBtn.title = 'Delete this card';
+      deleteBtn.setAttribute('aria-label', 'Delete card ' + card.page_name);
+      deleteBtn.innerHTML = '<i class="bi bi-trash3"></i>';
+      deleteBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteCard(card.id);
+      });
+      deleteBtn.addEventListener('pointerdown', function (event) {
+        event.stopPropagation();
+      });
+
+      actions.appendChild(addBtn);
+      actions.appendChild(deleteBtn);
+
+      head.appendChild(titleWrap);
+      head.appendChild(badge);
+      head.appendChild(actions);
+
+      cardEl.appendChild(head);
+
+      if (isWorkflowRecordName(card.page_name)) {
+        var body = document.createElement('div');
+        body.className = 'adb-flow-card-body';
+
+        var testCaseLabel = document.createElement('div');
+        testCaseLabel.className = 'adb-flow-card-label';
+
+        var testCaseLabelTitle = document.createElement('div');
+        testCaseLabelTitle.className = 'adb-flow-card-label-title';
+        testCaseLabelTitle.textContent = 'Test Case';
+
+        var testCaseLabelName = document.createElement('div');
+        testCaseLabelName.className = 'adb-flow-card-label-name';
+        testCaseLabelName.textContent = card.page_name;
+
+        testCaseLabel.appendChild(testCaseLabelTitle);
+        testCaseLabel.appendChild(testCaseLabelName);
+        body.appendChild(testCaseLabel);
+        cardEl.appendChild(body);
+      }
+
+      cardsHost.appendChild(cardEl);
+
+      var saved = state.positions[card.id] || defaultPosition(index);
+      requestAnimationFrame(function () {
+        var clamped = clampPosition(saved.x, saved.y, cardEl.offsetWidth || 260, cardEl.offsetHeight || 130);
+        cardEl.style.left = clamped.x + 'px';
+        cardEl.style.top = clamped.y + 'px';
+        state.positions[card.id] = clamped;
+        saveState();
+        renderConnections();
+        renderMinimap();
+      });
+
+      cardEl.addEventListener('click', function () {
+        handleCardActivate(card.id);
+      });
+
+      cardEl.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+        event.preventDefault();
+        handleCardActivate(card.id);
+      });
+
+      cardEl.addEventListener('pointerdown', function (event) {
+        if (event.button !== 0) return;
+        if (event.target.closest('select') || event.target.closest('option') || event.target.closest('label')) {
+          return;
+        }
+        if (event.target.closest('.adb-flow-card-icon-btn') || event.target.closest('a')) {
+          return;
+        }
+        cardEl.setPointerCapture(event.pointerId);
+        cardEl.classList.add('is-dragging');
+        var startX = event.clientX;
+        var startY = event.clientY;
+        var originLeft = cardEl.offsetLeft;
+        var originTop = cardEl.offsetTop;
+
+        function onMove(moveEvent) {
+          var next = clampPosition(
+            originLeft + ((moveEvent.clientX - startX) / viewState.scale),
+            originTop + ((moveEvent.clientY - startY) / viewState.scale),
+            cardEl.offsetWidth,
+            cardEl.offsetHeight
+          );
+          cardEl.style.left = next.x + 'px';
+          cardEl.style.top = next.y + 'px';
+          state.positions[card.id] = next;
+          renderConnections();
+          renderMinimap();
+        }
+
+        function onEnd(endEvent) {
+          cardEl.classList.remove('is-dragging');
+          cardEl.releasePointerCapture(endEvent.pointerId);
+          cardEl.removeEventListener('pointermove', onMove);
+          cardEl.removeEventListener('pointerup', onEnd);
+          cardEl.removeEventListener('pointercancel', onEnd);
+          saveState();
+          queueAutoSave('Workflow');
+        }
+
+        cardEl.addEventListener('pointermove', onMove);
+        cardEl.addEventListener('pointerup', onEnd);
+        cardEl.addEventListener('pointercancel', onEnd);
+      });
+    });
+    updateCardSelection();
+    renderMinimap();
+  }
+
+  if (connectBtn) {
+    connectBtn.addEventListener('click', function () {
+      connectMode = !connectMode;
+      selectedSourceId = '';
+      updateCardSelection();
+      if (connectMode) {
+        connectBtn.classList.remove('btn-primary');
+        connectBtn.classList.add('btn-danger');
+        connectBtn.innerHTML = '<i class="bi bi-x-lg me-1"></i>Cancel Connect';
+        setStatus('Connect mode enabled. Click the first card, then the next card to create or remove that page flow link.');
+      } else {
+        connectBtn.classList.remove('btn-danger');
+        connectBtn.classList.add('btn-primary');
+        connectBtn.innerHTML = '<i class="bi bi-link-45deg me-1"></i>Connect Pages';
+        setStatus('Drag cards to arrange pages. Use the minimap to re-center quickly, or Connect Pages to create or remove a dotted flow line.');
+      }
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      state.connections = [];
+      selectedSourceId = '';
+      saveState();
+      updateCardSelection();
+      renderConnections();
+      renderMinimap();
+      setStatus('All flow lines cleared.');
+      queueAutoSave('Workflow');
+    });
+  }
+
+  if (addCardBtn) {
+    addCardBtn.addEventListener('click', function () {
+      addCard('');
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function () {
+      state.positions = {};
+      state.connections = [];
+      selectedSourceId = '';
+      saveState();
+      renderCards();
+      setStatus('Layout reset to the default card grid.');
+      queueAutoSave('Workflow');
+    });
+  }
+
+  if (zoomOutBtn) {
+    zoomOutBtn.addEventListener('click', function () {
+      zoomBy(-0.1);
+    });
+  }
+
+  if (zoomInBtn) {
+    zoomInBtn.addEventListener('click', function () {
+      zoomBy(0.1);
+    });
+  }
+
+  if (zoomResetBtn) {
+    zoomResetBtn.addEventListener('click', function () {
+      resetViewport();
+    });
+  }
+
+  if (compactToggle) {
+    compactToggle.addEventListener('change', function () {
+      updateViewState({ compact: !!compactToggle.checked });
+      renderCards();
+    });
+  }
+
+  if (workflowSelect) {
+    workflowSelect.addEventListener('change', function () {
+      var workflowName = (workflowSelect.value || '').trim();
+      if (!workflowName) {
+        return;
+      }
+      openWorkflowTab(workflowName, { loadSaved: true });
+    });
+  }
+
+  if (workflowNameInput) {
+    workflowNameInput.addEventListener('input', function () {
+      if (ignoreWorkflowNameSync) {
+        return;
+      }
+      clearAutoSaveTimer();
+      autoSavePendingReason = '';
+      var workflowName = getDraftWorkflowName();
+      updateDocumentTitle(workflowName);
+    });
+    workflowNameInput.addEventListener('change', function () {
+      if (ignoreWorkflowNameSync) {
+        return;
+      }
+      var workflowName = (workflowNameInput.value || '').trim();
+      clearAutoSaveTimer();
+      autoSavePendingReason = '';
+      loadViewState(workflowName);
+      applyViewState();
+      renderMinimap();
+      updateDocumentTitle(workflowName);
+    });
+  }
+
+  if (workflowDeleteModalEl) {
+    workflowDeleteModalEl.addEventListener('hidden.bs.modal', function () {
+      pendingDeleteWorkflowName = '';
+      if (workflowDeleteModalName) {
+        workflowDeleteModalName.textContent = 'Workflow';
+      }
+    });
+  }
+
+  if (workflowDeleteConfirmBtn) {
+    workflowDeleteConfirmBtn.addEventListener('click', confirmDeleteCurrentWorkflow);
+  }
+
+  if (workflowNewTabBtn) {
+    workflowNewTabBtn.addEventListener('click', openNewWorkflowTab);
+  }
+
+  if (workflowDeleteBtn) {
+    workflowDeleteBtn.addEventListener('click', deleteCurrentWorkflow);
+  }
+
+  if (workflowSaveBtn) {
+    workflowSaveBtn.addEventListener('click', function () {
+      var workflowName = (workflowNameInput && workflowNameInput.value || '').trim();
+      if (!workflowName) {
+        setStatus('Enter a workflow name before saving.');
+        if (workflowNameInput) {
+          workflowNameInput.focus();
+        }
+        return;
+      }
+      persistWorkflow({ workflowName: workflowName, reasonPrefix: 'Workflow' });
+    });
+  }
+
+  if (workflowUpdateBtn) {
+    workflowUpdateBtn.addEventListener('click', updateWorkflowFromRecord);
+  }
+
+  board.addEventListener('wheel', function (event) {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+    event.preventDefault();
+    zoomBy(event.deltaY < 0 ? 0.08 : -0.08);
+  }, { passive: false });
+
+  board.addEventListener('pointerdown', function (event) {
+    if (event.target.closest('.adb-flow-card') || event.target.closest('.adb-flow-minimap')) {
+      return;
+    }
+    pointerCache.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    if (pointerCache.size === 1) {
+      panState = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: viewState.panX,
+        originY: viewState.panY,
+      };
+    } else if (pointerCache.size === 2) {
+      var points = Array.from(pointerCache.values());
+      pinchState = {
+        distance: pointerDistance(points[0], points[1]),
+        scale: viewState.scale,
+      };
+      panState = null;
+    }
+  });
+
+  board.addEventListener('pointermove', function (event) {
+    if (!pointerCache.has(event.pointerId)) {
+      return;
+    }
+    pointerCache.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+    if (pinchState && pointerCache.size >= 2) {
+      var pinchPoints = Array.from(pointerCache.values());
+      var nextDistance = pointerDistance(pinchPoints[0], pinchPoints[1]);
+      if (pinchState.distance > 0) {
+        updateViewState({ scale: Math.min(1.8, Math.max(0.65, pinchState.scale * (nextDistance / pinchState.distance))) });
+      }
+      return;
+    }
+    if (!panState || panState.pointerId !== event.pointerId) {
+      return;
+    }
+    updateViewState({
+      panX: panState.originX + (event.clientX - panState.startX),
+      panY: panState.originY + (event.clientY - panState.startY)
+    });
+  });
+
+  function clearPointer(pointerId) {
+    pointerCache.delete(pointerId);
+    if (pointerCache.size < 2) {
+      pinchState = null;
+    }
+    if (panState && panState.pointerId === pointerId) {
+      panState = null;
+    }
+  }
+
+  board.addEventListener('pointerup', function (event) {
+    clearPointer(event.pointerId);
+  });
+  board.addEventListener('pointercancel', function (event) {
+    clearPointer(event.pointerId);
+  });
+
+  if (minimapBody) {
+    minimapBody.addEventListener('click', function (event) {
+      var rect = minimapBody.getBoundingClientRect();
+      var metrics = boardMetrics();
+      var localX = ((event.clientX - rect.left) / Math.max(1, rect.width)) * metrics.width;
+      var localY = ((event.clientY - rect.top) / Math.max(1, rect.height)) * metrics.height;
+      centerViewportAt(localX, localY);
+    });
+  }
+
+  window.addEventListener('resize', function () {
+    applyViewState();
+    renderConnections();
+    renderMinimap();
+  });
+
+  window.addEventListener('beforeunload', function () {
+    flushAutoSave('Workflow', { unload: true });
+  });
+
+  window.addEventListener('pagehide', function () {
+    flushAutoSave('Workflow', { unload: true });
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') {
+      flushAutoSave('Workflow', { unload: true });
+    }
+  });
+
+  if (openAsNewWorkflow && requestedWorkflowName) {
+    initializeNewWorkflowTab(requestedWorkflowName);
+    createWorkflowTab(requestedWorkflowName, currentWorkflowSnapshot());
+    ensureActiveWorkflowTab();
+    renderWorkflowTabs();
+  } else {
+    if (requestedWorkflowName) {
+      loadState(requestedWorkflowName);
+      loadViewState(requestedWorkflowName);
+      applyViewState();
+      renderCards();
+      renderConnections();
+      refreshEmptyState();
+      syncWorkflowControls(requestedWorkflowName, { clearInput: true });
+      createWorkflowTab(requestedWorkflowName, currentWorkflowSnapshot());
+      ensureActiveWorkflowTab();
+      renderWorkflowTabs();
+      loadWorkflow(requestedWorkflowName);
+    } else {
+      var rememberedWorkflow = '';
+      try { rememberedWorkflow = (window.localStorage.getItem(lastActiveWorkflowKey) || '').trim(); } catch (e) {}
+      if (rememberedWorkflow) {
+        loadState(rememberedWorkflow);
+        loadViewState(rememberedWorkflow);
+        applyViewState();
+        renderCards();
+        renderConnections();
+        refreshEmptyState();
+        syncWorkflowControls(rememberedWorkflow, { clearInput: true });
+        createWorkflowTab(rememberedWorkflow, currentWorkflowSnapshot());
+        ensureActiveWorkflowTab();
+        renderWorkflowTabs();
+        loadWorkflow(rememberedWorkflow);
+      } else {
+        loadState();
+        loadViewState('');
+        applyViewState();
+        renderCards();
+        renderConnections();
+        refreshEmptyState();
+        createWorkflowTab('', currentWorkflowSnapshot());
+        ensureActiveWorkflowTab();
+        renderWorkflowTabs();
+        updateDocumentTitle();
+      }
+    }
+  }
+})();
+</script>

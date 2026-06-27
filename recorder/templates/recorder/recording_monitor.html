@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Recording Monitor</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  height: 100%; margin: 0; padding: 0;
+  background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%);
+  font-size: 15px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #fff;
+  overscroll-behavior: none;
+  overflow: hidden;
+}
+.monitor-shell {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+/* ── Header ── */
+.monitor-header {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .45rem .85rem;
+  background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%);
+  box-shadow: 0 2px 10px rgba(0,0,0,.3);
+  z-index: 10;
+  -webkit-app-region: drag;
+}
+.monitor-header .btn { -webkit-app-region: no-drag; }
+.header-dot { width: 10px; height: 10px; border-radius: 50%; background: #e74c3c; animation: pulse-dot 1.2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+.header-dot.paused { background: #f39c12; animation: none; }
+.header-dot.stopped { background: #6c757d; animation: none; }
+.header-title { font-weight: 600; font-size: .95rem; white-space: nowrap; }
+.step-badge {
+  background: rgba(231,76,60,.85); color: #fff; border-radius: 4px;
+  font-size: .7rem; font-weight: 700; padding: 2px 7px; margin-left: auto;
+}
+.close-btn {
+  background: none; border: none; color: #fff; font-size: 1.1rem;
+  opacity: .7; cursor: pointer; margin-left: .3rem;
+}
+.close-btn:hover { opacity: 1; }
+
+/* ── Body / card ── */
+.monitor-body {
+  flex: 1 1 auto; overflow-y: auto; padding: .6rem .85rem;
+  background: rgba(255,255,255,.97); color: #17324f;
+}
+.rec-card {
+  border: 1px solid #e3e8ef; border-radius: .5rem;
+  padding: .6rem .75rem; margin-bottom: .5rem;
+  background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.05);
+}
+.rec-name { font-weight: 600; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.status-pill {
+  font-size: .65rem; font-weight: 700; border-radius: 3px; padding: 2px 8px;
+  text-transform: uppercase; letter-spacing: .03em;
+}
+.status-pill.recording { background: #fde8e8; color: #c0392b; }
+.status-pill.paused    { background: #fef3cd; color: #856404; }
+.status-pill.stopped   { background: #e2e8f0; color: #475569; }
+.steps-label { font-size: .78rem; color: #64748b; margin-top: .25rem; }
+/* Progress bar */
+.rec-progress { height: 4px; border-radius: 2px; background: #e2e8f0; margin-top: .35rem; overflow: hidden; }
+.rec-progress-bar { height: 100%; background: #e74c3c; animation: progress-pulse 1.5s ease-in-out infinite; width: 100%; }
+.rec-progress-bar.paused { background: #f39c12; animation: none; width: 60%; }
+@keyframes progress-pulse { 0%,100%{opacity:.6} 50%{opacity:1} }
+/* Controls */
+.rec-controls { display: flex; gap: .4rem; margin-top: .4rem; }
+.rec-controls .btn { padding: .2rem .55rem; font-size: .78rem; border-radius: .3rem; }
+
+/* ── Debug log ── */
+.debug-log {
+  margin-top: .4rem; padding: .35rem .5rem;
+  background: #0f172a; color: #94a3b8; border-radius: .35rem;
+  font-family: 'Fira Code', Consolas, monospace; font-size: .68rem;
+  max-height: 80px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+}
+</style>
+</head>
+<body>
+<div class="monitor-shell">
+  <!-- Header -->
+  <div class="monitor-header">
+    <div class="header-dot" id="headerDot"></div>
+    <span class="header-title">Recording Monitor</span>
+    <span class="step-badge" id="stepBadge">0 steps</span>
+    <button class="close-btn" id="closeBtn" title="Close"><i class="bi bi-x-lg"></i></button>
+  </div>
+
+  <!-- Body -->
+  <div class="monitor-body">
+    <div class="rec-card" id="recCard">
+      <div class="d-flex align-items-center gap-2">
+        <div class="header-dot" id="cardDot" style="width:8px;height:8px;"></div>
+        <span class="rec-name" id="recName">—</span>
+        <span class="status-pill recording" id="statusPill">Recording</span>
+      </div>
+      <div class="steps-label" id="stepsLabel">0 steps</div>
+      <div class="rec-progress"><div class="rec-progress-bar" id="progressBar"></div></div>
+      <div class="rec-controls">
+        <button class="btn btn-warning btn-sm" id="pauseBtn" title="Pause Recording"><i class="bi bi-pause-fill"></i></button>
+        <button class="btn btn-success btn-sm d-none" id="resumeBtn" title="Resume Recording"><i class="bi bi-play-fill"></i></button>
+        <button class="btn btn-danger btn-sm" id="stopBtn" title="Stop Recording"><i class="bi bi-stop-fill"></i></button>
+      </div>
+    </div>
+    <div class="debug-log" id="debugLog"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var CSRF   = '{{ csrf_token }}';
+  var TOKEN  = '{{ monitor_token }}';
+  var REC_ID = '{{ record_id }}';
+
+  var headerDot   = document.getElementById('headerDot');
+  var cardDot     = document.getElementById('cardDot');
+  var stepBadge   = document.getElementById('stepBadge');
+  var recName     = document.getElementById('recName');
+  var statusPill  = document.getElementById('statusPill');
+  var stepsLabel  = document.getElementById('stepsLabel');
+  var progressBar = document.getElementById('progressBar');
+  var pauseBtn    = document.getElementById('pauseBtn');
+  var resumeBtn   = document.getElementById('resumeBtn');
+  var stopBtn     = document.getElementById('stopBtn');
+  var debugLog    = document.getElementById('debugLog');
+  var closeBtn    = document.getElementById('closeBtn');
+
+  var pollTimer   = null;
+  var status      = 'recording';  // 'recording' | 'paused' | 'stopped'
+  var stepCount   = 0;
+  var since       = 0;
+  var STOP_SIGNAL_KEY = 'recordingMonitorStop';
+
+  function headers() {
+    var h = { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' };
+    if (TOKEN) h['X-Monitor-Token'] = TOKEN;
+    return h;
+  }
+
+  function log(msg) {
+    var ts = new Date().toLocaleTimeString();
+    var count = debugLog.childNodes.length;
+    debugLog.textContent += '[' + ts + ' #' + (count + 1) + '] ' + msg + '\n';
+    debugLog.scrollTop = debugLog.scrollHeight;
+  }
+
+  function broadcastStopSignal() {
+    try {
+      localStorage.setItem(STOP_SIGNAL_KEY, JSON.stringify({ record_id: REC_ID, ts: Date.now() }));
+    } catch (e) {}
+  }
+
+  function dispatchImmediateStop() {
+    var endpoint = '/api/recording/stop/';
+    var payload = JSON.stringify({ record_id: REC_ID, monitor_token: TOKEN });
+    try {
+      var beacon = new Image();
+      beacon.src = endpoint + '?record_id=' + encodeURIComponent(REC_ID)
+        + '&monitor_token=' + encodeURIComponent(TOKEN)
+        + '&_ts=' + Date.now();
+    } catch (e) {}
+    try {
+      if (navigator.sendBeacon) {
+        var blob = new Blob([payload], { type: 'application/json' });
+        if (navigator.sendBeacon(endpoint, blob)) {
+          return true;
+        }
+      }
+    } catch (e) {}
+    try {
+      fetch(endpoint, {
+        method: 'POST',
+        headers: headers(),
+        body: payload,
+        keepalive: true
+      }).catch(function() {});
+      return true;
+    } catch (e) {}
+    return false;
+  }
+
+  function closeMonitorWindow() {
+    try { window.close(); } catch (e) {}
+  }
+
+  function updateUI() {
+    stepBadge.textContent = stepCount + ' step' + (stepCount !== 1 ? 's' : '');
+    stepsLabel.textContent = stepCount + ' step' + (stepCount !== 1 ? 's' : '');
+
+    headerDot.className = 'header-dot' + (status === 'paused' ? ' paused' : status === 'stopped' ? ' stopped' : '');
+    cardDot.className   = 'header-dot' + (status === 'paused' ? ' paused' : status === 'stopped' ? ' stopped' : '');
+    cardDot.style.width = '8px'; cardDot.style.height = '8px';
+
+    statusPill.className = 'status-pill ' + status;
+    statusPill.textContent = status === 'recording' ? 'Recording' : status === 'paused' ? 'Paused' : 'Stopped';
+
+    progressBar.className = 'rec-progress-bar' + (status === 'paused' ? ' paused' : '');
+
+    pauseBtn.classList.toggle('d-none', status !== 'recording');
+    resumeBtn.classList.toggle('d-none', status !== 'paused');
+    stopBtn.disabled = (status === 'stopped');
+  }
+
+  function poll() {
+    if (!REC_ID) return;
+    fetch('/api/sessions/' + REC_ID + '/steps/since/' + since + '/?_ts=' + Date.now(), {
+      cache: 'no-store',
+      headers: headers()
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.steps && d.steps.length) {
+        d.steps.forEach(function(s) {
+          if (s.step_no > since) {
+            since = s.step_no;
+            stepCount = s.step_no;
+          }
+        });
+        log('DBG: reg={"' + REC_ID.substring(0, 36) + '"}');
+        updateUI();
+      }
+      if (d.recording_stopped) {
+        status = 'stopped';
+        updateUI();
+        clearInterval(pollTimer);
+        log('Recording stopped.');
+      }
+    })
+    .catch(function() {});
+  }
+
+  function doAction(endpoint) {
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ record_id: REC_ID })
+    }).then(function(r) { return r.json(); });
+  }
+
+  pauseBtn.addEventListener('click', function() {
+    pauseBtn.disabled = true;
+    doAction('/api/recording/pause/').then(function(d) {
+      pauseBtn.disabled = false;
+      if (d.ok) { status = 'paused'; updateUI(); log('Paused.'); }
+      else { log('Pause failed: ' + (d.error || 'unknown')); }
+    }).catch(function() { pauseBtn.disabled = false; });
+  });
+
+  resumeBtn.addEventListener('click', function() {
+    resumeBtn.disabled = true;
+    doAction('/api/recording/resume/').then(function(d) {
+      resumeBtn.disabled = false;
+      if (d.ok) { status = 'recording'; updateUI(); log('Resumed.'); }
+      else { log('Resume failed: ' + (d.error || 'unknown')); }
+    }).catch(function() { resumeBtn.disabled = false; });
+  });
+
+  stopBtn.addEventListener('click', function() {
+    stopBtn.disabled = true;
+    clearInterval(pollTimer);
+    status = 'stopped';
+    updateUI();
+    broadcastStopSignal();
+    dispatchImmediateStop();
+    closeMonitorWindow();
+  });
+
+  window.addEventListener('storage', function(event) {
+    if (event.key !== STOP_SIGNAL_KEY || !event.newValue) {
+      return;
+    }
+    try {
+      var payload = JSON.parse(event.newValue);
+      if (payload && payload.record_id === REC_ID) {
+        clearInterval(pollTimer);
+        closeMonitorWindow();
+      }
+    } catch (e) {}
+  });
+
+  closeBtn.addEventListener('click', function() { window.close(); });
+
+  // Init
+  recName.textContent = '{{ record_name|escapejs }}' || REC_ID.substring(0, 8) + '…';
+  log('DBG: reg={"' + REC_ID.substring(0, 36) + '"}');
+  updateUI();
+  poll();
+  pollTimer = setInterval(poll, 2000);
+})();
+</script>
+</body>
+</html>

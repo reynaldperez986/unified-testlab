@@ -1,0 +1,108 @@
+{% extends 'api/base.html' %}
+
+{% block title %}Execution History - API TestLab{% endblock %}
+{% block page_title %}Execution History{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <p class="text-muted mb-0">View and filter past test executions.</p>
+    <a href="{% url 'api:export_executions_csv' %}?status={{ filters.status }}&environment={{ filters.environment }}" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-download"></i> Export CSV
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option value="passed" {% if filters.status == 'passed' %}selected{% endif %}>Passed</option>
+                    <option value="failed" {% if filters.status == 'failed' %}selected{% endif %}>Failed</option>
+                    <option value="error" {% if filters.status == 'error' %}selected{% endif %}>Error</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Environment</label>
+                <select name="environment" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    {% for env in environments %}
+                    <option value="{{ env.pk }}" {% if filters.environment == env.pk|stringformat:"d" %}selected{% endif %}>{{ env.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">User</label>
+                <select name="user" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    {% for u in users %}
+                    <option value="{{ u.pk }}" {% if filters.user == u.pk|stringformat:"d" %}selected{% endif %}>{{ u.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">From</label>
+                <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">To</label>
+                <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-search"></i> Filter</button>
+                <a href="{% url 'api:execution_history' %}" class="btn btn-sm btn-outline-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Test Case</th>
+                        <th>Environment</th>
+                        <th>Result</th>
+                        <th>Status Code</th>
+                        <th>Response Time</th>
+                        <th>Executed By</th>
+                        <th>Date</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ex in executions %}
+                    <tr>
+                        <td>
+                            <span class="method-badge method-{{ ex.test_case.http_method }}">{{ ex.test_case.http_method }}</span>
+                            {{ ex.test_case.name }}
+                        </td>
+                        <td>{{ ex.environment.name|default:"-" }}</td>
+                        <td><span class="badge badge-{{ ex.result_status }}">{{ ex.result_status|upper }}</span></td>
+                        <td>{{ ex.response_status_code|default:"-" }}</td>
+                        <td>{{ ex.response_time_ms|default:"-" }} ms</td>
+                        <td>{{ ex.executed_by.username|default:"-" }}</td>
+                        <td>{{ ex.executed_at|date:"M d, Y H:i" }}</td>
+                        <td>
+                            <a href="{% url 'api:execution_detail' ex.pk %}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">No executions found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

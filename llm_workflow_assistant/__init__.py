@@ -1,0 +1,1 @@
+"""Workflow assistant integration package."""

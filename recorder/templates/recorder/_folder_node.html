@@ -1,0 +1,159 @@
+<div class="folder-group folder-tree-node"
+  id="{{ folder_node.dom_id }}"
+  data-tree-depth="{{ depth|default:0 }}"
+  data-folder-name="{{ folder_node.path }}"
+  data-tree-sortable="{% if not folder_node.is_special %}1{% else %}0{% endif %}">
+  <div class="folder-tree-header {% if depth|default:0 == 0 %}is-root{% endif %}">
+    {% if not folder_node.is_special %}
+    <span class="folder-tree-drag-handle" title="Drag to reorder folder">
+      <i class="bi bi-grip-vertical"></i>
+    </span>
+    {% if folder_node.can_toggle_public and depth|default:0 == 0 %}
+    <label class="folder-public-toggle-wrap" title="Public visibility for {{ folder_node.path }}">
+      <input type="checkbox"
+             class="form-check-input folder-public-toggle"
+             role="switch"
+             aria-label="Toggle public visibility for {{ folder_node.path }}"
+             data-folder-name="{{ folder_node.path }}"
+             {% if folder_node.public %}checked{% endif %}>
+    </label>
+    {% endif %}
+    {% if feat_bulk_replay and not folder_node.is_unfiled %}
+    <input type="checkbox"
+           class="form-check-input folder-select-all"
+           title="Select / deselect all files in {{ folder_node.display_name }}"
+           data-folder-node-id="{{ folder_node.dom_id }}"
+           style="flex-shrink:0;width:.95rem;height:.95rem;margin:0;cursor:pointer;">
+    {% endif %}
+    {% endif %}
+    <button class="btn btn-link text-start text-decoration-none p-0 d-flex align-items-center gap-2 group-toggle flex-grow-1 folder-tree-toggle"
+            data-bs-toggle="collapse"
+            data-bs-target="#{{ folder_node.collapse_id }}"
+            aria-expanded="false"
+            title="{{ folder_node.path|default:folder_node.display_name }}">
+      <span class="folder-tree-caret chevron-icon" aria-hidden="true"></span>
+      <span class="folder-tree-label">
+      {% if folder_node.is_recordings %}
+        <i class="bi bi-folder2 text-warning fs-6 folder-tree-icon"></i>
+        <span class="folder-tree-name">{{ folder_node.display_name }}</span>
+      {% elif folder_node.is_unfiled %}
+        <i class="bi bi-inbox text-muted fs-6"></i>
+        <span class="folder-tree-name text-muted">Unfiled</span>
+      {% else %}
+        <i class="bi bi-folder2 text-warning fs-6 folder-tree-icon"></i>
+        <span class="folder-tree-name">{{ folder_node.display_name }}</span>
+        {% if depth|default:0 > 0 %}
+        <span class="folder-tree-path">{{ folder_node.path }}</span>
+        {% endif %}
+      {% endif %}
+      <span class="badge folder-tree-badge">{{ folder_node.total_sessions }}</span>
+      </span>
+    </button>
+    <a href="{% url 'folder_data_page' %}?folder_name={{ folder_node.path|urlencode }}"
+       target="_blank"
+       class="btn btn-sm btn-link text-info p-0 ms-1"
+       title="View all test data in project"
+       style="font-size:.92rem;opacity:.7;line-height:1;"
+       onclick="event.stopPropagation();">
+      <i class="bi bi-database"></i>
+    </a>
+    {% if depth|default:0 == 0 %}
+    <button type="button"
+            class="btn btn-sm btn-primary"
+            data-open-testcase-search="1"
+            data-testcase-lab="api"
+          data-target-folder="{{ folder_node.path }}"
+          title="Search API test cases">Add API Test Case</button>
+    <button type="button"
+            class="btn btn-sm btn-success"
+            data-open-testcase-search="1"
+            data-testcase-lab="db"
+          data-target-folder="{{ folder_node.path }}"
+          title="Search DB test cases">Add DB Test Case</button>
+    {% endif %}
+    {% if not folder_node.is_unfiled %}
+      {% if depth|default:0 <= 2 %}
+      {% if 'copy_folder_button' in visible_actions or 'create_subfolder_button' in visible_actions or 'rename_folder_button' in visible_actions and not folder_node.is_recordings or 'delete_folder' in visible_actions and not folder_node.is_recordings or request.user.is_superuser and 'rename_folder_button' in visible_actions or request.user.is_superuser and 'delete_folder' in visible_actions %}
+    <div class="folder-tree-actions">
+      {% if 'create_subfolder_button' in visible_actions and depth|default:0 < 2 %}
+      <button class="btn btn-sm btn-outline-light py-0 px-2"
+              data-bs-toggle="modal"
+              data-bs-target="#createFolderModal"
+              data-parent-folder="{{ folder_node.path }}"
+              data-parent-label="{{ folder_node.path }}"
+              title="Create subfolder">
+        <i class="bi bi-folder-plus"></i>
+      </button>
+      {% endif %}
+      {% if 'copy_folder_button' in visible_actions %}
+      {% if depth|default:0 >= 1 %}
+      <button class="btn btn-sm btn-outline-warning py-0 px-2 copy-folder-direct-trigger"
+              type="button"
+              data-folder-name="{{ folder_node.path }}"
+              data-insert-after-folder="{{ folder_node.path }}"
+              data-folder-count="{{ folder_node.total_sessions }}"
+          title="Duplicate folder">
+        <i class="bi bi-copy"></i>
+      </button>
+      {% else %}
+      <button class="btn btn-sm btn-outline-warning py-0 px-2 copy-folder-direct-trigger"
+          type="button"
+          data-folder-name="{{ folder_node.path }}"
+          data-insert-after-folder="{{ folder_node.path }}"
+          data-folder-count="{{ folder_node.total_sessions }}"
+          title="Duplicate entire project subtree">
+        <i class="bi bi-folder-symlink"></i>
+      </button>
+      {% endif %}
+      {% endif %}
+      {% if 'rename_folder_button' in visible_actions %}
+      {% if not folder_node.is_recordings or request.user.is_superuser %}
+      <button class="btn btn-sm btn-outline-light py-0 px-2"
+              data-bs-toggle="modal"
+              data-bs-target="#renameFolderModal"
+              data-folder-name="{{ folder_node.path }}"
+              data-folder-count="{{ folder_node.total_sessions }}"
+              title="Rename Project">
+        <i class="bi bi-pencil-square"></i>
+      </button>
+      {% endif %}
+      {% endif %}
+      {% if 'delete_folder' in visible_actions %}
+        {% if not folder_node.is_recordings or request.user.is_superuser %}
+        <button class="btn btn-sm btn-outline-danger py-0 px-2"
+                data-bs-toggle="modal"
+                data-bs-target="#deleteFolderModal"
+                data-folder-name="{{ folder_node.path }}"
+                data-folder-count="{{ folder_node.total_sessions }}"
+                title="Delete entire project">
+          <i class="bi bi-trash"></i>
+        </button>
+        {% endif %}
+      {% endif %}
+    </div>
+      {% endif %}
+      {% endif %}
+    {% endif %}
+    {% if folder_node.children and folder_node.sessions or depth|default:0 == 2 and folder_node.sessions %}
+    <span class="folder-tree-table-label small text-muted fw-semibold ms-auto me-1">
+      <i class="bi bi-file-earmark-text me-1"></i> Files in {{ folder_node.display_name }}
+    </span>
+    {% endif %}
+  </div>
+
+  <div class="collapse folder-collapse" id="{{ folder_node.collapse_id }}">
+    {% if folder_node.sessions or not folder_node.children %}
+      <div class="folder-tree-table">
+        {% include "recorder/_sessions_table.html" with folder_node=folder_node is_nested=is_nested depth=depth %}
+      </div>
+    {% endif %}
+
+    {% if folder_node.children %}
+    <div class="folder-tree-children folder-sortable-container" data-parent-folder="{{ folder_node.path }}">
+      {% for folder_child in folder_node.children %}
+        {% include "recorder/_folder_node.html" with folder_node=folder_child is_nested=True depth=depth|add:1 %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>

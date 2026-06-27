@@ -1,0 +1,152 @@
+{% extends "recorder/base.html" %}
+{% block title %}Tenant Management{% endblock %}
+
+{% block content %}
+<div class="page-header-shell">
+  <div>
+    <h4 class="page-title fw-bold mb-1"><i class="bi bi-building"></i> Tenant Management</h4>
+    <div class="page-header-meta">Create and manage isolated organisational units. Assign users to a tenant to scope their data and active-run visibility.</div>
+  </div>
+  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createTenantModal">
+    <i class="bi bi-plus-lg"></i> New Tenant
+  </button>
+</div>
+
+{% if messages %}
+  {% for m in messages %}
+    <div class="alert alert-{{ m.tags|default:'info' }} alert-dismissible fade show mb-3" role="alert">
+      {{ m }} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}
+{% endif %}
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold"><i class="bi bi-diagram-3"></i> Tenants</div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Name</th>
+          <th>Slug</th>
+          <th class="text-center">Active</th>
+          <th class="text-center">Members</th>
+          <th>Created</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tenant_rows %}
+        <tr>
+          <td class="fw-semibold">{{ t.name }}</td>
+          <td><code>{{ t.slug }}</code></td>
+          <td class="text-center">
+            {% if t.is_active %}<span class="badge bg-success">Yes</span>
+            {% else %}<span class="badge bg-secondary">No</span>{% endif %}
+          </td>
+          <td class="text-center">{{ t.member_count }}</td>
+          <td>{{ t.created_at|date:"Y-m-d" }}</td>
+          <td class="text-center">
+            <form method="post" action="{% url 'tenant_delete' t.id %}"
+                  onsubmit="return confirm('Delete tenant \'{{ t.name }}\'?');">
+              {% csrf_token %}
+              <button class="btn btn-danger btn-sm">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No tenants yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold"><i class="bi bi-people"></i> User → Tenant Assignments</div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Username</th>
+          <th>Superuser</th>
+          <th>Current Tenant</th>
+          <th class="text-center">Assign</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in all_users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td class="text-center">{% if u.is_superuser %}<span class="badge bg-warning text-dark">Yes</span>{% else %}—{% endif %}</td>
+          <td>
+            {% if u.profile.tenant %}
+              <span class="badge bg-primary">{{ u.profile.tenant.name }}</span>
+            {% else %}
+              <span class="text-muted small">None</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <select class="form-select form-select-sm w-auto d-inline-block"
+                    data-user-id="{{ u.pk }}"
+                    onchange="assignTenant(this)">
+              <option value="">— None —</option>
+              {% for t in tenant_rows %}
+              <option value="{{ t.id }}"
+                {% if u.profile.tenant and u.profile.tenant.id|stringformat:"s" == t.id %}selected{% endif %}>
+                {{ t.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create Tenant Modal -->
+<div class="modal fade" id="createTenantModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{% url 'tenant_create' %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-building-add"></i> New Tenant</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label fw-semibold">Name</label>
+          <input type="text" name="name" class="form-control" placeholder="e.g. Acme Corp" required autofocus>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function assignTenant(sel) {
+  const userId   = sel.dataset.userId;
+  const tenantId = sel.value;
+  fetch("{% url 'tenant_assign_user' %}", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken":  "{{ csrf_token }}",
+    },
+    body: JSON.stringify({ user_id: parseInt(userId), tenant_id: tenantId || null }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) { alert("Error: " + (d.error || "unknown")); }
+  })
+  .catch(e => alert("Request failed: " + e));
+}
+</script>
+{% endblock %}

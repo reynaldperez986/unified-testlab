@@ -1,0 +1,147 @@
+{% extends 'api/base.html' %}
+
+{% block title %}Dashboard - API TestLab{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card total">
+            <div class="stat-value">{{ total_test_cases }}</div>
+            <div class="stat-label">Total Test Cases</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card total">
+            <div class="stat-value">{{ total_executions }}</div>
+            <div class="stat-label">Total Executions</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card passed">
+            <div class="stat-value">{{ passed_tests }}</div>
+            <div class="stat-label">Passed Tests</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card failed">
+            <div class="stat-value">{{ failed_tests }}</div>
+            <div class="stat-label">Failed Tests</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Execution Trend (Last 7 Days)</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="trendChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Result Distribution</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="pieChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0">Recent Executions</h6>
+        <a href="{% url 'api:execution_history' %}" class="btn btn-sm btn-outline-primary">View All</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Test Case</th>
+                        <th>Environment</th>
+                        <th>User</th>
+                        <th>Result</th>
+                        <th>Response Time</th>
+                        <th>Executed At</th>
+                        <th>View</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ex in recent_executions %}
+                    <tr>
+                        <td>
+                            <span class="method-badge method-{{ ex.test_case.http_method }}">{{ ex.test_case.http_method }}</span>
+                            {{ ex.test_case.name }}
+                        </td>
+                        <td>{{ ex.environment.name|default:"-" }}</td>
+                        <td>{{ ex.executed_by.username|default:"-" }}</td>
+                        <td>
+                            <span class="badge badge-{{ ex.result_status }}">{{ ex.result_status|upper }}</span>
+                        </td>
+                        <td>{{ ex.response_time_ms|default:"-" }} ms</td>
+                        <td>{{ ex.executed_at|date:"M d, Y H:i" }}</td>
+                        <td>
+                            <a href="{% url 'api:execution_detail' ex.pk %}" class="btn btn-sm btn-outline-secondary" title="View Execution">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">No executions yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+<script>
+    const dailyStats = JSON.parse('{{ daily_stats|escapejs }}');
+
+    // Trend Chart
+    new Chart(document.getElementById('trendChart'), {
+        type: 'bar',
+        data: {
+            labels: dailyStats.map(d => d.date),
+            datasets: [
+                { label: 'Passed', data: dailyStats.map(d => d.passed), backgroundColor: '#51cf66' },
+                { label: 'Failed', data: dailyStats.map(d => d.failed), backgroundColor: '#ff6b6b' },
+                { label: 'Error', data: dailyStats.map(d => d.error), backgroundColor: '#fcc419' },
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
+        }
+    });
+
+    // Pie Chart
+    new Chart(document.getElementById('pieChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Passed', 'Failed', 'Error'],
+            datasets: [{
+                data: [{{ passed_tests }}, {{ failed_tests }}, {{ error_tests }}],
+                backgroundColor: ['#51cf66', '#ff6b6b', '#fcc419']
+            }]
+        },
+        options: { responsive: true }
+    });
+</script>
+{% endblock %}
+
+
+
+

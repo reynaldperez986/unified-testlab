@@ -1,0 +1,537 @@
+{% extends "recorder/base.html" %}
+{% block title %}Create User — WebConX Automation{% endblock %}
+
+{% block content %}
+<style>
+  .create-user-modal {
+    position: fixed;
+    inset: 0;
+    display: block;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0;
+    background: transparent;
+    z-index: 1055;
+  }
+  .create-user-modal::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(circle at 20% 14%, rgba(54, 117, 176, .22), transparent 26%),
+      radial-gradient(circle at 82% 10%, rgba(255, 211, 132, .14), transparent 24%),
+      rgba(8, 23, 39, .42);
+    backdrop-filter: blur(12px) saturate(1.05);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .create-user-modal::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,0) 24%, rgba(5,18,31,.08) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .create-user-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.35rem;
+    position: relative;
+    z-index: 1;
+  }
+  .create-user-shell .modal-dialog {
+    --bs-modal-width: min(560px, calc(100vw - 1.6rem));
+    margin: 0 auto;
+    transform: translateY(0);
+  }
+  .create-user-shell .modal-content.shadow-sm {
+    max-height: min(88vh, 920px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    scrollbar-gutter: stable;
+    border: 1px solid rgba(14, 49, 82, .14);
+    border-radius: 1.1rem;
+    background:
+      radial-gradient(circle at top right, rgba(255, 211, 132, .18), transparent 24%),
+      radial-gradient(circle at top left, rgba(42, 110, 168, .13), transparent 26%),
+      linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(246,249,252,.98) 100%);
+    box-shadow: 0 28px 70px rgba(7, 32, 68, .28), 0 10px 24px rgba(7, 32, 68, .14) !important;
+    backdrop-filter: blur(10px);
+  }
+  /* form sits between modal-content and modal-body — must relay the flex chain */
+  .create-user-shell .modal-content.shadow-sm > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .create-user-shell .modal-body {
+    padding: .95rem 1rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    /* fill available height between sticky header & sticky footer */
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .create-user-shell .modal-footer {
+    justify-content: flex-end;
+  }
+  .create-user-shell .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: .82rem 1rem;
+    margin: 0;
+    background:
+      radial-gradient(circle at top right, rgba(255, 214, 138, .18), transparent 30%),
+      linear-gradient(135deg, #2a6ea8 0%, #1f5c90 58%, #18476f 100%) !important;
+    border-bottom: 1px solid rgba(255,255,255,.14);
+    box-shadow: inset 0 -1px 0 rgba(255,255,255,.08);
+    border-top-left-radius: calc(1.1rem - 1px);
+    border-top-right-radius: calc(1.1rem - 1px);
+  }
+  .create-user-shell .modal-title {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    letter-spacing: .01em;
+    line-height: 1.15;
+  }
+  .create-user-shell .modal-title i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.72rem;
+    height: 1.72rem;
+    border-radius: .62rem;
+    background: rgba(255,255,255,.16);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 8px 18px rgba(8, 33, 56, .12);
+  }
+  .create-user-subtitle {
+    margin: .35rem 0 0;
+    font-size: .8rem;
+    line-height: 1.45;
+    color: rgba(233, 244, 255, .82);
+  }
+  .create-user-shell .modal-body hr {
+    margin: 1rem 0;
+    border-color: rgba(0, 33, 71, .08);
+  }
+  .create-user-shell .form-control,
+  .create-user-shell .form-select {
+    border-radius: .85rem;
+    border-color: rgba(0, 33, 71, .14);
+    box-shadow: none;
+  }
+  .create-user-shell .form-control:focus,
+  .create-user-shell .form-select:focus {
+    border-color: #1a6aa1;
+    box-shadow: 0 0 0 .2rem rgba(26, 106, 161, .14);
+  }
+  .create-user-shell .form-check {
+    padding: .65rem .9rem .65rem 2.6rem;
+    border: 1px solid rgba(0, 33, 71, .08);
+    border-radius: .95rem;
+    background: rgba(255,255,255,.72);
+  }
+  .create-user-shell .form-check-input {
+    margin-top: .15rem;
+  }
+  .create-user-shell #va_checkboxes {
+    display: grid;
+    gap: .15rem;
+    padding: .55rem;
+    border: 1px solid rgba(0, 33, 71, .08);
+    border-radius: 1rem;
+    background: rgba(255,255,255,.62);
+    max-height: min(42vh, 26rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  .create-user-shell #va_checkboxes .form-check {
+    padding: .45rem .65rem .45rem 2.2rem;
+    border: 0;
+    border-radius: .75rem;
+    background: transparent;
+  }
+  .create-user-shell #va_checkboxes .form-check:hover {
+    background: rgba(0, 51, 102, .05);
+  }
+  .create-user-shell .modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding: .78rem 1rem .92rem;
+    background: linear-gradient(180deg, rgba(246,249,252,.82) 0%, rgba(255,255,255,.98) 35%);
+    border-top: 1px solid rgba(0, 33, 71, .08);
+  }
+  .create-user-shell .modal-footer .btn {
+    border-radius: .85rem;
+    padding: .58rem .86rem;
+    font-weight: 600;
+  }
+  html.ui-dark .create-user-shell .modal-content.shadow-sm {
+    border-color: #30363d;
+    background:
+      radial-gradient(circle at top right, rgba(88, 166, 255, .1), transparent 26%),
+      radial-gradient(circle at top left, rgba(255, 216, 96, .06), transparent 28%),
+      linear-gradient(180deg, rgba(22,27,34,.98) 0%, rgba(13,17,23,.98) 100%);
+    box-shadow: 0 26px 70px rgba(0, 0, 0, .42), 0 10px 24px rgba(0,0,0,.24) !important;
+  }
+  html.ui-dark .create-user-shell .modal-header {
+    background:
+      radial-gradient(circle at top right, rgba(125, 196, 255, .14), transparent 30%),
+      linear-gradient(135deg, rgba(19, 55, 96, 0.96) 0%, rgba(17, 41, 73, 0.96) 58%, rgba(12, 28, 54, 0.98) 100%) !important;
+  }
+  html.ui-dark .create-user-modal::before {
+    background:
+      radial-gradient(circle at 20% 14%, rgba(88, 166, 255, .16), transparent 26%),
+      radial-gradient(circle at 82% 10%, rgba(255, 208, 96, .08), transparent 24%),
+      rgba(3, 10, 19, .62);
+  }
+  html.ui-dark .create-user-shell .form-check,
+  html.ui-dark .create-user-shell #va_checkboxes {
+    background: rgba(13,17,23,.58);
+    border-color: #30363d;
+  }
+  html.ui-dark .create-user-shell .modal-body hr,
+  html.ui-dark .create-user-shell .modal-footer {
+    border-color: #30363d;
+  }
+  html.ui-dark .create-user-shell .modal-footer {
+    background: linear-gradient(180deg, rgba(14, 25, 42, 0.18) 0%, rgba(10, 20, 34, 0.9) 54%);
+  }
+  html.ui-dark .create-user-shell #va_checkboxes .form-check:hover {
+    background: rgba(88,166,255,.08);
+  }
+
+  @media (max-width: 768px) {
+    .create-user-shell {
+      min-height: auto;
+      align-items: stretch;
+      padding: .55rem;
+    }
+    .create-user-shell .modal-dialog {
+      --bs-modal-width: calc(100vw - 1.1rem);
+    }
+    .create-user-shell .modal-content.shadow-sm {
+      max-height: calc(100vh - 1.1rem);
+      border-radius: .9rem;
+    }
+    .create-user-shell .modal-header,
+    .create-user-shell .modal-footer {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+    .create-user-shell .modal-header {
+      padding-top: .62rem;
+      padding-bottom: .62rem;
+      border-top-left-radius: calc(.9rem - 1px);
+      border-top-right-radius: calc(.9rem - 1px);
+    }
+    .create-user-shell .modal-body {
+      padding: .82rem .86rem;
+    }
+    .create-user-shell .modal-title {
+      gap: .45rem;
+      font-size: .95rem;
+    }
+    .create-user-subtitle {
+      margin-top: .28rem;
+      font-size: .76rem;
+    }
+    .create-user-shell .modal-title i {
+      width: 1.58rem;
+      height: 1.58rem;
+      border-radius: .56rem;
+    }
+    .create-user-shell .form-check {
+      width: 100%;
+      padding: .6rem .75rem .6rem 2.4rem;
+    }
+    .create-user-shell .modal-footer {
+      gap: .6rem;
+      flex-direction: column-reverse;
+      align-items: stretch;
+    }
+    .create-user-shell .modal-footer .btn {
+      width: 100%;
+      padding: .62rem .82rem;
+    }
+    .create-user-shell #va_checkboxes {
+      max-height: min(36vh, 22rem);
+      padding: .45rem;
+    }
+    .create-user-shell #va_checkboxes .form-check {
+      padding: .5rem .6rem .5rem 2.15rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .create-user-shell {
+      padding: .3rem;
+    }
+    .create-user-shell .modal-dialog {
+      --bs-modal-width: calc(100vw - .6rem);
+    }
+    .create-user-shell .modal-content.shadow-sm {
+      max-height: calc(100vh - .6rem);
+      border-radius: .78rem;
+    }
+    .create-user-shell .modal-header {
+      border-top-left-radius: calc(.78rem - 1px);
+      border-top-right-radius: calc(.78rem - 1px);
+    }
+    .create-user-shell .modal-header,
+    .create-user-shell .modal-footer,
+    .create-user-shell .modal-body {
+      padding-left: .82rem;
+      padding-right: .82rem;
+    }
+  }
+</style>
+
+<div class="modal create-user-modal show" tabindex="-1" aria-modal="true" role="dialog">
+  <div class="create-user-shell">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content shadow-sm">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="modal-header">
+            <div>
+              <h4 class="modal-title fw-bold mb-0"><i class="bi bi-person-plus"></i> Create User</h4>
+              <p class="create-user-subtitle">Use the same account setup flow as Edit User, but create the account inside a focused modal layer.</p>
+            </div>
+            <a href="{% if user.is_authenticated %}{% url 'user_list' %}{% else %}{% url 'login' %}{% endif %}" class="btn-close" aria-label="Close"></a>
+          </div>
+
+          <div class="modal-body">
+
+          <div class="mb-3">
+            <label for="id_username" class="form-label fw-semibold">Username</label>
+            <input type="text" id="id_username" name="username"
+                   class="form-control {% if errors.username %}is-invalid{% endif %}"
+                   value="{{ form_data.username|default:'' }}" autocomplete="off" required>
+            {% if errors.username %}
+              <div class="invalid-feedback">{{ errors.username }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label for="id_email" class="form-label fw-semibold">Email <span class="text-muted fw-normal">(optional)</span></label>
+            <input type="email" id="id_email" name="email"
+                   class="form-control {% if errors.email %}is-invalid{% endif %}"
+                   value="{{ form_data.email|default:'' }}" autocomplete="off">
+            {% if errors.email %}
+              <div class="invalid-feedback">{{ errors.email }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label for="id_password1" class="form-label fw-semibold">Password</label>
+            <input type="password" id="id_password1" name="password1"
+                   class="form-control {% if errors.password1 %}is-invalid{% endif %}"
+                   autocomplete="new-password" required>
+            {% if errors.password1 %}
+              <div class="invalid-feedback">{{ errors.password1 }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label for="id_password2" class="form-label fw-semibold">Confirm Password</label>
+            <input type="password" id="id_password2" name="password2"
+                   class="form-control {% if errors.password2 %}is-invalid{% endif %}"
+                   autocomplete="new-password" required>
+            {% if errors.password2 %}
+              <div class="invalid-feedback">{{ errors.password2 }}</div>
+            {% endif %}
+          </div>
+
+          <hr>
+          <div class="d-flex flex-wrap gap-4 mb-3">
+            {% if request.user.is_authenticated and request.user.is_superuser %}
+            <div class="form-check form-switch" id="row_superuser">
+              <input class="form-check-input" type="checkbox" name="is_superuser" id="edit_is_superuser" {% if form_data.is_superuser %}checked{% endif %}>
+              <label class="form-check-label" for="edit_is_superuser">Superuser</label>
+            </div>
+            {% endif %}
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="is_staff" id="edit_is_staff" {% if form_data.is_staff|default:True %}checked{% endif %}>
+              <label class="form-check-label" for="edit_is_staff">Staff</label>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="is_active" id="edit_is_active" {% if form_data.is_active|default:True %}checked{% endif %}>
+              <label class="form-check-label" for="edit_is_active">Active</label>
+            </div>
+          </div>
+          {% if errors.role %}
+          <div class="invalid-feedback d-block mb-3">{{ errors.role }}</div>
+          {% endif %}
+
+          <hr>
+          <div class="mb-3">
+            <label class="form-label fw-semibold"><i class="bi bi-sliders me-1"></i> Visible Action Buttons</label>
+            <p class="text-muted small mb-2">Choose which action buttons appear in the Projects table for this user. All enabled by default.</p>
+            <input type="hidden" name="visible_actions" id="visible_actions_hidden">
+            <div id="va_checkboxes">
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_copy" value="copy" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_copy"><span class="badge bg-warning bg-opacity-75"><i class="bi bi-folder-symlink"></i></span> Copy to Folder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_copy_folder_button" value="copy_folder_button" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_copy_folder_button"><span class="badge bg-warning bg-opacity-75"><i class="bi bi-folder-symlink"></i></span> Copy Folder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_copy_folder_modal" value="copy_folder_modal" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_copy_folder_modal"><span class="badge bg-warning bg-opacity-75"><i class="bi bi-folder-symlink"></i></span> Modal icon: Copy Folder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_create_folder_modal" value="create_folder_modal" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_create_folder_modal"><span class="badge bg-primary bg-opacity-75"><i class="bi bi-folder-plus"></i></span> New Folder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_create_subfolder_button" value="create_subfolder_button" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_create_subfolder_button"><span class="badge bg-primary bg-opacity-75"><i class="bi bi-folder-plus"></i></span> Create Subfolder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_create_subfolder_modal" value="create_subfolder_modal" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_create_subfolder_modal"><span class="badge bg-primary bg-opacity-75"><i class="bi bi-folder-plus"></i></span> Modal icon: Create Subfolder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_delete" value="delete" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_delete"><span class="badge bg-danger bg-opacity-75"><i class="bi bi-trash"></i></span> Delete</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_download" value="download" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_download"><span class="badge bg-info bg-opacity-75"><i class="bi bi-download"></i></span> Download</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_delete_folder" value="delete_folder" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_delete_folder"><span class="badge bg-danger bg-opacity-75"><i class="bi bi-folder-minus"></i></span> Delete Folder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_delete_folder_modal" value="delete_folder_modal" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_delete_folder_modal"><span class="badge bg-danger bg-opacity-75"><i class="bi bi-folder-minus"></i></span> Modal icon: Delete Folder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_download" value="download" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_download"><span class="badge bg-info bg-opacity-75"><i class="bi bi-download"></i></span> Download</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_duplicate" value="duplicate" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_duplicate"><span class="badge bg-info bg-opacity-75"><i class="bi bi-files"></i></span> Duplicate</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_headless" value="headless" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_headless"><span class="badge bg-success bg-opacity-75"><i class="bi bi-display"></i></span> Headless</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_rename_folder_button" value="rename_folder_button" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_rename_folder_button"><span class="badge bg-secondary bg-opacity-75"><i class="bi bi-pencil-square"></i></span> Rename Folder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_rename" value="rename" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_rename"><span class="badge bg-secondary bg-opacity-75"><i class="bi bi-pencil"></i></span> Rename</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_rename_folder_modal" value="rename_folder_modal" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_rename_folder_modal"><span class="badge bg-secondary bg-opacity-75"><i class="bi bi-pencil-square"></i></span> Modal icon: Rename Folder</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_replay" value="replay" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_replay"><span class="badge bg-success bg-opacity-75"><i class="bi bi-play-circle"></i></span> Replay</label>
+              </div>
+              <div class="form-check d-flex align-items-center gap-2 py-1">
+                <input class="form-check-input va-cb" type="checkbox" id="va_view" value="view" checked>
+                <label class="form-check-label d-flex align-items-center gap-2" for="va_view"><span class="badge bg-primary bg-opacity-75"><i class="bi bi-list-ul"></i></span> View</label>
+              </div>
+            </div>
+          </div>
+
+          </div>
+
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-person-check"></i> Create User
+            </button>
+            <a href="{% if user.is_authenticated %}{% url 'user_list' %}{% else %}{% url 'login' %}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const createUserForm = document.querySelector('form');
+  const createStaffChk = document.getElementById('edit_is_staff');
+  const createSuperChk = document.getElementById('edit_is_superuser');
+
+  function syncRoleSelection(changedSource) {
+    if (!createStaffChk) return;
+
+    if (!createSuperChk) {
+      if (!createStaffChk.checked) {
+        createStaffChk.checked = true;
+      }
+      return;
+    }
+
+    if (changedSource === 'superuser') {
+      if (createSuperChk.checked) {
+        createStaffChk.checked = false;
+      } else {
+        createStaffChk.checked = true;
+      }
+      return;
+    }
+
+    if (changedSource === 'staff') {
+      if (createStaffChk.checked) {
+        createSuperChk.checked = false;
+      } else if (!createSuperChk.checked) {
+        createStaffChk.checked = true;
+      }
+      return;
+    }
+
+    if (createSuperChk.checked && createStaffChk.checked) {
+      createStaffChk.checked = false;
+    }
+    if (!createSuperChk.checked && !createStaffChk.checked) {
+      createStaffChk.checked = true;
+    }
+  }
+
+  if (createSuperChk) {
+    createSuperChk.addEventListener('change', function () {
+      syncRoleSelection('superuser');
+    });
+  }
+
+  if (createStaffChk) {
+    createStaffChk.addEventListener('change', function () {
+      syncRoleSelection('staff');
+    });
+  }
+
+  syncRoleSelection();
+
+  createUserForm.addEventListener('submit', function() {
+    syncRoleSelection();
+    const checked = [...document.querySelectorAll('.va-cb:checked')].map(c => c.value);
+    document.getElementById('visible_actions_hidden').value = checked.join(',') || 'none';
+  });
+</script>
+{% endblock %}

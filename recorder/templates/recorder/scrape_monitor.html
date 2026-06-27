@@ -1,0 +1,1385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Scrape Monitor</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  /* ── Reset & base ─────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background:
+      radial-gradient(circle at top, rgba(26,82,118,.18), transparent 30%),
+      linear-gradient(180deg, #edf2f7 0%, #dfe7f1 100%);
+    font-size: 15px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    color: #17324f;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  body.body-minimized {
+    background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%) !important;
+  }
+
+  /* ── Shell ────────────────────────────────────────────────── */
+  .monitor-shell {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  /* ── Card panel ───────────────────────────────────────────── */
+  .monitor-modal {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: rgba(255,255,255,.97);
+    position: relative;
+  }
+
+  .monitor-modal::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 160px;
+    background:
+      radial-gradient(circle at top right, rgba(255,198,92,.16), transparent 34%),
+      radial-gradient(circle at top left,  rgba(31,111,182,.16), transparent 36%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .monitor-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), .5rem);
+  }
+
+  /* ── Header ───────────────────────────────────────────────── */
+  #scrapeHeader {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    padding: .42rem .85rem;
+    padding-left:  max(.85rem, env(safe-area-inset-left));
+    padding-right: max(.85rem, env(safe-area-inset-right));
+    background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%);
+    box-shadow: 0 2px 12px rgba(0,0,0,.26);
+    overflow: hidden;
+  }
+  #scrapeHeader::after {
+    content: "";
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.18) 30%, rgba(99,179,237,.22) 60%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .header-main {
+    min-width: 0;
+    flex: 1 1 220px;
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    flex-wrap: wrap;
+  }
+
+  .header-actions {
+    margin-left: auto;
+    min-width: 0;
+    flex: 0 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .38rem;
+    flex-wrap: wrap;
+  }
+
+  .monitor-title {
+    font-size: .9rem;
+    letter-spacing: .02em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .context-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .28rem;
+    padding: .08rem .42rem;
+    border-radius: 99px;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.08);
+    color: rgba(255,255,255,.82);
+    font-size: .66rem;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .header-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: .38rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  /* ── Header icon buttons ──────────────────────────────────── */
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: .45rem;
+    background: rgba(255,255,255,.11);
+    color: rgba(255,255,255,.9);
+    border: 1px solid rgba(255,255,255,.11);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background .15s, transform .1s;
+    flex-shrink: 0;
+  }
+  .btn-icon:hover  { background: rgba(255,255,255,.22); color: #fff; }
+  .btn-icon:active { transform: scale(.91); background: rgba(255,255,255,.28); }
+  .btn-icon:disabled { opacity: .35; cursor: default; }
+
+  /* ── Control buttons (Start / Pause / Stop) ───────────────── */
+  .ctrl-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: .45rem;
+    border: 1px solid;
+    background: rgba(255,255,255,.08);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background .12s, transform .1s;
+    flex-shrink: 0;
+    font-size: .98rem;
+  }
+  .ctrl-btn:active { transform: scale(.9); }
+  .ctrl-btn:disabled { opacity: .35; cursor: default; pointer-events: none; }
+  .ctrl-btn.btn-start { border-color: #6ee7b7; color: #10b981; }
+  .ctrl-btn.btn-start:not(:disabled):hover { background: rgba(16,185,129,.18); }
+  .ctrl-btn.btn-pause { border-color: #fcd34d; color: #f59e0b; }
+  .ctrl-btn.btn-pause:not(:disabled):hover { background: rgba(245,158,11,.18); }
+  .ctrl-btn.btn-stop  { border-color: #fca5a5; color: #ef4444; }
+  .ctrl-btn.btn-stop:not(:disabled):hover  { background: rgba(239,68,68,.12); }
+
+  /* ── Run cards ────────────────────────────────────────────── */
+  #list {
+    max-width: 940px;
+    margin: 0 auto;
+    padding: .38rem .52rem .12rem;
+    display: flex;
+    flex-direction: column;
+    gap: .32rem;
+  }
+
+  .run-card {
+    background: #fff;
+    border: 1px solid rgba(0,41,86,.08);
+    border-left: 3px solid #e2e6ea;
+    border-radius: 10px;
+    box-shadow: 0 1px 5px rgba(0,0,0,.045);
+    overflow: hidden;
+    transition: box-shadow .18s ease, transform .18s ease;
+  }
+  .run-card:hover,
+  .run-card:focus-within {
+    box-shadow: 0 4px 16px rgba(0,0,0,.1);
+    transform: translateY(-1px);
+  }
+  .run-card[data-status="running"]  { border-left-color: #10b981; }
+  .run-card[data-status="paused"]   { border-left-color: #f59e0b; }
+  .run-card[data-status="done"]     { border-left-color: #3b82f6; }
+  .run-card[data-status="error"]    { border-left-color: #ef4444; }
+  .run-card[data-status="stopped"]  { border-left-color: #9ca3af; }
+  .run-card[data-status="starting"] { border-left-color: #60a5fa; }
+
+  .run-card.finished-spotlight {
+    position: relative;
+    border-color: rgba(59,130,246,.5);
+    box-shadow: 0 0 0 3px rgba(59,130,246,.18), 0 16px 32px rgba(15,23,42,.14);
+    animation: finishedSpotlightDone 1.5s ease;
+  }
+  .run-card.finished-spotlight[data-status="error"] {
+    border-color: rgba(239,68,68,.72);
+    box-shadow: 0 0 0 4px rgba(239,68,68,.24), 0 18px 36px rgba(127,29,29,.18);
+    animation: finishedSpotlightError 1.75s ease;
+  }
+  .run-card.finished-spotlight[data-status="stopped"] {
+    border-color: rgba(107,114,128,.62);
+    box-shadow: 0 0 0 3px rgba(107,114,128,.16), 0 14px 28px rgba(15,23,42,.12);
+    animation: finishedSpotlightStopped 1.45s ease;
+  }
+  .run-card.finished-spotlight::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(59,130,246,.14), transparent 42%);
+    animation: spotlightSheen 1.1s ease;
+  }
+  .run-card.finished-spotlight[data-status="error"]::after {
+    background: linear-gradient(135deg, rgba(239,68,68,.2), rgba(248,113,113,.08) 35%, transparent 60%);
+  }
+  .run-card.finished-spotlight[data-status="stopped"]::after {
+    background: linear-gradient(135deg, rgba(148,163,184,.16), transparent 50%);
+  }
+
+  @keyframes finishedSpotlightDone    { 0% { transform: translateY(-2px) scale(1.004); } 40% { transform: translateY(-1px) scale(1.008); } 100% { transform: translateY(0) scale(1); } }
+  @keyframes finishedSpotlightError   { 0% { transform: translateY(-2px) scale(1.005); } 18% { transform: translateX(-2px) scale(1.01); } 36% { transform: translateX(2px) scale(1.01); } 54% { transform: translateX(-1px) scale(1.006); } 100% { transform: translateX(0) scale(1); } }
+  @keyframes finishedSpotlightStopped { 0% { transform: scale(1.003); opacity: .94; } 55% { transform: scale(1.007); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes spotlightSheen { 0% { opacity: 0; } 22% { opacity: 1; } 100% { opacity: 0; } }
+
+  .run-card-header {
+    padding: .36rem .68rem .3rem;
+    border-bottom: 1px solid rgba(0,41,86,.055);
+  }
+  .run-card-body {
+    padding: .3rem .68rem .36rem;
+  }
+
+  .run-card-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: .7rem;
+  }
+
+  .run-card-main {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .run-card-title {
+    font-size: .9rem;
+    max-width: 340px;
+  }
+
+  .run-card-meta {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+    margin-top: .25rem;
+    font-size: .77rem;
+    color: #6b7280;
+  }
+
+  .run-card-meta-item {
+    min-width: 0;
+  }
+
+  .run-card-message {
+    max-width: 240px;
+  }
+
+  .run-card-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    flex-shrink: 0;
+  }
+
+  /* ── Status pills ─────────────────────────────────────────── */
+  .pill-running  { background:#d1fae5; color:#065f46; }
+  .pill-paused   { background:#fef3c7; color:#92400e; }
+  .pill-done     { background:#dbeafe; color:#1e40af; }
+  .pill-error    { background:#fee2e2; color:#991b1b; }
+  .pill-stopped  { background:#f3f4f6; color:#4b5563; }
+  .pill-starting { background:#dbeafe; color:#1e40af; }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .17rem;
+    padding: .11rem .36rem;
+    border-radius: 99px;
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .025em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .status-badge i { font-size: .6rem; }
+
+  /* ── Progress track ───────────────────────────────────────── */
+  .track {
+    height: 5px;
+    border-radius: 99px;
+    background: #eef0f3;
+    overflow: hidden;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .bar {
+    height: 100%;
+    border-radius: 99px;
+    transition: width .45s cubic-bezier(.4,0,.2,1);
+    min-width: 2px;
+  }
+  .bar-running  { box-shadow: 0 0 6px rgba(16,185,129,.55); }
+  .bar-paused   { box-shadow: 0 0 5px rgba(245,158,11,.4); }
+  .bar-done     { box-shadow: 0 0 6px rgba(59,130,246,.4); }
+  .bar-error    { box-shadow: 0 0 6px rgba(239,68,68,.45); }
+  .bar-stopped  {}
+  .bar-starting { box-shadow: 0 0 6px rgba(96,165,250,.45); }
+
+  /* Top-of-card scanning bar */
+  #topBarTrack {
+    height: 3px;
+    background: transparent;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #topBar {
+    height: 100%;
+    width: 0%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #1f6fb6, #56a3e6);
+    box-shadow: 0 0 6px rgba(31,111,182,.55);
+    transition: width .4s cubic-bezier(.4,0,.2,1);
+    min-width: 2px;
+  }
+  #topBar.is-scanning {
+    background: linear-gradient(90deg, #1f6fb6 30%, #56a3e6 70%, #1f6fb6 100%);
+    background-size: 200% 100%;
+    animation: scan .9s linear infinite;
+    width: 100% !important;
+  }
+  #topBar.is-paused  { background: linear-gradient(90deg, #f59e0b, #fbbf24); box-shadow: 0 0 5px rgba(245,158,11,.4); animation: none; }
+  #topBar.is-done    { background: linear-gradient(90deg, #10b981, #34d399); box-shadow: 0 0 6px rgba(16,185,129,.45); animation: none; }
+  #topBar.is-error   { background: linear-gradient(90deg, #ef4444, #f87171); box-shadow: 0 0 5px rgba(239,68,68,.45); animation: none; }
+  #topBar.is-stopped { background: #9ca3af; box-shadow: none; animation: none; }
+
+  @keyframes scan { 0% { background-position: 200% 0; } 100% { background-position: 0% 0; } }
+
+  /* ── Badge in header ──────────────────────────────────────── */
+  #badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .18rem;
+    padding: .1rem .38rem;
+    border-radius: 99px;
+    font-size: .63rem;
+    font-weight: 700;
+    letter-spacing: .025em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    background: rgba(156,163,175,.18);
+    color: #d1d5db;
+    transition: background .2s, color .2s;
+  }
+  #badge.b-idle    { background: rgba(156,163,175,.18); color: #d1d5db; }
+  #badge.b-running { background: rgba(16,185,129,.22);  color: #6ee7b7; }
+  #badge.b-paused  { background: rgba(245,158,11,.22);  color: #fcd34d; }
+  #badge.b-done    { background: rgba(59,130,246,.22);  color: #93c5fd; }
+  #badge.b-error   { background: rgba(239,68,68,.22);   color: #fca5a5; }
+  #badge.b-stopped { background: rgba(156,163,175,.18); color: #d1d5db; }
+
+  /* ── Card control buttons ─────────────────────────────────── */
+  .card-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.15rem;
+    min-height: 2.15rem;
+    padding: 0 .42rem;
+    border-radius: .38rem;
+    border: 1px solid;
+    font-size: .77rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background .12s, opacity .12s, transform .1s;
+    -webkit-user-select: none;
+    user-select: none;
+    background: transparent;
+    flex-shrink: 0;
+  }
+  .card-btn:active { transform: scale(.91); }
+  .card-btn-outline-secondary { border-color: #9ca3af; color: #374151; }
+  .card-btn-outline-secondary:hover,
+  .card-btn-outline-secondary:active { background: #f3f4f6; }
+  .card-btn-outline-danger { border-color: #fca5a5; color: #dc2626; }
+  .card-btn-outline-danger:hover,
+  .card-btn-outline-danger:active { background: #fee2e2; }
+  .card-btn-outline-primary { border-color: #93c5fd; color: #1d4ed8; }
+  .card-btn-outline-primary:hover,
+  .card-btn-outline-primary:active { background: #dbeafe; }
+
+  /* ── Animations ───────────────────────────────────────────── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; animation: spin 1.2s linear infinite; }
+
+  /* ── Empty state ──────────────────────────────────────────── */
+  #empty {
+    text-align: center;
+    padding: 2rem 1rem 1.5rem;
+    color: #6b7280;
+  }
+  .empty-icon {
+    width: 3.2rem; height: 3.2rem;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #edf2f7 0%, #dde6f0 100%);
+    border: 1px solid rgba(0,41,86,.07);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: .6rem;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,.06);
+  }
+  #empty i.empty-ico { font-size: 1.5rem; color: #94a3b8; }
+  #empty p { margin: 0; font-size: .88rem; font-weight: 600; color: #4b5563; }
+  #empty .sub { font-size: .77rem; margin-top: .18rem; color: #9ca3af; font-weight: 400; }
+
+  /* ── Notification bar ─────────────────────────────────────── */
+  #notif-bar {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 9999;
+    background: #fff3cd;
+    color: #664d03;
+    border-bottom: 2px solid #ffc107;
+    padding: .5rem 1rem;
+    font-size: .82rem;
+    box-shadow: 0 4px 14px rgba(0,0,0,.12);
+    align-items: center;
+    gap: .5rem;
+  }
+  #notif-bar.notif-done    { background: #e0f2fe; color: #0c4a6e; border-bottom-color: #38bdf8; }
+  #notif-bar.notif-error   { background: #fee2e2; color: #7f1d1d; border-bottom-color: #ef4444; }
+  #notif-bar.notif-stopped { background: #e5e7eb; color: #374151; border-bottom-color: #6b7280; }
+
+  /* ── Minimized state ──────────────────────────────────────── */
+  .monitor-modal.is-minimized .monitor-body { display: none; }
+
+  .monitor-shell.is-minimized-shell {
+    inset: auto;
+    top: 0; left: 0; right: 0;
+    height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 0;
+    background: transparent;
+    pointer-events: all;
+    overflow: visible;
+  }
+  .monitor-shell.is-minimized-shell .monitor-modal {
+    flex: 0 0 auto;
+    width: 100%;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    pointer-events: all;
+  }
+  .monitor-shell.is-minimized-shell .monitor-modal::before { display: none; }
+
+  /* ── Mini-ticker ──────────────────────────────────────────── */
+  #mini-ticker {
+    display: none;
+    flex-direction: column;
+    gap: 0;
+    background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%);
+    border-top: 1px solid rgba(255,255,255,.10);
+  }
+  .monitor-shell.is-minimized-shell #mini-ticker { display: flex; }
+
+  .mini-row {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .22rem .85rem;
+    font-size: .72rem;
+    color: rgba(255,255,255,.88);
+    background: rgba(255,255,255,.045);
+    min-width: 0;
+    overflow: hidden;
+  }
+  .mini-name {
+    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .mini-track {
+    width: 80px;
+    height: 4px;
+    border-radius: 99px;
+    background: rgba(255,255,255,.16);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .mini-bar {
+    height: 100%;
+    border-radius: 99px;
+    background: #10b981;
+    transition: width .4s;
+  }
+  .mini-pct  { font-size: .7rem; color: rgba(255,255,255,.7); white-space: nowrap; flex-shrink: 0; }
+  .mini-step { font-size: .68rem; color: rgba(255,255,255,.5); white-space: nowrap; flex-shrink: 0; }
+
+  /* ── Responsive floating card ─────────────────────────────── */
+  @media (min-width: 769px) {
+    .monitor-shell {
+      align-items: center;
+      justify-content: flex-start;
+      padding: 1rem;
+      background:
+        radial-gradient(circle at top, rgba(26,82,118,.18), transparent 30%),
+        linear-gradient(180deg, #edf2f7 0%, #dfe7f1 100%);
+    }
+    .monitor-modal {
+      flex: 0 1 auto;
+      max-height: calc(100dvh - 2rem);
+      width: min(560px, 100%);
+      border: 1px solid rgba(0,41,86,.12);
+      border-radius: 1.25rem;
+      box-shadow: 0 24px 70px rgba(7,32,68,.18), 0 8px 24px rgba(7,32,68,.12);
+    }
+  }
+
+  @media (max-width: 768px) {
+    .monitor-modal {
+      border-radius: 0;
+    }
+
+    #scrapeHeader {
+      align-items: flex-start;
+      padding-top: max(.55rem, env(safe-area-inset-top));
+      padding-bottom: .55rem;
+    }
+
+    .header-main,
+    .header-actions {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+
+    .header-actions {
+      margin-left: 0;
+      justify-content: space-between;
+      gap: .5rem;
+    }
+
+    .header-controls {
+      flex: 1 1 auto;
+      justify-content: flex-end;
+    }
+
+    .context-pill {
+      max-width: 100%;
+      white-space: normal;
+      line-height: 1.35;
+    }
+
+    #list {
+      padding: .45rem .45rem .3rem;
+    }
+
+    .run-card-header,
+    .run-card-body {
+      padding-left: .58rem;
+      padding-right: .58rem;
+    }
+
+    .run-card-layout {
+      flex-direction: column;
+      align-items: stretch;
+      gap: .5rem;
+    }
+
+    .run-card-title,
+    .run-card-message {
+      max-width: none;
+    }
+
+    .run-card-controls {
+      justify-content: flex-end;
+      width: 100%;
+    }
+
+    #notif-bar {
+      padding-left: max(1rem, env(safe-area-inset-left));
+      padding-right: max(1rem, env(safe-area-inset-right));
+      padding-top: max(.5rem, env(safe-area-inset-top));
+    }
+  }
+
+  @media (max-width: 520px) {
+    html, body {
+      font-size: 14px;
+    }
+
+    .monitor-title {
+      font-size: .96rem;
+    }
+
+    #badge {
+      order: -1;
+    }
+
+    .header-actions {
+      align-items: stretch;
+    }
+
+    .header-controls {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .ctrl-btn,
+    .btn-icon {
+      width: calc(20vw - .15rem);
+      max-width: 3rem;
+      min-width: 2.35rem;
+      height: 2.35rem;
+    }
+
+    .mini-row {
+      padding-left: .65rem;
+      padding-right: .65rem;
+    }
+
+    .mini-track {
+      width: 64px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Notification bar -->
+<div id="notif-bar" role="alert" aria-live="polite"></div>
+
+<div class="monitor-shell" id="monitorShell">
+<div class="monitor-modal" id="monitorModal">
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<div id="scrapeHeader" role="toolbar" aria-label="Scrape monitor controls">
+
+  <div class="header-main">
+    <i class="bi bi-lightning-charge text-warning" style="font-size:1rem;flex-shrink:0;" aria-hidden="true"></i>
+    <span class="text-white fw-semibold monitor-title">Scrape Monitor</span>
+    <span id="contextPill" class="context-pill">
+      <i class="bi bi-browser-edge" style="font-size:.62rem;"></i> Idle
+    </span>
+  </div>
+
+  <div class="header-actions">
+    <span id="badge" class="b-idle">
+      <i class="bi bi-circle" style="font-size:.6rem;"></i> Idle
+    </span>
+
+    <div class="header-controls">
+      <i class="bi bi-arrow-repeat spin text-white-50" id="livePulse"
+         style="font-size:.8rem;flex-shrink:0;display:none;" aria-hidden="true"></i>
+
+      <button id="ctrlStart" class="ctrl-btn btn-start" title="Start scrape (Ctrl+Shift+F6)" onclick="doStart()" aria-label="Start scrape">
+        <i class="bi bi-play-fill"></i>
+      </button>
+      <button id="ctrlPause" class="ctrl-btn btn-pause" title="Pause / Resume" onclick="doPause()" disabled aria-label="Pause or resume scrape">
+        <i class="bi bi-pause-fill"></i>
+      </button>
+      <button id="ctrlStop" class="ctrl-btn btn-stop" title="Stop" onclick="doStop()" disabled aria-label="Stop scrape">
+        <i class="bi bi-stop-fill"></i>
+      </button>
+
+      <button class="btn-icon ms-1" id="btnMinimize" title="Minimize" onclick="toggleMinimize()" aria-label="Minimize">
+        <i class="bi bi-dash-lg"></i>
+      </button>
+      <button class="btn-icon" title="Close" aria-label="Close"
+              onclick="window.close(); if (!window.closed) window.history.back();">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+  </div>
+
+</div><!-- /#scrapeHeader -->
+
+<!-- Top progress bar -->
+<div id="topBarTrack"><div id="topBar"></div></div>
+
+<!-- Mini-ticker (visible only when minimized) -->
+<div id="mini-ticker"></div>
+
+<!-- ── Body ─────────────────────────────────────────────────── -->
+<div class="monitor-body" id="monitorBody">
+
+  <!-- Empty / idle state -->
+  <div id="empty">
+    <div class="empty-icon">
+      <i class="bi bi-lightning-charge empty-ico"></i>
+    </div>
+    <p>No scrape running</p>
+    <p class="sub">Click <i class="bi bi-play-fill"></i> Start or press <kbd>Ctrl+Shift+F6</kbd> to begin</p>
+  </div>
+
+  <!-- Run-card list -->
+  <div id="list"></div>
+
+</div><!-- /.monitor-body -->
+</div><!-- /.monitor-modal -->
+</div><!-- /.monitor-shell -->
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Single-instance guard ────────────────────────────────── */
+  var TAB_ID = Math.random().toString(36).slice(2);
+  var HB_KEY = 'scrapeMonitorAlive';
+
+  function readHb()  { try { return JSON.parse(localStorage.getItem(HB_KEY) || 'null'); } catch (e) { return null; } }
+  function writeHb() { localStorage.setItem(HB_KEY, JSON.stringify({id: TAB_ID, ts: Date.now()})); }
+
+  var existing = readHb();
+  if (existing && existing.id !== TAB_ID && (Date.now() - existing.ts) < 4000) {
+    document.body.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#374151;">'
+      + '<div style="text-align:center;">'
+      + '<p style="font-size:1.1rem;font-weight:600;">Scrape Monitor is already open.</p>'
+      + '<p style="color:#6b7280;font-size:.9rem;">This tab will close automatically.</p>'
+      + '</div></div>';
+    setTimeout(function () { window.close(); }, 1400);
+    return;
+  }
+  writeHb();
+  var hbTimer = setInterval(writeHb, 2000);
+  window.addEventListener('beforeunload', function () {
+    clearInterval(hbTimer);
+    localStorage.removeItem(HB_KEY);
+  });
+
+  /* ── State ────────────────────────────────────────────────── */
+  var currentJobId   = null;
+  var currentPort    = 0;
+  var pollTimer      = null;
+  var isPaused       = false;
+  var isMinimized    = false;
+  var _savedOuterH   = 0;
+  var _savedOuterW   = 0;
+  var preferredLaunchUrl = '';
+
+  /* ── DOM refs ─────────────────────────────────────────────── */
+  var elBadge     = document.getElementById('badge');
+  var elTopBar    = document.getElementById('topBar');
+  var elLive      = document.getElementById('livePulse');
+  var elCtrlStart = document.getElementById('ctrlStart');
+  var elCtrlPause = document.getElementById('ctrlPause');
+  var elCtrlStop  = document.getElementById('ctrlStop');
+  var elEmpty     = document.getElementById('empty');
+  var elList      = document.getElementById('list');
+  var elMiniTick  = document.getElementById('mini-ticker');
+  var elNotif     = document.getElementById('notif-bar');
+  var elShell     = document.getElementById('monitorShell');
+  var elModal     = document.getElementById('monitorModal');
+  var elContext   = document.getElementById('contextPill');
+
+  /* ── HTML escape helper ───────────────────────────────────── */
+  function _esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /* ── CSRF ─────────────────────────────────────────────────── */
+  function getCsrf() {
+    var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+  }
+
+  function formatBrowserName(browserName) {
+    return (browserName === 'msedge') ? 'Edge' : 'Chrome';
+  }
+
+  function browserIconClass(browserName) {
+    return (browserName === 'msedge') ? 'bi bi-browser-edge' : 'bi bi-browser-chrome';
+  }
+
+  function formatDelay(delayMs) {
+    var delay = Number(delayMs || 0);
+    return delay > 0 ? (delay + ' ms delay') : 'no delay';
+  }
+
+  function formatMode(mode) {
+    return mode === 'launch' ? 'Launch' : 'Attach';
+  }
+
+  function updateContextPill(browserName, delayMs, mode) {
+    var label = formatBrowserName(browserName || 'chrome');
+    var icon = browserIconClass(browserName || 'chrome');
+    var delayLabel = formatDelay(delayMs);
+    var modeLabel = formatMode(mode || 'attach');
+    elContext.innerHTML = '<i class="' + icon + '" style="font-size:.62rem;"></i> ' + _esc(label + ' • ' + modeLabel + ' • ' + delayLabel);
+  }
+
+  /* ── Idle state ───────────────────────────────────────────── */
+  function setIdle() {
+    elBadge.className = 'b-idle';
+    elBadge.innerHTML = '<i class="bi bi-circle" style="font-size:.6rem;"></i> Idle';
+    elTopBar.style.width  = '0%';
+    elTopBar.className    = '';
+    elLive.style.display  = 'none';
+    elCtrlStart.disabled  = false;
+    elCtrlPause.disabled  = true;
+    elCtrlStop.disabled   = true;
+    elEmpty.style.display = 'block';
+    elList.innerHTML      = '';
+    elMiniTick.innerHTML  = '';
+    updateContextPill('chrome', 0, 'attach');
+    document.title        = 'Scrape Monitor';
+  }
+
+  /* ── Error card (pre-job failure, e.g. Chrome not found) ─── */
+  function showErrorCard(msg, configUrl) {
+    elEmpty.style.display = 'none';
+    var cfgLink = configUrl
+      ? '<a href="' + _esc(configUrl) + '" target="_blank" class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.78rem;"><i class="bi bi-gear me-1"></i>Open Configuration</a>'
+      : '';
+    elList.innerHTML =
+      '<div class="run-card" data-status="error" style="border-left-color:#ef4444;">'
+      + '<div class="run-card-header">'
+        + '<div class="d-flex align-items-center gap-2">'
+          + '<div class="track"><div class="bar" style="width:100%;background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.45);"></div></div>'
+          + '<span class="status-badge pill-error"><i class="bi bi-exclamation-circle-fill"></i> Error</span>'
+        + '</div>'
+      + '</div>'
+      + '<div class="run-card-body">'
+        + '<div style="font-size:.83rem;color:#991b1b;font-weight:600;margin-bottom:.3rem;">'
+          + '<i class="bi bi-exclamation-triangle-fill me-1"></i>Scrape could not start'
+        + '</div>'
+        + '<div style="font-size:.8rem;color:#4b5563;line-height:1.5;">' + _esc(msg) + '</div>'
+        + (cfgLink ? '<div class="mt-2">' + cfgLink + '</div>' : '')
+      + '</div>'
+    + '</div>';
+  }
+
+
+  function renderCard(job) {
+    var st    = job.status     || 'starting';
+    var pct   = job.pct        || 0;
+    var done  = job.done       || 0;
+    var total = job.total      || 0;
+    var page  = job.page_name  || '—';
+    var port  = job.attach_port|| currentPort || '—';
+    var browserName = job.browser_name || 'chrome';
+    var delayMs = job.item_delay_ms || 0;
+    var mode = job.mode || 'attach';
+    var launchUrl = job.launch_url || '';
+    var msg   = job.message    || 'Working…';
+
+    var BAR_COLOR = { running:'#10b981', paused:'#f59e0b', done:'#3b82f6', error:'#ef4444', stopped:'#9ca3af', starting:'#60a5fa' };
+    var barClr = BAR_COLOR[st] || '#60a5fa';
+
+    var PILL_CLS = { running:'pill-running', paused:'pill-paused', done:'pill-done', error:'pill-error', stopped:'pill-stopped', starting:'pill-starting' };
+    var pillCls  = PILL_CLS[st] || 'pill-starting';
+
+    var spinSvg = '<span class="spin" style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:' + barClr + ';flex-shrink:0;"></span>';
+    var PILL_ICON = {
+      running:  spinSvg,
+      starting: spinSvg,
+      paused:   '<i class="bi bi-pause-fill" style="color:' + barClr + ';flex-shrink:0;"></i>',
+      done:     '<i class="bi bi-check-circle-fill" style="color:' + barClr + ';flex-shrink:0;"></i>',
+      error:    '<i class="bi bi-exclamation-circle-fill" style="color:' + barClr + ';flex-shrink:0;"></i>',
+      stopped:  '<i class="bi bi-stop-circle" style="color:' + barClr + ';flex-shrink:0;"></i>'
+    };
+    var pillIcon  = PILL_ICON[st] || spinSvg;
+
+    var PILL_LABEL = { running:'Running', paused:'Paused', done:'Done', error:'Error', stopped:'Stopped', starting:'Starting' };
+    var pillLabel  = PILL_LABEL[st] || st;
+
+    var BAR_CLS = { running:'bar-running', paused:'bar-paused', done:'bar-done', error:'bar-error', stopped:'bar-stopped', starting:'bar-starting' };
+    var barCls  = BAR_CLS[st] || 'bar-starting';
+
+    var countTxt = total
+      ? (done + ' / ' + total + ' saved')
+      : (st === 'running' || st === 'starting' ? 'Scanning page…' : '—');
+
+    var pctTxt  = total ? pct + '%' : '—';
+    var width   = total ? pct : 0;
+
+    /* Pause button label */
+    var pauseLabel = isPaused ? 'Resume' : 'Pause';
+    var pauseIcon  = isPaused
+      ? '<i class="bi bi-play-fill"></i>'
+      : '<i class="bi bi-pause-fill"></i>';
+
+    var showControls = (st === 'running' || st === 'paused' || st === 'starting');
+
+    return '<div class="run-card" data-status="' + st + '" id="scrapeRunCard">'
+      + '<div class="run-card-header">'
+        + '<div class="d-flex align-items-center gap-2 flex-wrap">'
+          + '<div class="track">'
+            + '<div class="bar ' + barCls + '" style="width:' + width + '%;background:' + barClr + ';"></div>'
+          + '</div>'
+          + '<span class="text-muted" style="font-size:.72rem;white-space:nowrap;min-width:2.8rem;text-align:right;">' + _esc(pctTxt) + '</span>'
+          + '<span class="status-badge ' + pillCls + '">' + pillIcon + ' ' + pillLabel + '</span>'
+        + '</div>'
+      + '</div>'
+      + '<div class="run-card-body">'
+        + '<div class="run-card-layout">'
+          + '<div class="run-card-main">'
+            + '<div class="d-flex align-items-center gap-2 flex-wrap">'
+              + '<span class="fw-semibold text-truncate run-card-title" title="' + _esc(page) + '">' + _esc(page) + '</span>'
+            + '</div>'
+            + '<div class="run-card-meta">'
+              + '<span class="run-card-meta-item" title="Elements saved"><i class="bi bi-collection" style="margin-right:.18rem;"></i>' + _esc(countTxt) + '</span>'
+              + '<span class="run-card-meta-item" title="Browser in use"><i class="' + browserIconClass(browserName) + '" style="margin-right:.18rem;"></i>' + _esc(formatBrowserName(browserName)) + '</span>'
+              + '<span class="run-card-meta-item" title="Scrape mode"><i class="bi bi-plug" style="margin-right:.18rem;"></i>' + _esc(formatMode(mode)) + '</span>'
+              + (mode === 'attach'
+                  ? '<span class="run-card-meta-item" title="Remote debugging port"><i class="bi bi-hdd-network" style="margin-right:.18rem;"></i>Port ' + _esc(String(port)) + '</span>'
+                  : '<span class="run-card-meta-item text-truncate" title="Launch URL"><i class="bi bi-box-arrow-up-right" style="margin-right:.18rem;"></i>' + _esc(launchUrl || 'Configured launch URL') + '</span>')
+              + '<span class="run-card-meta-item" title="Configured scrape pacing"><i class="bi bi-hourglass-split" style="margin-right:.18rem;"></i>' + _esc(formatDelay(delayMs)) + '</span>'
+              + (msg && msg !== 'Working…' ? '<span class="run-card-meta-item run-card-message text-truncate" title="' + _esc(msg) + '">' + _esc(msg) + '</span>' : '')
+            + '</div>'
+          + '</div>'
+          + (showControls
+            ? '<div class="run-card-controls">'
+                + '<button class="card-btn card-btn-outline-secondary" title="' + pauseLabel + '" onclick="doPause()" '
+                  + (st === 'starting' ? 'disabled' : '') + '>'
+                  + pauseIcon
+                + '</button>'
+                + '<button class="card-btn card-btn-outline-danger" title="Stop" onclick="doStop()">'
+                  + '<i class="bi bi-stop-fill"></i>'
+                + '</button>'
+              + '</div>'
+            : '')
+        + '</div>'
+      + '</div>'
+    + '</div>';
+  }
+
+  /* ── Render mini-ticker row ───────────────────────────────── */
+  function renderMiniRow(job) {
+    var st    = job.status || 'starting';
+    var pct   = job.pct   || 0;
+    var done  = job.done  || 0;
+    var total = job.total || 0;
+    var page  = job.page_name || 'Scraping…';
+    var BAR_COLOR = { running:'#10b981', paused:'#f59e0b', done:'#3b82f6', error:'#ef4444', stopped:'#9ca3af', starting:'#60a5fa' };
+    var barClr = BAR_COLOR[st] || '#60a5fa';
+    var icon = (st === 'paused')
+      ? '<i class="bi bi-pause-fill" style="color:#f59e0b;flex-shrink:0;"></i>'
+      : (st === 'running' || st === 'starting')
+        ? '<span class="spin" style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:' + barClr + ';flex-shrink:0;"></span>'
+        : '<i class="bi bi-check-circle-fill" style="color:' + barClr + ';flex-shrink:0;"></i>';
+    return '<div class="mini-row">'
+      + icon
+      + '<span class="mini-name" title="' + _esc(page) + '">' + _esc(page) + '</span>'
+      + '<div class="mini-track"><div class="mini-bar" style="width:' + pct + '%;background:' + barClr + ';"></div></div>'
+      + '<span class="mini-pct" style="color:' + barClr + ';">' + pct + '%</span>'
+      + (total ? '<span class="mini-step">' + done + '/' + total + '</span>' : '')
+      + '</div>';
+  }
+
+  /* ── Apply job state to UI ────────────────────────────────── */
+  function applyJob(job) {
+    if (!job || !job.ok) return;
+    var st = job.status || 'starting';
+    isPaused = (st === 'paused');
+    updateContextPill(job.browser_name || 'chrome', job.item_delay_ms || 0, job.mode || 'attach');
+
+    /* Top bar */
+    var totalPct = job.total ? job.pct : (st === 'running' || st === 'starting' ? 100 : job.pct);
+    elTopBar.style.width = (st === 'done' ? 100 : totalPct) + '%';
+    elTopBar.className   = 'is-' + ({ running:'scanning', starting:'scanning', paused:'paused', done:'done', error:'error', stopped:'stopped' }[st] || 'scanning');
+
+    /* Badge */
+    elBadge.className = 'b-' + (st === 'starting' ? 'running' : st);
+    var badgeIcon = {
+      running:  '<i class="bi bi-arrow-repeat spin" style="font-size:.6rem;"></i>',
+      starting: '<i class="bi bi-arrow-repeat spin" style="font-size:.6rem;"></i>',
+      paused:   '<i class="bi bi-pause-fill" style="font-size:.6rem;"></i>',
+      done:     '<i class="bi bi-check-circle-fill" style="font-size:.6rem;"></i>',
+      error:    '<i class="bi bi-exclamation-circle-fill" style="font-size:.6rem;"></i>',
+      stopped:  '<i class="bi bi-stop-circle" style="font-size:.6rem;"></i>'
+    }[st] || '';
+    var badgeTxt = {
+      running: job.total ? (job.pct + '%') : 'Running',
+      starting: 'Starting',
+      paused: 'Paused',
+      done: 'Done',
+      error: 'Error',
+      stopped: 'Stopped'
+    }[st] || st;
+    elBadge.innerHTML = badgeIcon + ' ' + badgeTxt;
+
+    /* Live pulse */
+    elLive.style.display = (st === 'running' || st === 'starting') ? '' : 'none';
+
+    /* Controls */
+    var active = (st === 'running' || st === 'paused');
+    elCtrlStart.disabled = (st === 'running' || st === 'paused' || st === 'starting');
+    elCtrlPause.disabled = !active || st === 'starting';
+    elCtrlStop.disabled  = !(active || st === 'starting');
+
+    /* Pause icon sync */
+    elCtrlPause.querySelector('i').className = isPaused ? 'bi bi-play-fill' : 'bi bi-pause-fill';
+    elCtrlPause.title = isPaused ? 'Resume' : 'Pause';
+
+    /* Page title */
+    document.title = { running:'Scraping… — Monitor', starting:'Starting… — Monitor',
+                       paused:'⏸ Paused — Monitor', done:'✓ Done — Scrape Monitor',
+                       error:'✕ Error — Scrape Monitor', stopped:'Stopped — Scrape Monitor' }[st]
+                     || 'Scrape Monitor';
+
+    /* Card */
+    elEmpty.style.display = 'none';
+    elList.innerHTML = renderCard(job);
+
+    /* Spotlight on finish */
+    var IS_TERMINAL = (st === 'done' || st === 'error' || st === 'stopped');
+    if (IS_TERMINAL) {
+      setTimeout(function () {
+        var card = document.getElementById('scrapeRunCard');
+        if (card) {
+          card.classList.add('finished-spotlight');
+          setTimeout(function () { card.classList.remove('finished-spotlight'); }, 2500);
+        }
+      }, 80);
+    }
+
+    /* Mini-ticker */
+    if (isMinimized) {
+      elMiniTick.innerHTML = renderMiniRow(job);
+    }
+  }
+
+  /* ── Notification bar ─────────────────────────────────────── */
+  var _notifTimer = null;
+  function flashNotif(msg, type) {
+    flashNotifHtml(_esc(msg), type);
+  }
+
+  function flashNotifHtml(html, type) {
+    clearTimeout(_notifTimer);
+    elNotif.className     = 'notif-' + type;
+    elNotif.style.display = 'flex';
+    elNotif.innerHTML     = '<i class="bi bi-info-circle-fill"></i><span style="flex:1;">' + html + '</span>'
+                           + '<button style="background:none;border:none;cursor:pointer;font-size:1rem;padding:0 0 0 .5rem;" onclick="this.parentElement.style.display=\'none\'">&times;</button>';
+    var timeout = (type === 'error') ? 18000 : 7000;
+    _notifTimer = setTimeout(function () { elNotif.style.display = 'none'; }, timeout);
+  }
+
+  /* ── Polling ──────────────────────────────────────────────── */
+  function startPoll(jobId) {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(function () {
+      if (!currentJobId) { clearInterval(pollTimer); return; }
+      fetch('/api/ai-databank/scrape/status/' + jobId + '/', {
+        headers: {'X-Requested-With': 'XMLHttpRequest'}
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (job) {
+        if (!job.ok) { clearInterval(pollTimer); return; }
+        applyJob(job);
+        var st = job.status;
+        if (st === 'done' || st === 'error' || st === 'stopped') {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          if (st === 'done') {
+            flashNotif('Scraping complete — ' + (job.saved_rows || 0) + ' objects saved.', 'done');
+          } else if (st === 'stopped') {
+            flashNotif('Scrape stopped.', 'stopped');
+          } else if (st === 'error') {
+            var errTxt = job.message || 'Unknown error';
+            var needsConfig = /remote.debug|9222|attach.port|chrome.*port|port.*chrome/i.test(errTxt);
+            var errHtml = _esc(errTxt);
+            if (needsConfig) errHtml += ' &nbsp;<a href="/configuration/" target="_blank" style="color:inherit;font-weight:600;white-space:nowrap;">Open Configuration \u2192</a>';
+            flashNotifHtml('Scrape error: ' + errHtml, 'error');
+          }
+          /* After terminal state, re-enable Start for a fresh run */
+          setTimeout(function () {
+            elCtrlStart.disabled = false;
+          }, 800);
+        }
+      })
+      .catch(function () {});
+    }, 500);
+  }
+
+  /* ── Start ────────────────────────────────────────────────── */
+  function doStart() {
+    /* Prevent double-click */
+    elCtrlStart.disabled = true;
+
+    /* Show scanning state immediately */
+    elTopBar.className = 'is-scanning';
+    elLive.style.display = '';
+    elBadge.className = 'b-running';
+    elBadge.innerHTML = '<i class="bi bi-arrow-repeat spin" style="font-size:.6rem;"></i> Starting';
+    updateContextPill('chrome', 0, 'attach');
+    elEmpty.style.display = 'block';
+    elList.innerHTML = '';
+
+    var errored = false;
+
+    function firePost() {
+      var body = 'launch_url=' + encodeURIComponent(preferredLaunchUrl || '');
+      fetch('/api/ai-databank/scrape/', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken':    getCsrf(),
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type':    'application/x-www-form-urlencoded; charset=UTF-8'
+        },
+        body: body
+      })
+      .then(function (r) {
+        var ct = r.headers.get('content-type') || '';
+        if (ct.indexOf('application/json') >= 0) return r.json().then(function (d) { return {ok: r.ok, data: d}; });
+        return r.text().then(function (t) {
+          return {ok: false, data: {ok: false, error: (t || '').replace(/\s+/g, ' ').trim().slice(0, 220) || 'Server error.'}};
+        });
+      })
+      .then(function (res) {
+        if (!res.ok || !res.data.ok) {
+          var errMsg    = res.data.error     || 'Scrape failed.';
+          var configUrl = res.data.config_url || '';
+          elTopBar.className = 'is-error';
+          elLive.style.display = 'none';
+          elBadge.className = 'b-error';
+          elBadge.innerHTML = '<i class="bi bi-exclamation-circle-fill" style="font-size:.6rem;"></i> Error';
+          elCtrlStart.disabled = false;
+          showErrorCard(errMsg, configUrl);
+          var notifHtml = _esc(errMsg);
+          if (configUrl) notifHtml += ' &nbsp;<a href="' + _esc(configUrl) + '" target="_blank" style="color:inherit;font-weight:600;white-space:nowrap;">Open Configuration →</a>';
+          flashNotifHtml(notifHtml, 'error');
+          return;
+        }
+        currentJobId = res.data.job_id;
+        currentPort  = res.data.used_attach_port || 0;
+        updateContextPill(res.data.browser_name || 'chrome', res.data.item_delay_ms || 0, res.data.mode || 'attach');
+        startPoll(currentJobId);
+        /* Notify opener so it can update its inline status */
+        if (window.opener && !window.opener.closed) {
+          try { window.opener.postMessage({type:'scrapeStarted', jobId: currentJobId}, '*'); } catch (e) {}
+        }
+      })
+      .catch(function (err) {
+        elTopBar.className = 'is-error';
+        elLive.style.display = 'none';
+        elBadge.className = 'b-error';
+        elBadge.innerHTML = '<i class="bi bi-exclamation-circle-fill" style="font-size:.6rem;"></i> Error';
+        elCtrlStart.disabled = false;
+        flashNotif('Error: ' + (err.message || 'Request failed'), 'error');
+      });
+    }
+
+    /* If opener exposes fireScrapePost, delegate — it carries the right CSRF + config */
+    if (window.opener && !window.opener.closed && typeof window.opener.fireScrapePost === 'function') {
+      window.opener.fireScrapePost(function (res) {
+        if (!res.ok || !res.data.ok) {
+          var errMsg2    = res.data.error     || 'Scrape failed.';
+          var configUrl2 = res.data.config_url || '';
+          elTopBar.className = 'is-error';
+          elLive.style.display = 'none';
+          elBadge.className = 'b-error';
+          elBadge.innerHTML = '<i class="bi bi-exclamation-circle-fill" style="font-size:.6rem;"></i> Error';
+          elCtrlStart.disabled = false;
+          showErrorCard(errMsg2, configUrl2);
+          var notifHtml2 = _esc(errMsg2);
+          if (configUrl2) notifHtml2 += ' &nbsp;<a href="' + _esc(configUrl2) + '" target="_blank" style="color:inherit;font-weight:600;white-space:nowrap;">Open Configuration →</a>';
+          flashNotifHtml(notifHtml2, 'error');
+          return;
+        }
+        currentJobId = res.data.job_id;
+        currentPort  = res.data.used_attach_port || 0;
+        updateContextPill(res.data.browser_name || 'chrome', res.data.item_delay_ms || 0, res.data.mode || 'attach');
+        startPoll(currentJobId);
+      });
+    } else {
+      /* Direct POST (monitor opened directly, no opener) */
+      firePost();
+    }
+  }
+  window.doStart = doStart;
+
+  /* ── Pause ────────────────────────────────────────────────── */
+  function doPause() {
+    if (!currentJobId) return;
+    var btn = elCtrlPause;
+    btn.disabled = true;
+    fetch('/api/ai-databank/scrape/pause/' + currentJobId + '/', {
+      method:  'POST',
+      headers: {'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest'}
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      btn.disabled = false;
+      if (d.ok) {
+        isPaused = d.paused;
+        btn.querySelector('i').className = isPaused ? 'bi bi-play-fill' : 'bi bi-pause-fill';
+        btn.title = isPaused ? 'Resume' : 'Pause';
+      }
+    })
+    .catch(function () { btn.disabled = false; });
+  }
+  window.doPause = doPause;
+
+  /* ── Stop ─────────────────────────────────────────────────── */
+  function doStop() {
+    if (!currentJobId) return;
+    var btn = elCtrlStop;
+    btn.disabled = true;
+    fetch('/api/ai-databank/scrape/stop/' + currentJobId + '/', {
+      method:  'POST',
+      headers: {'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest'}
+    })
+    .then(function (r) { return r.json(); })
+    .then(function () { btn.disabled = false; })
+    .catch(function () { btn.disabled = false; });
+  }
+  window.doStop = doStop;
+
+  /* ── Accept job from opener (backward-compat) ─────────────── */
+  window.startScrapeJob = function (jobId, port) {
+    if (!jobId) return;
+    currentJobId = jobId;
+    currentPort  = port || 0;
+    /* Show starting state and begin polling — job already running */
+    elTopBar.className   = 'is-scanning';
+    elLive.style.display = '';
+    elBadge.className    = 'b-running';
+    elBadge.innerHTML    = '<i class="bi bi-arrow-repeat spin" style="font-size:.6rem;"></i> Running';
+    elCtrlStart.disabled = true;
+    elCtrlPause.disabled = false;
+    elCtrlStop.disabled  = false;
+    elEmpty.style.display = 'none';
+    elList.innerHTML     = '<div id="scrapeRunCard" class="run-card" data-status="starting"><div class="run-card-header"><div class="d-flex align-items-center gap-2"><div class="track"><div class="bar bar-starting" style="width:0%;background:#60a5fa;"></div></div><span class="text-muted" style="font-size:.72rem;">—</span><span class="status-badge pill-starting"><span class="spin" style="display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:#60a5fa;"></span> Starting</span></div></div><div class="run-card-body"><span style="font-size:.82rem;color:#6b7280;">Connecting…</span></div></div>';
+    startPoll(jobId);
+  };
+
+  /* ── Minimize / restore ───────────────────────────────────── */
+  function _applyMinimized() {
+    elShell.classList.add('is-minimized-shell');
+    elModal.classList.add('is-minimized');
+    document.body.classList.add('body-minimized');
+    document.getElementById('btnMinimize').title = 'Restore';
+    document.getElementById('btnMinimize').querySelector('i').className = 'bi bi-chevron-up';
+    if (currentJobId && pollTimer) {
+      /* refresh mini-ticker via a lightweight fetch */
+      fetch('/api/ai-databank/scrape/status/' + currentJobId + '/', {headers:{'X-Requested-With':'XMLHttpRequest'}})
+        .then(function(r){return r.json();})
+        .then(function(job){if(job.ok) elMiniTick.innerHTML = renderMiniRow(job);})
+        .catch(function(){});
+    }
+  }
+
+  function _applyRestored() {
+    elShell.classList.remove('is-minimized-shell');
+    elModal.classList.remove('is-minimized');
+    document.body.classList.remove('body-minimized');
+    elMiniTick.innerHTML = '';
+    document.getElementById('btnMinimize').title = 'Minimize';
+    document.getElementById('btnMinimize').querySelector('i').className = 'bi bi-dash-lg';
+  }
+
+  function canResizeFloatingWindow() {
+    return !!(window.resizeTo && window.matchMedia && window.matchMedia('(min-width: 769px)').matches);
+  }
+
+  function _resizeToHeader() {
+    if (!canResizeFloatingWindow()) return;
+    try {
+      _savedOuterH = window.outerHeight;
+      _savedOuterW = window.outerWidth;
+      var hdr = document.getElementById('scrapeHeader');
+      var h = hdr ? (hdr.offsetHeight + 4) : 48;
+      window.resizeTo(_savedOuterW, h);
+    } catch (e) {}
+  }
+
+  function _resizeToFull() {
+    if (!canResizeFloatingWindow()) return;
+    try {
+      window.resizeTo(_savedOuterW || 560, _savedOuterH || 460);
+    } catch (e) {}
+  }
+
+  function toggleMinimize() {
+    isMinimized = !isMinimized;
+    if (isMinimized) {
+      _applyMinimized();
+      _resizeToHeader();
+    } else {
+      _applyRestored();
+      _resizeToFull();
+    }
+  }
+  window.toggleMinimize = toggleMinimize;
+
+  /* ── postMessage from opener ──────────────────────────────── */
+  window.addEventListener('message', function (e) {
+    if (!e.data || typeof e.data !== 'object') return;
+    if (e.data.type === 'scrapeJobStarted' && e.data.jobId) {
+      window.startScrapeJob(e.data.jobId, e.data.port || 0);
+    }
+  });
+
+  /* ── Keyboard: Ctrl+Shift+F6 starts scrape ────────────────── */
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey && e.shiftKey && e.key === 'F6') {
+      e.preventDefault();
+      if (isMinimized) toggleMinimize();
+      if (!elCtrlStart.disabled) doStart();
+    }
+    if (e.key === 'Escape' && isMinimized) {
+      toggleMinimize();
+    }
+  });
+
+  /* ── Check for ?job_id= query param (fallback navigation) ─── */
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var jid    = params.get('job_id');
+    var port   = parseInt(params.get('port') || '0', 10);
+    preferredLaunchUrl = (params.get('launch_url') || '').trim();
+    if (jid) {
+      /* A scrape was already started — just start polling */
+      setTimeout(function () { window.startScrapeJob(jid, port); }, 120);
+    } else {
+      /* Fresh open — show idle state */
+      setIdle();
+    }
+  }());
+
+})();
+</script>
+</body>
+</html>

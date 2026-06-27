@@ -1,0 +1,132 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<section class="form-shell mx-auto">
+    <div class="hero-panel mb-3 mb-md-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h1 class="page-title h3 mb-1">Execution Detail</h1>
+                <p class="subtitle mb-0">Review execution result, context, and returned values.</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2 execution-detail-actions">
+                <a class="btn btn-sm exec-action-btn exec-action-pdf" href="/db-lab/executions/{{ execution.id }}/report/pdf/" title="Export PDF" aria-label="Export PDF report">
+                    <i class="bi bi-filetype-pdf"></i>
+                    <span>PDF</span>
+                </a>
+                <a class="btn btn-sm exec-action-btn exec-action-csv" href="/db-lab/executions/{{ execution.id }}/report/csv/" title="Export CSV" aria-label="Export CSV report">
+                    <i class="bi bi-filetype-csv"></i>
+                    <span>CSV</span>
+                </a>
+                <a class="btn btn-sm exec-action-btn exec-action-doc" href="/db-lab/executions/{{ execution.id }}/report/doc/" title="Export DOC" aria-label="Export DOC report">
+                    <i class="bi bi-file-earmark-richtext"></i>
+                    <span>DOC</span>
+                </a>
+                <a class="btn btn-sm exec-action-btn exec-action-back" href="/db-lab/executions/" title="Back to execution history" aria-label="Back to execution history">
+                    <i class="bi bi-arrow-left-circle"></i>
+                    <span>Back</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-card p-3 p-md-4">
+        <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Test Case</div>
+                        <div class="fw-semibold">{{ execution.test_case.name }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Status</div>
+                        <span class="status-pill status-{{ execution.status|lower }}">{{ execution.status }}</span>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Connection</div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span>{{ execution.test_case.connection.name }}</span>
+                            <a class="btn btn-sm btn-outline-secondary" href="/db-lab/connections/{{ execution.test_case.connection.id }}/">View Connection</a>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Database Type</div>
+                        <div><span class="chip">{{ execution.test_case.connection.db_type }}</span></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Host</div>
+                        <div>{{ execution.test_case.connection.host }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Port</div>
+                        <div>{{ execution.test_case.connection.port }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Database Name</div>
+                        <div>{{ execution.test_case.connection.database_name|default:"-" }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Service Name</div>
+                        <div>{{ execution.test_case.connection.service_name|default:"-" }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Username</div>
+                        <div>{{ execution.test_case.connection.username }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Executed At</div>
+                        <div>{{ execution.executed_at }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Test Type</div>
+                        <div>{{ execution.test_case.get_test_type_display }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Actual Value</div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            {% if execution.actual_value %}
+                                <span class="text-break" title="{{ execution.actual_value }}">{{ execution.actual_value|truncatechars:140 }}</span>
+                            {% else %}
+                                <span class="text-muted">No actual value captured for this execution.</span>
+                            {% endif %}
+                            <a class="btn btn-sm btn-outline-success btn-icon" href="/db-lab/executions/{{ execution.id }}/actual/csv/" title="Download actual value as CSV" aria-label="Download actual value as CSV">
+                                <i class="bi bi-filetype-csv"></i>
+                            </a>
+                            <a class="btn btn-sm btn-outline-primary btn-icon" href="/db-lab/executions/{{ execution.id }}/actual/json/" title="Download actual value as JSON" aria-label="Download actual value as JSON">
+                                <i class="bi bi-file-earmark-code"></i>
+                            </a>
+                        </div>
+                    </div>
+                    {% if execution.test_case.test_type == "QUERY_VALUE" %}
+                    <div class="col-md-6">
+                        <div class="small text-muted mb-1">Matched On</div>
+                        <div>
+                            {% if "matched on: full-row" in execution.details %}
+                                Full row result
+                            {% elif "matched on: single-column" in execution.details %}
+                                Single column result
+                            {% elif "matched on: empty-result" in execution.details %}
+                                Empty result
+                            {% else %}
+                                Result value
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="col-12">
+                        <div class="small text-muted mb-1">Details</div>
+                        <div class="border rounded-3 p-3 bg-body-tertiary">{{ execution.details|default:"-" }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted mb-1">Query</div>
+                        <pre class="border rounded-3 p-3 bg-body-tertiary mb-0" style="white-space: pre-wrap;">{{ execution.test_case.query|default:"-" }}</pre>
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted mb-1">Query Return/Results</div>
+                        {% if execution.actual_value %}
+                        <pre class="border rounded-3 p-3 bg-body-tertiary mb-0" style="white-space: pre-wrap; max-height: 360px; overflow: auto;">{{ execution.actual_value }}</pre>
+                        {% else %}
+                        <div class="border rounded-3 p-3 bg-body-tertiary text-muted">No query result is available for this execution.</div>
+                        {% endif %}
+                    </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

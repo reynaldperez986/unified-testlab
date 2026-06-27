@@ -1,0 +1,65 @@
+{% extends 'api/base.html' %}
+
+{% block title %}Modules - API TestLab{% endblock %}
+{% block page_title %}API Modules{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <p class="text-muted mb-0">Uploaded API collections (Postman / OpenAPI). Modules populate the test case form.</p>
+    {% if user.api_profile.role != 'viewer' %}
+    <a href="{% url 'api:module_upload' %}" class="btn btn-primary">
+        <i class="bi bi-upload"></i> Upload Collection
+    </a>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Module Name</th>
+                        <th>Endpoints</th>
+                        <th>Source File</th>
+                        <th>Uploaded By</th>
+                        <th>Uploaded At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for module in modules %}
+                    <tr>
+                        <td class="fw-semibold">
+                            <a href="{% url 'api:module_detail' module.pk %}">{{ module.name }}</a>
+                        </td>
+                        <td><span class="badge bg-primary">{{ module.endpoint_count }}</span></td>
+                        <td><code>{{ module.source_file|default:"-" }}</code></td>
+                        <td>{{ module.uploaded_by.username|default:"-" }}</td>
+                        <td>{{ module.created_at|date:"M d, Y H:i" }}</td>
+                        <td>
+                            <a href="{% url 'api:module_detail' module.pk %}" class="btn btn-sm btn-outline-primary" title="View">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            {% if user.api_profile.role == 'admin' %}
+                            <form method="post" action="{% url 'api:module_delete' module.pk %}" class="d-inline"
+                                  onsubmit="return confirm('Delete module {{ module.name }}?')">
+                                {% csrf_token %}
+                                <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">No modules uploaded yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

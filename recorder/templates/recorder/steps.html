@@ -1,0 +1,3144 @@
+﻿{% extends "recorder/base.html" %}
+{% block title %}Steps — {{ record_name|default:record_id }}{% endblock %}
+{% block hotkey_data %}<script>
+window._hotkeyRecordId   = '{{ record_id|escapejs }}';
+window._hotkeyIsRecording = {{ is_recording_this|yesno:'true,false' }};
+</script>{% endblock %}
+
+{% block container_class %}container-fluid{% endblock %}
+{% block content %}
+<style>
+/* Steps page: responsive layout */
+
+/* Desktop: tighten table */
+.steps-table th, .steps-table td { white-space: nowrap; }
+.steps-table { font-size: .83rem; }
+.cell-validation { min-width: 100px; max-width: 130px; }
+.validation-modal-select,
+.validation-modal-input { font-size: .86rem; }
+.validation-modal-hint { font-size: .74rem; color: #60758b; }
+.validation-preview {
+  border: 1px solid rgba(31,63,96,.08); border-radius: .7rem;
+  background: rgba(245,248,252,.7); padding: .75rem .85rem;
+}
+.validation-preview-label {
+  font-size: .68rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: #60758b;
+}
+.validation-preview-value { font-size: .83rem; color: #1e3c5e; word-break: break-word; }
+.cell-locator  { white-space: normal !important; max-width: 180px; min-width: 80px; }
+.cell-url      { max-width: 150px; }
+.badge-action  { font-size: .72rem !important; padding: .25em .6em !important; letter-spacing:.02em; }
+.strategy-select { min-width: 96px; font-size: .74rem !important; }
+.loc-value-cell  { cursor: text; font-size: .78rem; }
+
+/* Checkbox column */
+.cell-cb { width: 36px; text-align: center; vertical-align: middle; }
+.step-cb { cursor: pointer; width: 1rem; height: 1rem; vertical-align: middle; }
+.steps-table tbody tr.row-selected > td { background-color: rgba(220,53,69,.07) !important; }
+
+/* Hide meta columns below XL */
+@media (max-width: 1199.98px) {
+  .th-meta, .cell-recorder, .cell-runner, .cell-timestamp { display: none !important; }
+}
+
+/* Engine-based column visibility */
+.engine-selenium .col-pw { display: none !important; }
+.engine-playwright .col-se { display: none !important; }
+
+/* Column-toggle hide classes (applied to .steps-table by JS) */
+.col-hide-pw       .col-pw,       .col-hide-pw       .th-pw       { display: none !important; }
+.col-hide-element  .cell-tag,     .col-hide-element  .th-tag      { display: none !important; }
+.col-hide-identity .cell-strategy,.col-hide-identity .th-strategy { display: none !important; }
+.col-hide-label    .cell-locator, .col-hide-label    .th-label    { display: none !important; }
+
+/* Mobile: table rows to flex cards */
+@media (max-width: 767.98px) {
+  .steps-card    { border: none !important; background: transparent !important; box-shadow: none !important; }
+  .steps-wrapper { max-height: none !important; overflow-y: visible !important;
+                   box-shadow: none !important; border-radius: 0 !important; }
+
+  /* Block-flow the table structure */
+  .steps-table, .steps-table tbody { display: block; width: 100%; }
+  .steps-table thead               { display: none; }
+  .steps-table td                  { display: block; border: none !important; }
+
+  /* Every row = a card */
+  .steps-table tbody tr {
+    display:       flex;
+    flex-wrap:     wrap;
+    align-items:   stretch;
+    margin-bottom: .85rem;
+    border-radius: .9rem;
+    overflow:      visible;
+    border:        1px solid rgba(31,63,96,.14) !important;
+    background:    rgba(255,255,255,.94);
+    box-shadow:    0 3px 14px rgba(20,52,87,.1);
+  }
+
+  /* Card header strip */  .cell-cb {
+    order:0; flex: 0 0 2.4rem;
+    display: flex !important; align-items: center; justify-content: center;
+    background: rgba(230,240,252,.85);
+    border-right:  1px solid rgba(31,63,96,.09);
+    border-bottom: 1px solid rgba(31,63,96,.09);
+    padding: .4rem .2rem;
+  }  .cell-drag {
+    order:1; flex: 0 0 2.6rem;
+    display: flex !important; align-items: center; justify-content: center;
+    background: rgba(230,240,252,.85);
+    border-right:  1px solid rgba(31,63,96,.09);
+    border-bottom: 1px solid rgba(31,63,96,.09);
+    font-size: 1.1rem; color: #5a7a9a; padding: .5rem .2rem;
+  }
+  .cell-no {
+    order:2; flex: 0 0 2.8rem;
+    display: flex !important; align-items: center; justify-content: center;
+    background: rgba(230,240,252,.85);
+    border-right:  1px solid rgba(31,63,96,.09);
+    border-bottom: 1px solid rgba(31,63,96,.09);
+    font-weight: 700; color: #1a5a97; font-size: .9rem; padding: .5rem .15rem;
+  }
+  .cell-action {
+    order:3; flex: 1 0 0;
+    display: flex !important; align-items: center;
+    background: rgba(230,240,252,.55);
+    border-bottom: 1px solid rgba(31,63,96,.09);
+    padding: .45rem .6rem;
+  }
+  .cell-delete {
+    order:4; flex: 0 0 3rem;
+    display: flex !important; align-items: center; justify-content: center;
+    background: rgba(255,244,244,.6);
+    border-left:   1px solid rgba(31,63,96,.08);
+    border-bottom: 1px solid rgba(31,63,96,.09);
+    padding: .45rem .35rem;
+  }
+  .cell-delete .delete-step-btn {
+    width: 2.1rem; height: 2.1rem; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Strategy row */
+  .cell-strategy {
+    order:5; flex: 0 0 100%;
+    display: flex !important; align-items: center; gap: .45rem; flex-wrap: wrap;
+    background: rgba(248,251,255,.8);
+    border-bottom: 1px solid rgba(31,63,96,.07);
+    padding: .4rem .65rem; font-size: .8rem;
+  }
+  .cell-strategy::before {
+    content: "Identity"; flex: 0 0 4.5rem;
+    font-weight: 600; color: #60758b;
+    font-size: .67rem; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .strategy-select { width: auto; flex: 1; min-width: 0 !important; font-size: .8rem !important; }
+
+  /* Locator row */
+  .cell-locator {
+    order:6; flex: 0 0 100%;
+    display: flex !important; align-items: baseline; gap: .45rem; flex-wrap: wrap;
+    border-bottom: 1px solid rgba(31,63,96,.07);
+    padding: .4rem .65rem; font-size: .78rem; max-width: none !important;
+  }
+  .cell-locator::before {
+    content: "Name"; flex: 0 0 4.5rem;
+    font-weight: 600; color: #60758b;
+    font-size: .67rem; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .loc-value-cell { display: flex !important; flex: 1; min-width: 0; }
+  .loc-value-cell code { word-break: break-all; }
+
+  /* URL row */
+  .cell-url {
+    order:7; flex: 0 0 100%;
+    display: flex !important; align-items: center; gap: .45rem;
+    border-bottom: 1px solid rgba(31,63,96,.07);
+    padding: .4rem .65rem; font-size: .75rem; max-width: none !important;
+  }
+  .cell-url::before {
+    content: "URL"; flex: 0 0 4.5rem; flex-shrink: 0;
+    font-weight: 600; color: #60758b;
+    font-size: .67rem; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .cell-url a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+  /* Fieldname + Data row (side by side) */
+  .cell-fieldname {
+    order:8; flex: 0 0 50%;
+    display: flex !important; align-items: center; gap: .3rem;
+    border-bottom: 1px solid rgba(31,63,96,.07);
+    padding: .38rem .65rem; font-size: .76rem;
+  }
+  .cell-fieldname::before {
+    content: "Field"; flex-shrink: 0;
+    font-weight: 600; color: #60758b;
+    font-size: .67rem; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .cell-data {
+    order:9; flex: 0 0 50%;
+    display: flex !important; align-items: center; gap: .3rem;
+    border-bottom: 1px solid rgba(31,63,96,.07);
+    border-left: 1px solid rgba(31,63,96,.07);
+    padding: .38rem .65rem; font-size: .76rem;
+  }
+  .cell-data::before {
+    content: "Data"; flex-shrink: 0;
+    font-weight: 600; color: #60758b;
+    font-size: .67rem; text-transform: uppercase; letter-spacing: .05em;
+  }
+
+  /* Tag / meta: hidden */
+  .cell-tag { display: none !important; }
+
+  /* Validation row */
+  .cell-validation {
+    order:11; flex: 0 0 100%;
+    display: flex !important; align-items: center; gap: .4rem;
+    border-bottom: 1px solid rgba(31,63,96,.06);
+    padding: .3rem .6rem; font-size: .75rem;
+    max-width: none !important;
+  }
+  .cell-validation::before {
+    content: "Valid."; flex: 0 0 4.2rem; flex-shrink: 0;
+    font-weight: 600; color: #60758b;
+    font-size: .65rem; text-transform: uppercase; letter-spacing: .05em;
+  }
+
+  /* Raw event row */
+  .cell-raw {
+    order:10; flex: 0 0 100%;
+    display: block !important;
+    padding: .4rem .65rem;
+  }
+  .cell-raw pre { font-size: .7rem; max-height: 180px; overflow-y: auto; }
+
+  /* ── Page header compact ── */
+  .page-header-shell { padding: .7rem .85rem; border-radius: .85rem; }
+  .elem-text-hint { max-width: 100%; }
+  .session-info-strip { font-size: .73rem; gap: .3rem .5rem; }
+}
+/* Ensure Play engine dropdown renders above table/cards */
+.page-header-shell .dropdown-menu { z-index: 1050; }
+
+/* ── Live-recording badge ─────────────────────────────────────── */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .45; }
+}
+#liveRecordingBadge { animation: live-pulse 1.2s ease-in-out infinite; }
+.live-dot {
+  display: inline-block; width: .55rem; height: .55rem;
+  border-radius: 50%; background: #fff; flex-shrink: 0;
+}
+/* newly appended steps flash yellow then fade */
+@keyframes step-new-flash { 0%,10%{background:rgba(255,193,7,.35);} 100%{background:transparent;} }
+.step-row-new { animation: step-new-flash 2.5s ease-out forwards; }
+
+/* ── Enhanced design ─────────────────────────────────────────── */
+.steps-table tbody tr { transition: background .1s; }
+.steps-table tbody tr:hover > td { background: rgba(31,63,96,.035) !important; }
+.steps-wrapper { border-radius: .75rem !important; overflow-x: auto; overflow-y: auto; }
+.steps-card { border-radius: .75rem !important; }
+
+/* Gradient table header */
+.steps-table thead th {
+  background: linear-gradient(135deg, #1e3c5e 0%, #2563a8 100%) !important;
+  color: #fff !important; font-size: .78rem; letter-spacing: .04em;
+  border: none !important; padding: .6rem .55rem;
+}
+
+/* Better action badges */
+.badge-action { display: inline-flex !important; align-items: center; gap: .28em; }
+
+/* Step number circle */
+.step-no-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.85rem; height: 1.85rem; border-radius: 50%;
+  background: rgba(31,63,96,.1); color: #1a5a97;
+  font-weight: 700; font-size: .77rem; font-variant-numeric: tabular-nums;
+}
+
+/* Element text below action badge */
+.elem-text-hint {
+  display: block; font-size: .67rem; color: #8a9eb5; font-style: italic;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 14rem;
+  line-height: 1.25; margin-top: .1rem;
+}
+
+/* Session info strip */
+.session-info-strip {
+  display: flex; flex-wrap: wrap; gap: .35rem .7rem; align-items: center;
+  margin-bottom: .85rem; padding: .45rem .9rem; border-radius: .75rem;
+  background: rgba(255,255,255,.78); border: 1px solid rgba(31,63,96,.09);
+  box-shadow: 0 1px 5px rgba(20,52,87,.05); font-size: .79rem; color: #60758b;
+}
+.session-info-strip .si-item { display: inline-flex; align-items: center; gap: .3rem; }
+.session-info-strip .si-item i { font-size: .82rem; opacity: .7; }
+.session-info-strip .si-divider { color: rgba(31,63,96,.22); }
+.dataset-view-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.6rem; height: 1.6rem; padding: 0;
+  border-radius: 999px;
+}
+.session-tab-nav {
+  display: flex;
+  gap: .45rem;
+  margin-bottom: .8rem;
+  align-items: center;
+}
+.session-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  border: 1px solid rgba(31,63,96,.12);
+  background: rgba(255,255,255,.82);
+  color: #44627f;
+  border-radius: 999px;
+  padding: .38rem .85rem;
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1;
+  transition: all .15s ease;
+}
+.session-tab-btn.active {
+  background: linear-gradient(135deg, #1e3c5e 0%, #2563a8 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(37,99,168,.18);
+}
+.session-tab-pane { display: none; }
+.session-tab-pane.active { display: block; }
+.dataset-table td code {
+  font-size: .72rem;
+  color: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dataset-modal-summary {
+  display: flex; flex-wrap: wrap; gap: .4rem .75rem; align-items: center;
+  margin-bottom: .75rem; padding: .45rem .75rem;
+  border-radius: .65rem;
+  background: rgba(31,63,96,.04);
+  border: 1px solid rgba(31,63,96,.08);
+}
+.dataset-wrapper {
+  max-height: 58vh;
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: .75rem;
+  border: 1px solid rgba(31,63,96,.08);
+}
+.dataset-table.steps-table td {
+  white-space: normal;
+}
+.dataset-table .dataset-value-cell {
+  min-width: 16rem;
+}
+.dataset-table .dataset-field-cell {
+  min-width: 20rem;
+}
+.dataset-table .dataset-editable {
+  cursor: pointer;
+}
+.dataset-table .dataset-value-cell code,
+.dataset-table .dataset-field-cell code {
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* Raw event collapse */
+.raw-event-pre {
+  font-size: .68rem !important; max-height: 200px; overflow-y: auto;
+  border-radius: .5rem !important;
+}
+
+/* Hide tag on tablet */
+@media (max-width: 991.98px) {
+  .cell-tag, .th-tag { display: none !important; }
+}
+
+/* ── Mobile: card-view tuning ──────────────────────────────── */
+@media (max-width: 767.98px) {
+  /* Compact page header */
+  .page-header-shell  { padding: .6rem .75rem !important; border-radius: .8rem !important; }
+  .session-info-strip { font-size: .7rem !important; gap: .25rem .4rem !important; }
+  .step-no-badge      { min-width: 1.55rem !important; height: 1.55rem !important;
+                        font-size: .7rem !important; }
+  /* Right-side toolbar: end-align when it wraps onto its own row */
+  .page-header-shell > div:last-child { justify-content: flex-end !important; }
+  /* Hide meta / low-value cells to keep cards compact */
+  .cell-recorder, .cell-runner, .cell-timestamp, .cell-raw { display: none !important; }
+}
+
+@media (max-width: 379.98px) {
+  /* Ultra-small phones: tighten toolbar gap to avoid overflow */
+  .page-header-shell { gap: .35rem !important; }
+  .page-header-shell .btn.btn-sm { padding: .22rem .38rem !important; font-size: .72rem !important; }
+  .page-header-shell .badge { font-size: .69rem !important; padding: .28em .48em !important; }
+}
+</style>
+
+<div class="page-header-shell">
+  <div class="d-flex align-items-center flex-wrap gap-2">
+    <a href="{% url 'sessions_list' %}" class="btn btn-sm btn-outline-secondary me-1">
+      <i class="bi bi-arrow-left"></i> <span class="d-none d-sm-inline">Projects</span>
+    </a>
+    <h5 class="page-title fw-bold mb-0">
+      <i class="bi bi-list-ul"></i> <span class="d-none d-sm-inline">Steps</span>
+    </h5>
+    {% if record_name %}<span class="fw-semibold ms-1 text-truncate" style="max-width:min(42vw,280px);">{{ record_name }}</span>{% endif %}
+  </div>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <a href="{% url 'ai_locator_stats' %}?record_name={{ record_name|default:record_id|urlencode }}" class="btn btn-sm btn-outline-success">
+      <i class="bi bi-bar-chart-line"></i> <span class="d-none d-md-inline">Locator Stats</span>
+    </a>
+    <span id="editSaveStatus" class="btn btn-sm d-none" style="pointer-events:none;"></span>
+    <button id="bulkDeleteBtn" class="btn btn-danger btn-sm d-none">
+      <i class="bi bi-trash"></i> <span class="d-none d-sm-inline">Delete Selected</span>
+      <span class="badge bg-white text-danger ms-1" id="bulkDeleteCount">0</span>
+    </button>
+    <button id="saveOrderBtn" class="btn btn-warning btn-sm d-none" disabled>
+      <i class="bi bi-save"></i> <span class="d-none d-sm-inline">Save Order</span>
+    </button>
+    {% if enriched %}
+    <form id="playForm" method="post" action="{% url 'replay' record_id %}"
+          {% if is_recording_this %}class="d-none"{% endif %}>
+      {% csrf_token %}
+      <input type="hidden" name="replay_engine" id="playEngineInput" value="{{ session_engine|default:'selenium' }}">
+      <button type="submit" class="btn btn-success btn-sm">
+        <i class="bi bi-play-circle-fill"></i> <span class="d-none d-md-inline">Play</span>
+      </button>
+    </form>
+    <form id="replayContinueForm" method="post" action="{% url 'replay' record_id %}"
+          {% if is_recording_this %}class="d-none"{% endif %}>
+      {% csrf_token %}
+      <input type="hidden" name="replay_engine" value="{{ session_engine|default:'selenium' }}">
+      <input type="hidden" name="add_step_after" value="1">
+      <button type="submit" class="btn btn-info btn-sm"
+              title="Replay all steps, then immediately continue recording new steps">
+        <i class="bi bi-play-circle-fill me-1"></i><i class="bi bi-plus-circle-fill" style="font-size:.78em;vertical-align:.08em;"></i>
+        <span class="d-none d-md-inline"> Replay &amp; Continue</span>
+      </button>
+    </form>
+    {% endif %}
+        <button type="button" id="addStepBtn" class="btn btn-warning btn-sm{% if is_recording_this %} d-none{% endif %}"
+          title="Record additional steps for this session">
+      <i class="bi bi-plus-circle-fill"></i> <span class="d-none d-md-inline">Record More</span>
+    </button>
+        <button type="button" id="addEventsBtn" class="btn btn-outline-primary btn-sm{% if is_recording_this %} d-none{% endif %}"
+                data-bs-toggle="modal" data-bs-target="#addEventsModal"
+                title="Attach steps from another recording to the end of this session">
+          <i class="bi bi-node-plus"></i> <span class="d-none d-md-inline">Attach Event</span>
+        </button>
+    <button type="button" id="stopAddStepBtn" class="btn btn-danger btn-sm{% if not is_recording_this %} d-none{% endif %}"
+            title="Stop recording">
+      <i class="bi bi-stop-circle-fill"></i> <span class="d-none d-sm-inline">Stop</span>
+    </button>
+    <button type="button" id="pauseAddStepBtn" class="btn btn-warning btn-sm{% if not is_recording_this or is_recording_paused %} d-none{% endif %}"
+            title="Pause recording">
+      <i class="bi bi-pause-circle-fill"></i> <span class="d-none d-sm-inline">Pause</span>
+    </button>
+    <button type="button" id="resumeAddStepBtn" class="btn btn-success btn-sm{% if not is_recording_paused %} d-none{% endif %}"
+            title="Resume recording">
+      <i class="bi bi-play-circle-fill"></i> <span class="d-none d-sm-inline">Resume</span>
+    </button>
+    <span id="liveRecordingBadge"
+          class="badge bg-danger d-inline-flex align-items-center gap-1{% if not is_recording_this %} d-none{% endif %}"
+          style="font-size:.78rem;padding:.35em .65em;{% if is_recording_paused %}opacity:0.5;{% endif %}">
+      <span class="live-dot"></span> Recording&hellip;
+    </span>
+  </div>
+</div>
+
+  <div class="modal fade" id="addEventsModal" tabindex="-1" aria-labelledby="addEventsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addEventsModalLabel">
+            <i class="bi bi-node-plus text-primary"></i> Attach Event
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="addEventsForm" method="post" action="{% url 'attach_steps' record_id %}">
+          {% csrf_token %}
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="addEventsSourceRecord" class="form-label fw-semibold">Attach to existing recording <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm mb-1" id="addEventsSearch" placeholder="Search recordings..." autocomplete="off" oninput="if(window._filterOptions)window._filterOptions()">
+              <select class="form-select" id="addEventsSourceRecord" name="source_record_id" size="8" required {% if not sessions %}disabled{% endif %}>
+                {% if sessions %}
+                {% for s in sessions %}
+                <option value="{{ s.record_id }}"
+                        data-record-name="{{ s.record_name|default:''|escape }}"
+                        data-folder="{{ s.folder|default:''|escape }}"
+                        data-engine="{{ s.engine|default:'selenium'|escape }}"
+                        {% if s.record_id|stringformat:"s" == record_id|stringformat:"s" %}selected{% endif %}>
+                  {{ s.record_name|default:s.record_id }}{% if s.folder %} · {{ s.folder }}{% endif %}
+                </option>
+                {% endfor %}
+                {% else %}
+                <option value="">No existing recordings available</option>
+                {% endif %}
+              </select>
+              <div class="form-text">Select a recording whose steps will be appended to the end of this session.</div>
+            </div>
+            <div class="alert alert-light border py-2 px-3 small mb-0 d-none" id="addEventsSourceMeta">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="addEventsStartBtn" {% if not sessions %}disabled{% endif %}>
+              <i class="bi bi-plus-circle"></i> Attach
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+{% if enriched %}
+<div class="session-info-strip">
+  <span class="si-item"><i class="bi bi-folder2-open"></i> {{ folder_name|default:"Baseline" }}</span>
+  <span class="si-divider">·</span>
+  <span class="si-item"><i class="bi bi-list-ol"></i> <strong>{{ page_obj.paginator.count }}</strong>&thinsp;step{{ page_obj.paginator.count|pluralize }}</span>
+  <span class="si-divider">·</span>
+  <span class="si-item" title="{{ record_id }}"><i class="bi bi-fingerprint"></i> <code style="font-size:.72rem;color:inherit;">{{ record_id|stringformat:"s"|slice:":8" }}&hellip;</code></span>
+  <span class="si-divider">·</span>
+  <span class="si-item"><i class="bi bi-database"></i> Data{% if dataset_rows %} <strong>{{ dataset_rows|length }}</strong>{% endif %}</span>
+  <span class="si-divider">·</span>
+  <span class="si-item" style="line-height:1;">
+    <span class="btn-group btn-group-sm col-toggle-group" role="group" aria-label="Toggle columns">
+      {% if session_engine == 'playwright' %}
+      <button type="button" class="btn btn-outline-secondary btn-xs col-toggle-btn active"
+              data-hide-class="col-hide-pw" title="Toggle PW Code column"
+              style="font-size:.65rem;padding:.15rem .4rem;line-height:1.2;">PW&nbsp;Code</button>
+      {% endif %}
+      <button type="button" class="btn btn-outline-secondary btn-xs col-toggle-btn active"
+              data-hide-class="col-hide-element" title="Toggle Element column"
+              style="font-size:.65rem;padding:.15rem .4rem;line-height:1.2;">Element</button>
+      <button type="button" class="btn btn-outline-secondary btn-xs col-toggle-btn active"
+              data-hide-class="col-hide-identity" title="Toggle Identity column"
+              style="font-size:.65rem;padding:.15rem .4rem;line-height:1.2;">Identity</button>
+      <button type="button" class="btn btn-outline-secondary btn-xs col-toggle-btn active"
+              data-hide-class="col-hide-label" title="Toggle Name column"
+              style="font-size:.65rem;padding:.15rem .4rem;line-height:1.2;">Name</button>
+    </span>
+  </span>
+</div>
+<div class="session-tab-nav" role="tablist" aria-label="Session tabs">
+  <button type="button" class="session-tab-btn active" data-session-tab="steps" aria-selected="true">
+    <i class="bi bi-list-ul"></i> Steps
+  </button>
+  <button type="button" class="session-tab-btn" data-session-tab="data" aria-selected="false">
+    <i class="bi bi-database"></i> Data{% if dataset_rows %} <span class="badge bg-light text-dark ms-1">{{ dataset_rows|length }}</span>{% endif %}
+  </button>
+</div>
+<div id="sessionTabSteps" class="session-tab-pane active">
+<div class="card shadow-sm steps-card engine-{{ session_engine|default:'selenium' }}">
+  <div class="table-responsive steps-wrapper" style="max-height:65vh;overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+    <table class="table table-sm table-hover align-middle mb-0 steps-table" style="table-layout:auto;width:100%;">
+      <thead class="table-dark" style="position:sticky;top:0;z-index:1;">
+        <tr>
+          <th class="cell-cb" style="width:30px"><input type="checkbox" id="selectAllCb" class="step-cb" title="Select all"></th>
+          <th style="width:28px"></th>
+          <th style="width:36px">#</th>
+          <th style="width:68px">Action</th>
+          <th style="white-space:nowrap;">Steps</th>
+          <th class="col-pw th-pw" style="white-space:nowrap;">PW Code</th>
+          <th class="th-tag" style="width:130px;max-width:130px">Element</th>
+          <th class="th-strategy" style="width:220px;">Identity <span class="fw-normal opacity-75" style="font-size:.67rem;">(ranked)</span></th>
+          <th class="th-label" style="width:120px;">Name</th>
+          <th style="white-space:nowrap;">Data</th>
+          <th style="width:100px;">Validation</th>
+          <th class="th-meta" style="width:70px;">Recorder</th>
+          <th class="th-meta" style="width:90px;">Script Runner</th>
+          <th class="th-meta" style="white-space:nowrap;">Timestamp</th>
+          <th style="width:54px"></th>
+          <th style="width:46px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in enriched %}
+        {% with step=row.step loc=row.locator de=row.data %}
+        <tr data-step-no="{{ step.step_no }}">
+
+          <td class="cell-cb"><input type="checkbox" class="step-cb row-cb" value="{{ step.step_no }}"></td>
+
+          {% if request.user.is_superuser or folder_name != "Recordings" %}
+          <td class="cell-drag drag-handle text-muted text-center mobile-compact-cell" data-label="" style="cursor:grab;"><i class="bi bi-grip-vertical"></i></td>
+          {% else %}
+          <td class="cell-drag text-muted text-center mobile-compact-cell" data-label=""><i class="bi bi-lock text-secondary" style="opacity:.4;" title="Superuser only"></i></td>
+          {% endif %}
+
+          <td class="cell-no small step-no-cell mobile-compact-cell" data-label="#"><span class="step-no-badge">{{ step.step_no }}</span></td>
+
+          <td class="cell-action" data-label="Action">
+            {% if step.action == "click" %}
+              <span class="badge bg-primary badge-action"><i class="bi bi-cursor-fill"></i> Click</span>
+            {% elif step.action == "input" or step.action == "change" %}
+              <span class="badge bg-warning text-dark badge-action"><i class="bi bi-keyboard"></i> {{ step.action|capfirst }}</span>
+            {% elif step.action == "keydown" %}
+              <span class="badge bg-secondary badge-action"><i class="bi bi-arrow-return-left"></i> Keydown</span>
+            {% elif step.action == "submit" %}
+              <span class="badge bg-success badge-action"><i class="bi bi-send-fill"></i> Submit</span>
+            {% elif step.action == "dblclick" %}
+              <span class="badge bg-info text-dark badge-action"><i class="bi bi-cursor-fill"></i> Dblclick</span>
+            {% elif step.action == "navigate" or step.action == "navigation" %}
+              <span class="badge badge-action" style="background:#7c3aed;color:#fff"><i class="bi bi-arrow-right-circle-fill"></i> Navigate</span>
+            {% else %}
+              <span class="badge bg-light text-dark badge-action"><i class="bi bi-gear"></i> {{ step.action|capfirst }}</span>
+            {% endif %}
+            {% if step.raw_event.text %}
+            <span class="elem-text-hint">{{ step.raw_event.text|truncatechars:50 }}</span>
+            {% endif %}
+          </td>
+
+          <td class="cell-steps small" data-label="Steps" title="{{ row.display_description }}">{{ row.display_description|truncatechars:40 }}</td>
+
+          <td class="small col-pw pw-code-cell" data-label="PW Code"
+              data-step-no="{{ step.step_no }}"
+              style="font-family:'Fira Code',Consolas,monospace;font-size:.7rem;color:#000;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;user-select:none;"
+              title="Click to edit">
+            {{ step.playwright_code|default:"—" }}
+          </td>
+
+          {% if session_engine == 'playwright' %}
+          <td class="cell-tag" data-label="Element">
+            {% with pw=step.raw_event_playwright re=step.raw_event %}
+            <code class="small" style="font-size:.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:inline-block;max-width:120px;vertical-align:middle;">
+              <span class="text-primary">&lt;{{ pw.tagName|lower|default:step.element_tag|default:"?" }}</span>{% if pw.id %}#{{ pw.id }}{% elif re.id %}#{{ re.id }}{% endif %}{% if pw.className %}<span class="text-muted">.{{ pw.className|truncatechars:18 }}</span>{% endif %}<span class="text-primary">&gt;</span>
+            </code>
+            {% if pw.state.disabled %}<span class="badge bg-secondary ms-1" style="font-size:.6rem;">disabled</span>{% endif %}
+            {% endwith %}
+          </td>
+          {% else %}
+          <td class="cell-tag" data-label="Element"><code class="small">{{ step.element_tag|default:"—" }}</code></td>
+          {% endif %}
+
+          {% if session_engine == 'playwright' %}
+          <td class="cell-strategy small pw-identity-cell" data-label="Identity" style="width:220px;max-width:220px;">
+            {% if row.all_locators %}
+              {% for aloc in row.all_locators %}
+              <div class="d-flex align-items-center gap-1 pw-loc-row{% if not forloop.first %} mt-1{% endif %}"
+                   data-record-id="{{ record_id }}"
+                   data-step-no="{{ step.step_no }}"
+                   data-strategy="{{ aloc.strategy }}"
+                   data-primary="{{ aloc.is_primary|yesno:'true,false' }}"
+                   style="cursor:pointer;" title="Click to set as primary">
+                <i class="bi {% if aloc.is_primary %}bi-record-circle-fill text-primary{% else %}bi-circle text-muted{% endif %} pw-loc-radio" style="font-size:.75rem;flex-shrink:0;"></i>
+                <span class="badge {% if aloc.is_primary %}bg-primary{% else %}bg-secondary opacity-75{% endif %} pw-loc-badge" style="font-size:.6rem;min-width:5rem;text-align:center;">{{ aloc.strategy }}</span>
+                <code class="pw-loc-value" style="font-size:.68rem;color:#1e3c5e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;display:inline-block;vertical-align:middle;">{{ aloc.display_locator|default:aloc.locator|truncatechars:42 }}</code>
+              </div>
+              {% endfor %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          {% else %}
+          <td class="cell-strategy small pw-identity-cell" data-label="Identity" style="width:220px;max-width:220px;">
+            {% if row.all_locators %}
+              {% for aloc in row.all_locators %}
+              <div class="d-flex align-items-center gap-1 pw-loc-row{% if not forloop.first %} mt-1{% endif %}"
+                   data-record-id="{{ record_id }}"
+                   data-step-no="{{ step.step_no }}"
+                   data-strategy="{{ aloc.strategy }}"
+                   data-primary="{{ aloc.is_primary|yesno:'true,false' }}"
+                   style="cursor:pointer;" title="Click to set as primary">
+                <i class="bi {% if aloc.is_primary %}bi-record-circle-fill text-primary{% else %}bi-circle text-muted{% endif %} pw-loc-radio" style="font-size:.75rem;flex-shrink:0;"></i>
+                <span class="badge {% if aloc.is_primary %}bg-primary{% else %}bg-secondary opacity-75{% endif %} pw-loc-badge" style="font-size:.6rem;min-width:5rem;text-align:center;">{{ aloc.strategy }}</span>
+                <code class="pw-loc-value" style="font-size:.68rem;color:#1e3c5e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;display:inline-block;vertical-align:middle;">{{ aloc.display_locator|default:aloc.locator|truncatechars:42 }}</code>
+              </div>
+              {% endfor %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          {% endif %}
+
+          {% if session_engine == 'playwright' %}
+          {% with locs=step.raw_event.locators pw=step.raw_event_playwright %}
+          <td class="cell-locator small step-field-name-cell step-field-name-editable" data-step-no="{{ step.step_no }}" data-data-id="{{ de.id|default_if_none:'' }}" data-cur-val="{% if de and de.field_name %}{{ de.field_name|escapejs }}{% elif step.field_name %}{{ step.field_name|escapejs }}{% endif %}" data-label="Name" style="width:120px;max-width:120px;overflow:hidden;cursor:pointer;">
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px;">
+            {% if de and de.field_name %}<span title="data.field_name">{{ de.field_name|truncatechars:45 }}</span>
+            {% elif step.field_name %}<span title="step.field_name">{{ step.field_name|truncatechars:45 }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+            </div>
+          </td>
+          {% endwith %}
+          {% else %}
+          {% with locs=step.raw_event.locators %}
+          <td class="cell-locator small step-field-name-cell step-field-name-editable" data-step-no="{{ step.step_no }}" data-data-id="{{ de.id|default_if_none:'' }}" data-cur-val="{% if de and de.field_name %}{{ de.field_name|escapejs }}{% elif step.field_name %}{{ step.field_name|escapejs }}{% endif %}" data-label="Name" style="width:120px;max-width:120px;overflow:hidden;cursor:pointer;">
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px;">
+            {% if de and de.field_name %}<span title="data.field_name">{{ de.field_name|truncatechars:45 }}</span>
+            {% elif step.field_name %}<span title="step.field_name">{{ step.field_name|truncatechars:45 }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+            </div>
+          </td>
+          {% endwith %}
+          {% endif %}
+
+          {% if de %}
+          <td class="cell-data small cell-data-editable" data-label="Data Entry"
+              data-step-no-val="{{ step.step_no }}"
+              data-cur-val="{{ de.value|escapejs }}"
+              title="{{ de.value }}"
+              style="min-width:80px;cursor:pointer;">
+            <span class="data-val-view d-inline-flex align-items-center gap-1">
+              <span class="data-val-text">{{ de.value|truncatechars:40 }}</span>
+              <i class="bi bi-pencil text-muted" style="font-size:.65rem;opacity:.45;flex-shrink:0;"></i>
+            </span>
+          </td>
+          {% else %}
+          <td class="cell-data small" data-label="Data Entry"><span class="text-muted">—</span></td>
+          {% endif %}
+
+          <td class="cell-validation small" data-label="Validation"
+              data-step-no-val="{{ step.step_no }}"
+              data-cur-val="{{ step.validation|default:''|escapejs }}"
+              style="min-width:120px;">
+            <div class="validation-view d-flex align-items-center gap-1">
+              {% if step.validation %}
+              <span class="badge bg-info text-dark validation-badge" style="font-size:.68rem;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ step.validation }}">{{ step.validation }}</span>
+              {% else %}
+              <span class="text-muted validation-empty" style="font-size:.75rem;">—</span>
+              {% endif %}
+              <i class="bi bi-pencil text-muted ms-1" style="font-size:.62rem;opacity:.4;flex-shrink:0;cursor:pointer;"></i>
+            </div>
+          </td>
+
+          <td class="cell-recorder small text-muted" data-label="Recorder">{{ step.recorder|default:"—" }}</td>
+          <td class="cell-runner small text-muted" data-label="Script Runner">{{ step.runner|default:"—" }}</td>
+          <td class="cell-timestamp small text-muted" data-label="Timestamp">{{ step.created_at }}</td>
+
+          <td class="cell-raw" data-label="Raw Event">
+            <button class="btn btn-outline-secondary btn-sm"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#raw-{{ step.step_no }}">
+              <i class="bi bi-code-slash"></i>
+            </button>
+            <div class="collapse mt-1" id="raw-{{ step.step_no }}">
+              <pre class="raw-event raw-event-pre bg-light border rounded p-2">{{ step.raw_event }}</pre>
+            </div>
+          </td>
+
+          <td class="cell-delete" data-label="Delete">
+            <button type="button" class="btn btn-sm btn-outline-danger delete-step-btn"
+                    data-step-no="{{ step.step_no }}"
+                    data-action="{{ step.action }}"
+                    data-record-id="{{ record_id }}">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+
+        </tr>
+        {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+<div id="sessionTabData" class="session-tab-pane">
+  <div class="card shadow-sm steps-card engine-{{ session_engine|default:'selenium' }}">
+    <div class="card-body p-3">
+      <div class="dataset-modal-summary small text-muted">
+        <span>Record: <code>{{ record_id }}</code></span>
+        {% if record_name %}<span>{{ record_name }}</span>{% endif %}
+        <span><strong>{{ dataset_rows|length }}</strong> data entr{{ dataset_rows|length|pluralize:"y,ies" }}</span>
+      </div>
+      {% if dataset_rows %}
+      <div class="table-responsive steps-wrapper dataset-wrapper">
+        <table class="table table-sm table-hover align-middle mb-0 steps-table dataset-table" style="table-layout:auto;width:100%;">
+          <thead class="table-dark" style="position:sticky;top:0;z-index:1;">
+            <tr>
+              <th style="width:70px;">Step</th>
+              <th style="width:320px;">Name</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for data_row in dataset_rows %}
+            <tr data-step-no="{{ data_row.step_no }}" data-data-id="{{ data_row.data_id }}">
+              <td><span class="step-no-badge">{{ data_row.step_no }}</span></td>
+              <td class="dataset-field-cell dataset-editable" data-edit-kind="field_name" data-step-no="{{ data_row.step_no }}" data-data-id="{{ data_row.data_id }}" data-cur-val="{{ data_row.field_name|escapejs }}">{% if data_row.field_name %}<span class="d-inline-flex align-items-center gap-1"><code>{{ data_row.field_name }}</code><i class="bi bi-pencil text-muted" style="font-size:.65rem;opacity:.45;"></i></span>{% else %}<span class="text-muted d-inline-flex align-items-center gap-1">&mdash;<i class="bi bi-pencil" style="font-size:.65rem;opacity:.35;"></i></span>{% endif %}</td>
+              <td class="dataset-value-cell dataset-editable" data-edit-kind="value" data-step-no="{{ data_row.step_no }}" data-data-id="{{ data_row.data_id }}" data-cur-val="{{ data_row.value|escapejs }}">{% if data_row.value %}<span class="d-inline-flex align-items-center gap-1"><code>{{ data_row.value }}</code><i class="bi bi-pencil text-muted" style="font-size:.65rem;opacity:.45;"></i></span>{% else %}<span class="text-muted d-inline-flex align-items-center gap-1">&mdash;<i class="bi bi-pencil" style="font-size:.65rem;opacity:.35;"></i></span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="alert alert-light border mb-0">
+        No test data entries are linked to this record.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% include 'recorder/_pagination.html' %}
+
+<!-- Playwright Code Preview Panel -->
+{% if session_engine == 'playwright' %}
+<div class="card shadow-sm mt-3" id="playwrightCodePanel">
+  <div class="card-header d-flex align-items-center justify-content-between py-2 px-3" style="background:#1e1e2e;">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-code-slash text-success"></i>
+      <span class="fw-semibold text-white small">Playwright Code</span>
+      <span class="badge bg-success bg-opacity-25 text-success" style="font-size:.65rem;">Python</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-light py-0 px-2" id="pwCodeCopyBtn" title="Copy to clipboard" style="font-size:.72rem;" disabled>
+        <i class="bi bi-clipboard"></i> Copy
+      </button>
+      <button class="btn btn-sm btn-outline-success py-0 px-2" id="pwCodeSaveBtn" title="Save script to server" style="font-size:.72rem;" disabled>
+        <i class="bi bi-floppy"></i> Save
+      </button>
+      <button class="btn btn-sm btn-outline-info py-0 px-2" id="pwCodeDownloadBtn" title="Download as .py file" style="font-size:.72rem;" disabled>
+        <i class="bi bi-download"></i> Download
+      </button>
+      <button class="btn btn-sm btn-outline-light py-0 px-2" id="pwCodeToggleBtn" data-expanded="false" style="font-size:.72rem;">
+        <i class="bi bi-chevron-down" id="pwCodeChevron"></i> Hide
+      </button>
+    </div>
+  </div>
+  <div class="collapse" id="pwCodeCollapse">
+    <div class="card-body p-0" style="background:#1e1e2e;">
+      <div id="pwCodeLoading" class="text-center py-4 d-none">
+        <div class="spinner-border spinner-border-sm text-success" role="status"></div>
+        <span class="text-muted small ms-2">Generating code...</span>
+      </div>
+      <textarea id="pwCodeContent" class="form-control" spellcheck="false"
+        style="background:#1e1e2e;color:#d4d4d4;font-family:'Fira Code',Consolas,monospace;font-size:.78rem;
+        min-height:50vh;max-height:70vh;overflow:auto;border:none;border-radius:0 0 .5rem .5rem;
+        resize:vertical;white-space:pre;tab-size:4;line-height:1.5;"
+      ></textarea>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const toggleBtn = document.getElementById('pwCodeToggleBtn');
+  const collapse  = document.getElementById('pwCodeCollapse');
+  const codeEl    = document.getElementById('pwCodeContent');
+  const loading   = document.getElementById('pwCodeLoading');
+  const copyBtn   = document.getElementById('pwCodeCopyBtn');
+  const saveBtn   = document.getElementById('pwCodeSaveBtn');
+  const downloadBtn = document.getElementById('pwCodeDownloadBtn');
+  const chevron   = document.getElementById('pwCodeChevron');
+  let loaded = false;
+
+  /* Auto-expand on load */
+  collapse.classList.add('show');
+  toggleBtn.setAttribute('data-expanded', 'true');
+  toggleBtn.innerHTML = '<i class="bi bi-chevron-up"></i> Hide';
+  fetchCode();
+
+  toggleBtn.addEventListener('click', function(){
+    const expanded = this.getAttribute('data-expanded') === 'true';
+    if (!expanded) {
+      collapse.classList.add('show');
+      this.setAttribute('data-expanded', 'true');
+      this.innerHTML = '<i class="bi bi-chevron-up"></i> Hide';
+      if (!loaded) { fetchCode(); }
+    } else {
+      collapse.classList.remove('show');
+      this.setAttribute('data-expanded', 'false');
+      this.innerHTML = '<i class="bi bi-chevron-down"></i> Show';
+    }
+  });
+
+  function fetchCode(){
+    loading.classList.remove('d-none');
+    codeEl.value = '';
+    fetch("{% url 'download_session' record_id 'playwright' %}")
+      .then(function(r){ return r.text(); })
+      .then(function(text){
+        loading.classList.add('d-none');
+        codeEl.value = text;
+        copyBtn.disabled = false;
+        saveBtn.disabled = false;
+        downloadBtn.disabled = false;
+        loaded = true;
+      })
+      .catch(function(){
+        loading.classList.add('d-none');
+        codeEl.value = '# Error loading code preview';
+      });
+  }
+
+  /* Tab key inserts 4 spaces instead of leaving textarea */
+  codeEl.addEventListener('keydown', function(e){
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      var start = this.selectionStart;
+      var end = this.selectionEnd;
+      this.value = this.value.substring(0, start) + '    ' + this.value.substring(end);
+      this.selectionStart = this.selectionEnd = start + 4;
+    }
+  });
+
+  copyBtn.addEventListener('click', function(){
+    navigator.clipboard.writeText(codeEl.value).then(function(){
+      copyBtn.innerHTML = '<i class="bi bi-check2"></i> Copied!';
+      setTimeout(function(){ copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 2000);
+    });
+  });
+
+  saveBtn.addEventListener('click', function(){
+    fetch("{% url 'save_playwright_script' record_id %}", {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'script=' + encodeURIComponent(codeEl.value)
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if (data.ok) {
+        saveBtn.innerHTML = '<i class="bi bi-check2"></i> Saved!';
+        setTimeout(function(){ saveBtn.innerHTML = '<i class="bi bi-floppy"></i> Save'; }, 2000);
+      }
+    }).catch(function(){
+      saveBtn.innerHTML = '<i class="bi bi-x-circle"></i> Error';
+      setTimeout(function(){ saveBtn.innerHTML = '<i class="bi bi-floppy"></i> Save'; }, 2000);
+    });
+  });
+
+  downloadBtn.addEventListener('click', function(){
+    var blob = new Blob([codeEl.value], {type: 'text/x-python'});
+    var fname = "{{ record_name|default:record_id }}".replace(/[^a-zA-Z0-9_\-]/g, '_') + '_playwright.py';
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    downloadBtn.innerHTML = '<i class="bi bi-check2"></i> Done!';
+    setTimeout(function(){ downloadBtn.innerHTML = '<i class="bi bi-download"></i> Download'; }, 2000);
+  });
+
+  /* Expose refresh for external callers (delete / reorder) */
+  window.refreshPlaywrightCode = fetchCode;
+})();
+</script>
+{% endif %}
+
+<!-- Selenium Code Preview Panel -->
+{% if session_engine != 'playwright' %}
+<div class="card shadow-sm mt-3" id="seleniumCodePanel">
+  <div class="card-header d-flex align-items-center justify-content-between py-2 px-3" style="background:#1e1e2e;">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-code-slash text-warning"></i>
+      <span class="fw-semibold text-white small">Selenium Code</span>
+      <span class="badge bg-warning bg-opacity-25 text-warning" style="font-size:.65rem;">Python</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-light py-0 px-2" id="seCodeCopyBtn" title="Copy to clipboard" style="font-size:.72rem;" disabled>
+        <i class="bi bi-clipboard"></i> Copy
+      </button>
+      <button class="btn btn-sm btn-outline-warning py-0 px-2" id="seCodeSaveBtn" title="Save script to server" style="font-size:.72rem;" disabled>
+        <i class="bi bi-floppy"></i> Save
+      </button>
+      <button class="btn btn-sm btn-outline-info py-0 px-2" id="seCodeDownloadBtn" title="Download as .py file" style="font-size:.72rem;" disabled>
+        <i class="bi bi-download"></i> Download
+      </button>
+      <button class="btn btn-sm btn-outline-light py-0 px-2" id="seCodeToggleBtn" data-expanded="false" style="font-size:.72rem;">
+        <i class="bi bi-chevron-down" id="seCodeChevron"></i> Hide
+      </button>
+    </div>
+  </div>
+  <div class="collapse" id="seCodeCollapse">
+    <div class="card-body p-0" style="background:#1e1e2e;">
+      <div id="seCodeLoading" class="text-center py-4 d-none">
+        <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+        <span class="text-muted small ms-2">Generating code...</span>
+      </div>
+      <textarea id="seCodeContent" class="form-control" spellcheck="false"
+        style="background:#1e1e2e;color:#d4d4d4;font-family:'Fira Code',Consolas,monospace;font-size:.78rem;
+        min-height:50vh;max-height:70vh;overflow:auto;border:none;border-radius:0 0 .5rem .5rem;
+        resize:vertical;white-space:pre;tab-size:4;line-height:1.5;"
+      ></textarea>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const toggleBtn   = document.getElementById('seCodeToggleBtn');
+  const collapse    = document.getElementById('seCodeCollapse');
+  const codeEl      = document.getElementById('seCodeContent');
+  const loading     = document.getElementById('seCodeLoading');
+  const copyBtn     = document.getElementById('seCodeCopyBtn');
+  const saveBtn     = document.getElementById('seCodeSaveBtn');
+  const downloadBtn = document.getElementById('seCodeDownloadBtn');
+  let loaded = false;
+
+  /* Auto-expand on load */
+  collapse.classList.add('show');
+  toggleBtn.setAttribute('data-expanded', 'true');
+  toggleBtn.innerHTML = '<i class="bi bi-chevron-up"></i> Hide';
+  fetchCode();
+
+  toggleBtn.addEventListener('click', function(){
+    const expanded = this.getAttribute('data-expanded') === 'true';
+    if (!expanded) {
+      collapse.classList.add('show');
+      this.setAttribute('data-expanded', 'true');
+      this.innerHTML = '<i class="bi bi-chevron-up"></i> Hide';
+      if (!loaded) { fetchCode(); }
+    } else {
+      collapse.classList.remove('show');
+      this.setAttribute('data-expanded', 'false');
+      this.innerHTML = '<i class="bi bi-chevron-down"></i> Show';
+    }
+  });
+
+  function fetchCode(){
+    loading.classList.remove('d-none');
+    codeEl.value = '';
+    fetch("{% url 'download_session' record_id 'selenium' %}")
+      .then(function(r){ return r.text(); })
+      .then(function(text){
+        loading.classList.add('d-none');
+        codeEl.value = text;
+        copyBtn.disabled = false;
+        saveBtn.disabled = false;
+        downloadBtn.disabled = false;
+        loaded = true;
+      })
+      .catch(function(){
+        loading.classList.add('d-none');
+        codeEl.value = '# Error loading code preview';
+      });
+  }
+
+  /* Tab key inserts 4 spaces instead of leaving textarea */
+  codeEl.addEventListener('keydown', function(e){
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      var start = this.selectionStart;
+      var end   = this.selectionEnd;
+      this.value = this.value.substring(0, start) + '    ' + this.value.substring(end);
+      this.selectionStart = this.selectionEnd = start + 4;
+    }
+  });
+
+  copyBtn.addEventListener('click', function(){
+    navigator.clipboard.writeText(codeEl.value).then(function(){
+      copyBtn.innerHTML = '<i class="bi bi-check2"></i> Copied!';
+      setTimeout(function(){ copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 2000);
+    });
+  });
+
+  saveBtn.addEventListener('click', function(){
+    fetch("{% url 'save_selenium_script' record_id %}", {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'script=' + encodeURIComponent(codeEl.value)
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if (data.ok) {
+        saveBtn.innerHTML = '<i class="bi bi-check2"></i> Saved!';
+        setTimeout(function(){ saveBtn.innerHTML = '<i class="bi bi-floppy"></i> Save'; }, 2000);
+      }
+    }).catch(function(){
+      saveBtn.innerHTML = '<i class="bi bi-x-circle"></i> Error';
+      setTimeout(function(){ saveBtn.innerHTML = '<i class="bi bi-floppy"></i> Save'; }, 2000);
+    });
+  });
+
+  downloadBtn.addEventListener('click', function(){
+    var blob  = new Blob([codeEl.value], {type: 'text/x-python'});
+    var fname = "{{ record_name|default:record_id }}".replace(/[^a-zA-Z0-9_\-]/g, '_') + '_selenium.py';
+    var a     = document.createElement('a');
+    a.href    = URL.createObjectURL(blob);
+    a.download = fname;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    downloadBtn.innerHTML = '<i class="bi bi-check2"></i> Done!';
+    setTimeout(function(){ downloadBtn.innerHTML = '<i class="bi bi-download"></i> Download'; }, 2000);
+  });
+
+  /* Expose refresh for external callers */
+  window.refreshSeleniumCode = fetchCode;
+})();
+</script>
+{% endif %}
+
+{% else %}
+<div class="text-center py-5">
+  <div class="mx-auto mb-3" style="width:5rem;height:5rem;border-radius:50%;background:rgba(31,63,96,.07);display:flex;align-items:center;justify-content:center;">
+    <i class="bi bi-list-ul" style="font-size:2rem;color:#8eaacc;"></i>
+  </div>
+  <h6 class="text-muted fw-semibold mb-1">No steps recorded yet</h6>
+  <p class="text-muted small mb-0">Record a session to capture automation steps.</p>
+</div>
+{% endif %}
+
+{# ── Element Identity — now shown inline in the steps table above #}
+{% if False and session_engine == 'playwright' and page_obj.object_list %}
+<div class="card shadow-sm mt-4 mb-4" id="element-identity-section">
+  <div class="card-header d-flex align-items-center gap-2 py-2 px-3"
+       style="background:linear-gradient(135deg,#0f5c8d 0%,#1f3c5c 100%);">
+    <i class="bi bi-fingerprint text-white" style="font-size:1.1rem;"></i>
+    <span class="fw-bold text-white" style="font-size:.95rem;">Element Identity</span>
+    <span class="badge bg-white text-primary ms-auto" style="font-size:.72rem;font-weight:700;">Playwright</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.82rem;">
+      <thead class="table-light">
+        <tr>
+          <th class="px-3" style="width:44px;">#</th>
+          <th style="width:90px;">Action</th>
+          <th>Element</th>
+          <th>Identity <span class="text-muted fw-normal" style="font-size:.72rem;">(ranked)</span></th>
+          <th>Label / Hint</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in page_obj %}
+          {% with s=item.step re=item.step.raw_event locs=item.step.raw_event.locators pw=item.step.raw_event_playwright %}
+          {% if s.action != 'navigate' and s.action != 'navigate_back' and s.action != 'navigate_forward' and s.action != 'scroll' %}
+          <tr>
+            {# Step # #}
+            <td class="px-3 text-muted fw-semibold">{{ s.step_no }}</td>
+
+            {# Action badge #}
+            <td>
+              <span class="badge badge-action
+                {% if s.action == 'click' %}bg-primary
+                {% elif s.action == 'dblclick' %}bg-info
+                {% elif s.action == 'input' or s.action == 'change' %}bg-success
+                {% elif s.action == 'keydown' %}bg-warning text-dark
+                {% elif s.action == 'submit' %}bg-danger
+                {% else %}bg-secondary{% endif %}">{{ s.action }}</span>
+            </td>
+
+            {# Element — tag + id + class #}
+            <td class="font-monospace" style="font-size:.76rem;white-space:nowrap;">
+              {% if pw %}
+                {# Rich info from get_playwright_locator_info #}
+                <span class="text-primary">&lt;{{ pw.tagName|lower|default:s.element_tag }}</span>{% if pw.id %}#{{ pw.id }}{% elif re.id %}#{{ re.id }}{% endif %}{% if pw.className %}<span class="text-muted">.{{ pw.className|truncatechars:22 }}</span>{% elif locs.className %}<span class="text-muted">.{{ locs.className|truncatechars:22 }}</span>{% endif %}<span class="text-primary">&gt;</span>
+                {% if pw.state.visible == False %}<span class="badge bg-warning text-dark ms-1" style="font-size:.63rem;">hidden</span>{% endif %}
+                {% if pw.state.disabled %}<span class="badge bg-secondary ms-1" style="font-size:.63rem;">disabled</span>{% endif %}
+              {% else %}
+                <span class="text-primary">&lt;{{ s.element_tag|default:"?" }}</span>{% if re.id %}#{{ re.id }}{% endif %}{% if locs.className %}<span class="text-muted">.{{ locs.className|truncatechars:22 }}</span>{% endif %}<span class="text-primary">&gt;</span>
+              {% endif %}
+            </td>
+
+            {# Identity — ranked locators #}
+            <td style="min-width:220px;">
+              {% if item.all_locators %}
+                {% for loc in item.all_locators %}
+                <div class="d-flex align-items-baseline gap-1{% if not forloop.first %} mt-1{% endif %}">
+                  {% if loc.is_primary %}
+                    <span class="badge bg-primary" style="font-size:.63rem;min-width:5.5rem;text-align:center;">{{ loc.strategy }}</span>
+                  {% else %}
+                    <span class="badge bg-secondary opacity-60" style="font-size:.63rem;min-width:5.5rem;text-align:center;">{{ loc.strategy }}</span>
+                  {% endif %}
+                  <code style="font-size:.73rem;word-break:break-all;color:#1e3c5e;">{{ loc.display_locator|default:loc.locator|truncatechars:55 }}</code>
+                </div>
+                {% endfor %}
+              {% else %}
+                {# Fallback: derive from raw_event.locators dict #}
+                {% if locs.id %}<div><span class="badge bg-primary" style="font-size:.63rem;min-width:5.5rem;">id</span> <code style="font-size:.73rem;">#{{ locs.id }}</code></div>{% endif %}
+                {% if locs.dataTestId %}<div class="mt-1"><span class="badge bg-secondary opacity-60" style="font-size:.63rem;min-width:5.5rem;">dataTestId</span> <code style="font-size:.73rem;">{{ locs.dataTestId }}</code></div>{% endif %}
+                {% if locs.css %}<div class="mt-1"><span class="badge bg-secondary opacity-60" style="font-size:.63rem;min-width:5.5rem;">css</span> <code style="font-size:.73rem;">{{ locs.css|truncatechars:55 }}</code></div>{% endif %}
+                {% if locs.xpath %}<div class="mt-1"><span class="badge bg-secondary opacity-60" style="font-size:.63rem;min-width:5.5rem;">xpath</span> <code style="font-size:.73rem;">{{ locs.xpath|truncatechars:55 }}</code></div>{% endif %}
+                {% if not locs.id and not locs.css and not locs.xpath %}<span class="text-muted">—</span>{% endif %}
+              {% endif %}
+            </td>
+
+            {# Label / Hint — aria-label > placeholder > text > value #}
+            <td style="max-width:200px;">
+              {% if locs.ariaLabel %}
+                <span title="aria-label"><i class="bi bi-info-circle text-muted me-1" style="font-size:.8rem;"></i>{{ locs.ariaLabel|truncatechars:50 }}</span>
+              {% elif locs.placeholder %}
+                <span class="text-muted fst-italic" title="placeholder">{{ locs.placeholder|truncatechars:50 }}</span>
+              {% elif re.text %}
+                <span title="text content">{{ re.text|truncatechars:50 }}</span>
+              {% elif pw.innerText %}
+                <span class="text-muted" title="innerText">{{ pw.innerText|truncatechars:50 }}</span>
+              {% elif re.value %}
+                <span class="text-muted" title="value">{{ re.value|truncatechars:50 }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Bulk Delete Confirm Modal ────────────────────────────────── -->
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-labelledby="bulkDeleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:1rem;overflow:hidden;">
+
+      <div class="modal-header border-0 pb-0" style="background:linear-gradient(135deg,#dc3545 0%,#a71d2a 100%);">
+        <div class="d-flex align-items-center gap-2 text-white">
+          <span style="font-size:1.7rem;line-height:1;"><i class="bi bi-exclamation-triangle-fill"></i></span>
+          <h5 class="modal-title fw-bold mb-0" id="bulkDeleteModalLabel">Confirm Deletion</h5>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body px-4 pt-4 pb-2">
+        <p class="mb-1" style="font-size:1rem;">
+          You are about to permanently delete
+          <strong id="bulkDeleteModalCount" class="text-danger">0</strong> step(s).
+        </p>
+        <p class="text-muted" style="font-size:.88rem;">This action <strong>cannot be undone</strong>. All locator data, run history and data entries for these steps will also be removed.</p>
+        <div class="alert alert-danger d-flex align-items-center gap-2 py-2 px-3 mb-0" role="alert" style="font-size:.82rem;border-radius:.6rem;">
+          <i class="bi bi-shield-exclamation flex-shrink-0"></i>
+          <span>Selected steps will be resequenced after deletion.</span>
+        </div>
+      </div>
+
+      <div class="modal-footer border-0 pt-2 pb-4 px-4 d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary flex-fill" data-bs-dismiss="modal">
+          <i class="bi bi-x-lg me-1"></i>Cancel
+        </button>
+        <button type="button" class="btn btn-danger flex-fill" id="bulkDeleteConfirmBtn">
+          <i class="bi bi-trash me-1"></i>Delete Steps
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Validation Rule Modal ────────────────────────────────────── -->
+<div class="modal fade" id="validationRuleModal" tabindex="-1" aria-labelledby="validationRuleModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow" style="border-radius:.85rem;overflow:hidden;">
+      <div class="modal-header py-2 px-3 border-0" style="background:linear-gradient(135deg,#0f5c8d 0%,#1f3c5c 100%);">
+        <div class="d-flex align-items-center gap-2 text-white">
+          <i class="bi bi-shield-check" style="font-size:1.05rem;"></i>
+          <div>
+            <h6 class="modal-title fw-bold mb-0" id="validationRuleModalLabel">Validation Rule</h6>
+            <div class="small opacity-75" id="validationRuleModalStepLabel" style="font-size:.72rem;"></div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body px-3 pt-3 pb-2">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="validationRuleCategory" class="form-label small fw-semibold mb-1">Select category</label>
+            <select id="validationRuleCategory" class="form-select validation-modal-select"></select>
+          </div>
+          <div class="col-md-6">
+            <label for="validationRuleOperator" class="form-label small fw-semibold mb-1">Sub category</label>
+            <select id="validationRuleOperator" class="form-select validation-modal-select"></select>
+          </div>
+          <div class="col-12 validation-modal-hint" id="validationRuleHint"></div>
+          <div class="col-md-6" id="validationRuleValue1Group">
+            <label for="validationRuleValue1" class="form-label small fw-semibold mb-1" id="validationRuleValue1Label">Value</label>
+            <input type="text" id="validationRuleValue1" class="form-control validation-modal-input" placeholder="Enter value">
+          </div>
+          <div class="col-md-6 d-none" id="validationRuleValue2Group">
+            <label for="validationRuleValue2" class="form-label small fw-semibold mb-1" id="validationRuleValue2Label">Second value</label>
+            <input type="text" id="validationRuleValue2" class="form-control validation-modal-input" placeholder="Enter second value">
+          </div>
+          <div class="col-12">
+            <div class="validation-preview">
+              <div class="validation-preview-label mb-1">Preview</div>
+              <div class="validation-preview-value" id="validationRulePreview">No validation selected.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 py-2 px-3 d-flex gap-2">
+        <button type="button" class="btn btn-outline-danger btn-sm me-auto" id="validationRuleClearBtn">
+          <i class="bi bi-x-circle me-1"></i>Clear
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+          <i class="bi bi-x-lg me-1"></i>Close
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" id="validationRuleSaveBtn">
+          <i class="bi bi-save me-1"></i>Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+  // Shared inline-save status indicator
+  let _editStatusTimer = null;
+
+  function _esc(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function showEditStatus(state) {
+    const el = document.getElementById('editSaveStatus');
+    el.classList.remove('d-none', 'btn-warning', 'btn-success', 'btn-danger');
+    if (state === 'saving') {
+      el.classList.add('btn-warning');
+      el.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+    } else if (state === 'saved') {
+      el.classList.add('btn-success');
+      el.innerHTML = '<i class="bi bi-check-lg me-1"></i>Saved';
+    } else {
+      el.classList.add('btn-danger');
+      el.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Error';
+    }
+    if (_editStatusTimer) clearTimeout(_editStatusTimer);
+    if (state !== 'saving') {
+      _editStatusTimer = setTimeout(function() {
+        el.classList.add('d-none');
+      }, 1500);
+    }
+  }
+
+  // Inline data-entry editing
+  // ── Extract fill/select/check value from a Playwright code line ──────
+  function _extractValueFromPwCode(code) {
+    var m;
+    // .fill("value") or .fill('value')
+    m = code.match(/\.fill\(["']([\s\S]*?)["']\)/);
+    if (m) return m[1].replace(/\\"/g, '"').replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+    // .select_option(label="value")
+    m = code.match(/\.select_option\(label=["']([\s\S]*?)["']\)/);
+    if (m) return m[1];
+    // .select_option(value="value")
+    m = code.match(/\.select_option\(value=["']([\s\S]*?)["']\)/);
+    if (m) return m[1];
+    // .check() → 'true', .uncheck() → 'false'
+    if (/\.check\(\)/.test(code))   return 'true';
+    if (/\.uncheck\(\)/.test(code)) return 'false';
+    return null;
+  }
+
+  function saveDataEntry(stepNo, newValue, origValue, cell) {
+    if (newValue === origValue) return;
+    showEditStatus('saving');
+    fetch('/sessions/{{ record_id }}/steps/' + stepNo + '/update-data/', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+      body:    JSON.stringify({value: newValue, folder_name: '{{ folder_name|escapejs }}'})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      showEditStatus(data.ok ? 'saved' : 'error');
+      if (data.ok) {
+        syncDataDisplays(stepNo, data.field_name, data.field_value);
+        // Update Data cell display
+        if (cell) {
+          cell.dataset.curVal = data.field_value != null ? String(data.field_value) : newValue;
+          var t = cell.querySelector('.data-val-text');
+          if (t) t.textContent = data.field_value != null ? String(data.field_value) : newValue;
+        }
+        // Sync: update PW Code table cell
+        if (data.playwright_code !== undefined) {
+          var pwCell = document.querySelector('.pw-code-cell[data-step-no="' + stepNo + '"]');
+          if (pwCell) pwCell.textContent = data.playwright_code || '\u2014';
+        }
+        // Sync: update Steps column cell
+        if (data.steps_description !== undefined && data.steps_description) {
+          var stepsCell = document.querySelector('tr[data-step-no="' + stepNo + '"] td.cell-steps');
+          if (stepsCell) {
+            var truncated = data.steps_description.length > 40
+              ? data.steps_description.slice(0, 39) + '\u2026'
+              : data.steps_description;
+            stepsCell.textContent = truncated;
+            stepsCell.title = data.steps_description;
+          }
+        }
+        // Sync: refresh Playwright / Selenium Code panels
+        if (window.refreshPlaywrightCode) window.refreshPlaywrightCode();
+        if (window.refreshSeleniumCode)   window.refreshSeleniumCode();
+      }
+    })
+    .catch(function() { showEditStatus('error'); });
+  }
+
+  function _setDatasetCellDisplay(cell, value) {
+    if (!cell) return;
+    var nextValue = value != null ? String(value) : '';
+    cell.dataset.curVal = nextValue;
+    if (nextValue) {
+      cell.innerHTML = '<span class="d-inline-flex align-items-center gap-1"><code>' + _esc(nextValue) + '</code><i class="bi bi-pencil text-muted" style="font-size:.65rem;opacity:.45;"></i></span>';
+    } else {
+      cell.innerHTML = '<span class="text-muted d-inline-flex align-items-center gap-1">&mdash;<i class="bi bi-pencil" style="font-size:.65rem;opacity:.35;"></i></span>';
+    }
+  }
+
+  function _renderStepNameCell(cell, value) {
+    if (!cell) return;
+    var nextValue = value != null ? String(value) : '';
+    var shortValue = nextValue.length > 45 ? nextValue.slice(0, 45) + '\u2026' : nextValue;
+    cell.dataset.curVal = nextValue;
+    cell.innerHTML = '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px;">' +
+      (nextValue ? '<span title="' + _esc(nextValue) + '">' + _esc(shortValue) + '</span>' : '<span class="text-muted">&mdash;</span>') +
+      '</div>';
+  }
+
+  function syncDataDisplays(stepNo, fieldName, fieldValue) {
+    var datasetRow = document.querySelector('#sessionTabData tr[data-step-no="' + stepNo + '"]');
+    if (datasetRow) {
+      _setDatasetCellDisplay(datasetRow.querySelector('.dataset-field-cell'), fieldName || '');
+      _setDatasetCellDisplay(datasetRow.querySelector('.dataset-value-cell'), fieldValue || '');
+    }
+    var nameCell = document.querySelector('.step-field-name-cell[data-step-no="' + stepNo + '"]');
+    if (nameCell) {
+      var safeName = fieldName != null ? String(fieldName) : '';
+      _renderStepNameCell(nameCell, safeName);
+    }
+    var dataCell = document.querySelector('.cell-data-editable[data-step-no-val="' + stepNo + '"]');
+    if (dataCell && fieldValue != null) {
+      var safeValue = String(fieldValue);
+      dataCell.dataset.curVal = safeValue;
+      dataCell.title = safeValue;
+      var dataText = dataCell.querySelector('.data-val-text');
+      if (dataText) dataText.textContent = safeValue.length > 40 ? safeValue.slice(0, 40) + '\u2026' : safeValue;
+    }
+  }
+
+  function _showDuplicateWarning(cell, msg) {
+    var existing = cell.querySelector('.fd-dup-msg');
+    if (existing) existing.remove();
+    var badge = document.createElement('span');
+    badge.className = 'badge bg-danger ms-1 fd-dup-msg';
+    badge.style.cssText = 'font-size:.65rem;vertical-align:middle;';
+    badge.textContent = msg;
+    cell.appendChild(badge);
+    setTimeout(function() { badge.remove(); }, 3000);
+  }
+
+  function saveDatasetEntry(stepNo, dataId, kind, newValue, origValue, cell) {
+    if (newValue === origValue) {
+      if (cell.classList.contains('step-field-name-editable')) {
+        _renderStepNameCell(cell, origValue);
+      } else {
+        _setDatasetCellDisplay(cell, origValue);
+      }
+      return;
+    }
+    var payload = {data_id: dataId};
+    payload[kind] = newValue;
+    showEditStatus('saving');
+    fetch('/sessions/{{ record_id }}/steps/' + stepNo + '/update-data/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+      body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) {
+        if (data.duplicate) {
+          showEditStatus('error');
+          _showDuplicateWarning(cell, data.message || 'Name already taken');
+        } else {
+          showEditStatus('error');
+        }
+        if (cell.classList.contains('step-field-name-editable')) {
+          _renderStepNameCell(cell, origValue);
+        } else {
+          _setDatasetCellDisplay(cell, origValue);
+        }
+        return;
+      }
+      showEditStatus('saved');
+      syncDataDisplays(stepNo, data.field_name, data.field_value);
+      if (data.playwright_code !== undefined) {
+        var pwCell = document.querySelector('.pw-code-cell[data-step-no="' + stepNo + '"]');
+        if (pwCell) pwCell.textContent = data.playwright_code || '\u2014';
+      }
+      if (data.steps_description !== undefined && data.steps_description) {
+        var stepsCell = document.querySelector('tr[data-step-no="' + stepNo + '"] td.cell-steps');
+        if (stepsCell) {
+          var truncated = data.steps_description.length > 40 ? data.steps_description.slice(0, 39) + '\u2026' : data.steps_description;
+          stepsCell.textContent = truncated;
+          stepsCell.title = data.steps_description;
+        }
+      }
+      if (window.refreshPlaywrightCode) window.refreshPlaywrightCode();
+      if (window.refreshSeleniumCode) window.refreshSeleniumCode();
+    })
+    .catch(function() {
+      if (cell.classList.contains('step-field-name-editable')) {
+        _renderStepNameCell(cell, origValue);
+      } else {
+        _setDatasetCellDisplay(cell, origValue);
+      }
+      showEditStatus('error');
+    });
+  }
+
+  function _bindDataEdit(cell) {
+    cell.addEventListener('click', function() {
+      if (cell.querySelector('input.data-edit-inp')) return;
+      var view = cell.querySelector('.data-val-view');
+      var cur  = cell.dataset.curVal !== undefined ? cell.dataset.curVal : '';
+      if (view) view.style.display = 'none';
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'form-control form-control-sm data-edit-inp';
+      inp.value = cur;
+      inp.style.cssText = 'min-width:80px;max-width:100%;';
+      cell.appendChild(inp);
+      inp.focus(); inp.select();
+      function _done() {
+        var newVal = inp.value;
+        inp.remove();
+        if (view) {
+          view.style.display = '';
+          var dataText = view.querySelector('.data-val-text');
+          if (dataText) dataText.textContent = newVal.length > 40 ? newVal.slice(0, 40) + '\u2026' : (newVal || '\u2014');
+        }
+        cell.dataset.curVal = newVal;
+        cell.title = newVal;
+        saveDataEntry(cell.dataset.stepNoVal, newVal, cur, cell);
+      }
+      inp.addEventListener('blur', _done);
+      inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
+        if (e.key === 'Escape') { e.stopPropagation(); inp.value = cur; inp.blur(); }
+      });
+    });
+  }
+
+  document.querySelectorAll('.cell-data-editable').forEach(_bindDataEdit);
+
+  // ── Global names cache for autocomplete ──
+  var _globalNamesCache = null;
+  function _fetchGlobalNames(cb) {
+    if (_globalNamesCache !== null) { cb(_globalNamesCache); return; }
+    fetch('/api/data/global-names/?folder_name=' + encodeURIComponent('{{ folder_name|escapejs }}'))
+      .then(function(r) { return r.json(); })
+      .then(function(data) { _globalNamesCache = data.names || []; cb(_globalNamesCache); })
+      .catch(function() { _globalNamesCache = []; cb([]); });
+  }
+
+  function _showGlobalSuggestions(input, cell) {
+    var existing = cell.querySelector('.fd-global-dropdown');
+    if (existing) existing.remove();
+    _fetchGlobalNames(function(names) {
+      if (!names.length) return;
+      var query = (input.value || '').toLowerCase();
+      var filtered = names.filter(function(n) { return n.toLowerCase().indexOf(query) !== -1; });
+      if (!filtered.length) { var dd = cell.querySelector('.fd-global-dropdown'); if (dd) dd.remove(); cell.style.overflow = 'hidden'; return; }
+      var dropdown = document.createElement('div');
+      dropdown.className = 'fd-global-dropdown';
+      dropdown.style.cssText = 'position:absolute;top:100%;left:0;z-index:1050;background:#fff;border:1px solid #dee2e6;border-radius:.35rem;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.15);font-size:.8rem;min-width:160px;';
+      filtered.forEach(function(name) {
+        var item = document.createElement('div');
+        item.className = 'px-2 py-1';
+        item.style.cssText = 'cursor:pointer;';
+        item.textContent = name;
+        item.addEventListener('mouseenter', function() { item.style.background = '#e9ecef'; });
+        item.addEventListener('mouseleave', function() { item.style.background = ''; });
+        item.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          input.value = name;
+          dropdown.remove();
+          cell.style.overflow = 'hidden';
+          input.blur();
+        });
+        dropdown.appendChild(item);
+      });
+      cell.style.position = 'relative';
+      cell.style.overflow = 'visible';
+      cell.appendChild(dropdown);
+    });
+  }
+
+  function _bindDatasetEdit(cell) {
+    cell.addEventListener('click', function() {
+      if (cell.querySelector('input.dataset-edit-inp')) return;
+      var cur = cell.dataset.curVal !== undefined ? cell.dataset.curVal : '';
+      var isNameCell = (cell.dataset.editKind === 'field_name');
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'form-control form-control-sm dataset-edit-inp';
+      input.value = cur;
+      input.style.cssText = 'min-width:120px;max-width:100%;';
+      cell.innerHTML = '';
+      cell.appendChild(input);
+      input.focus();
+      input.select();
+      if (isNameCell) {
+        _showGlobalSuggestions(input, cell);
+        input.addEventListener('input', function() { _showGlobalSuggestions(input, cell); });
+      }
+      function done() {
+        var nextValue = input.value;
+        var dd = cell.querySelector('.fd-global-dropdown');
+        if (dd) dd.remove();
+        cell.style.overflow = 'hidden';
+        input.remove();
+        _setDatasetCellDisplay(cell, nextValue);
+        saveDatasetEntry(cell.dataset.stepNo, cell.dataset.dataId, cell.dataset.editKind || 'value', nextValue, cur, cell);
+      }
+      input.addEventListener('blur', done);
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.stopPropagation(); input.value = cur; input.blur(); }
+      });
+    });
+  }
+
+  document.querySelectorAll('.dataset-editable').forEach(_bindDatasetEdit);
+
+  function _bindStepNameEdit(cell) {
+    cell.addEventListener('click', function() {
+      if (cell.querySelector('input.step-name-edit-inp')) return;
+      var cur = cell.dataset.curVal !== undefined ? cell.dataset.curVal : '';
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'form-control form-control-sm step-name-edit-inp';
+      input.value = cur;
+      input.style.cssText = 'min-width:120px;max-width:100%;';
+      cell.innerHTML = '';
+      cell.appendChild(input);
+      input.focus();
+      input.select();
+      _showGlobalSuggestions(input, cell);
+      input.addEventListener('input', function() { _showGlobalSuggestions(input, cell); });
+      function done() {
+        var nextValue = input.value;
+        var dd = cell.querySelector('.fd-global-dropdown');
+        if (dd) dd.remove();
+        cell.style.overflow = 'hidden';
+        input.remove();
+        _renderStepNameCell(cell, nextValue);
+        saveDatasetEntry(cell.dataset.stepNo, cell.dataset.dataId, 'field_name', nextValue, cur, cell);
+      }
+      input.addEventListener('blur', done);
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.stopPropagation(); input.value = cur; input.blur(); }
+      });
+    });
+  }
+
+  document.querySelectorAll('.step-field-name-editable').forEach(_bindStepNameEdit);
+
+  // ── Validation Rule Modal ──────────────────────────────────────────────
+  let _validationRuleModal = null;
+  let _activeValidationCell = null;
+  const validationRuleModalEl = document.getElementById('validationRuleModal');
+  const validationRuleStepLabel = document.getElementById('validationRuleModalStepLabel');
+  const validationRuleCategory = document.getElementById('validationRuleCategory');
+  const validationRuleOperator = document.getElementById('validationRuleOperator');
+  const validationRuleValue1Group = document.getElementById('validationRuleValue1Group');
+  const validationRuleValue2Group = document.getElementById('validationRuleValue2Group');
+  const validationRuleValue1Label = document.getElementById('validationRuleValue1Label');
+  const validationRuleValue2Label = document.getElementById('validationRuleValue2Label');
+  const validationRuleValue1 = document.getElementById('validationRuleValue1');
+  const validationRuleValue2 = document.getElementById('validationRuleValue2');
+  const validationRuleHint = document.getElementById('validationRuleHint');
+  const validationRulePreview = document.getElementById('validationRulePreview');
+  const validationRuleSaveBtn = document.getElementById('validationRuleSaveBtn');
+  const validationRuleClearBtn = document.getElementById('validationRuleClearBtn');
+
+  const VALIDATION_RULES = {
+    'General / Text': {
+      hint: 'Compare text values using common string operators.',
+      operators: {
+        'Equals':           { valueCount: 1, value1Label: 'Value' },
+        'Does not equal':   { valueCount: 1, value1Label: 'Value' },
+        'Contains':         { valueCount: 1, value1Label: 'Value' },
+        'Does not contain': { valueCount: 1, value1Label: 'Value' },
+        'Starts with':      { valueCount: 1, value1Label: 'Value' },
+        'Ends with':        { valueCount: 1, value1Label: 'Value' },
+        'Is empty':         { valueCount: 0 },
+        'Is not empty':     { valueCount: 0 }
+      }
+    },
+    'Number': {
+      hint: 'Use numeric comparisons for amounts, counters, and other number fields.',
+      operators: {
+        'Equals':                    { valueCount: 1, value1Label: 'Number' },
+        'Does not equal':            { valueCount: 1, value1Label: 'Number' },
+        'Greater than':              { valueCount: 1, value1Label: 'Number' },
+        'Greater than or equal to':  { valueCount: 1, value1Label: 'Number' },
+        'Less than':                 { valueCount: 1, value1Label: 'Number' },
+        'Less than or equal to':     { valueCount: 1, value1Label: 'Number' },
+        'Between':     { valueCount: 2, value1Label: 'From', value2Label: 'To' },
+        'Not between': { valueCount: 2, value1Label: 'From', value2Label: 'To' }
+      }
+    },
+    'Date / Time': {
+      hint: 'Use calendar and relative date comparisons for date or time values.',
+      operators: {
+        'On':           { valueCount: 1, value1Label: 'Date / time' },
+        'Not on':       { valueCount: 1, value1Label: 'Date / time' },
+        'Before':       { valueCount: 1, value1Label: 'Date / time' },
+        'After':        { valueCount: 1, value1Label: 'Date / time' },
+        'On or before': { valueCount: 1, value1Label: 'Date / time' },
+        'On or after':  { valueCount: 1, value1Label: 'Date / time' },
+        'Between':      { valueCount: 2, value1Label: 'Start date', value2Label: 'End date' },
+        'Today':        { valueCount: 0 },
+        'Yesterday':    { valueCount: 0 },
+        'Last 7 days':  { valueCount: 0 },
+        'Last 30 days': { valueCount: 0 },
+        'This month':   { valueCount: 0 },
+        'This year':    { valueCount: 0 }
+      }
+    },
+    'Boolean': {
+      hint: 'Use a simple true or false check when the value is boolean.',
+      operators: {
+        'Is true':  { valueCount: 0 },
+        'Is false': { valueCount: 0 }
+      }
+    }
+  };
+
+  function _ensureValidationRuleModal() {
+    if (!_validationRuleModal && validationRuleModalEl) {
+      _validationRuleModal = new bootstrap.Modal(validationRuleModalEl);
+    }
+    return _validationRuleModal;
+  }
+
+  function _updateValidationCellDisplay(cell, newValue) {
+    if (!cell) return;
+    cell.dataset.curVal = newValue;
+    var badge = cell.querySelector('.validation-badge');
+    var empty = cell.querySelector('.validation-empty');
+    if ((newValue || '').trim()) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'badge bg-info text-dark validation-badge';
+        badge.style.cssText = 'font-size:.68rem;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        var view = cell.querySelector('.validation-view');
+        if (view) view.prepend(badge);
+      }
+      badge.textContent = newValue;
+      badge.title = newValue;
+      badge.style.display = '';
+      if (empty) empty.style.display = 'none';
+    } else {
+      if (badge) badge.style.display = 'none';
+      if (!empty) {
+        empty = document.createElement('span');
+        empty.className = 'text-muted validation-empty';
+        empty.style.cssText = 'font-size:.75rem;';
+        empty.textContent = '\u2014';
+        var view2 = cell.querySelector('.validation-view');
+        if (view2) view2.prepend(empty);
+      } else { empty.style.display = ''; }
+    }
+  }
+
+  function saveValidation(stepNo, newValue, cell) {
+    showEditStatus('saving');
+    return fetch('/sessions/{{ record_id }}/steps/' + stepNo + '/update-validation/', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+      body:    JSON.stringify({validation: newValue})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      showEditStatus(data.ok ? 'saved' : 'error');
+      if (data.ok) { _updateValidationCellDisplay(cell, newValue); }
+      return !!data.ok;
+    })
+    .catch(function() { showEditStatus('error'); return false; });
+  }
+
+  function _getValidationOperatorConfig(category, operator) {
+    var categoryConfig = VALIDATION_RULES[category] || {};
+    return (categoryConfig.operators || {})[operator] || null;
+  }
+
+  function _populateValidationCategoryOptions(selectedCategory) {
+    if (!validationRuleCategory) return;
+    validationRuleCategory.innerHTML = '';
+    Object.keys(VALIDATION_RULES).forEach(function(category) {
+      var option = document.createElement('option');
+      option.value = category;
+      option.textContent = category;
+      if (category === selectedCategory) option.selected = true;
+      validationRuleCategory.appendChild(option);
+    });
+  }
+
+  function _populateValidationOperatorOptions(category, selectedOperator) {
+    if (!validationRuleOperator) return;
+    validationRuleOperator.innerHTML = '';
+    var operators = Object.keys((VALIDATION_RULES[category] || {}).operators || {});
+    operators.forEach(function(operator, index) {
+      var option = document.createElement('option');
+      option.value = operator;
+      option.textContent = operator;
+      if (operator === selectedOperator || (!selectedOperator && index === 0)) option.selected = true;
+      validationRuleOperator.appendChild(option);
+    });
+  }
+
+  function _serializeValidationRule(category, operator, value1, value2) {
+    if (!category || !operator) return '';
+    var operatorConfig = _getValidationOperatorConfig(category, operator);
+    if (!operatorConfig) return '';
+    var parts = [category, operator];
+    var first = String(value1 || '').trim();
+    var second = String(value2 || '').trim();
+    if (operatorConfig.valueCount >= 1 && first) parts.push(first);
+    if (operatorConfig.valueCount >= 2 && second) parts.push(second);
+    return parts.join(' | ');
+  }
+
+  function _parseValidationRule(rawValue) {
+    var fallback = { category: 'General / Text', operator: 'Equals', value1: '', value2: '' };
+    var value = String(rawValue || '').trim();
+    if (!value) return fallback;
+    var parts = value.split(' | ');
+    if (parts.length >= 2 && VALIDATION_RULES[parts[0]] && _getValidationOperatorConfig(parts[0], parts[1])) {
+      return { category: parts[0], operator: parts[1], value1: parts[2] || '', value2: parts[3] || '' };
+    }
+    fallback.value1 = value;
+    return fallback;
+  }
+
+  function _refreshValidationRuleForm() {
+    if (!validationRuleCategory || !validationRuleOperator) return;
+    var category = validationRuleCategory.value;
+    var operator = validationRuleOperator.value;
+    var operatorConfig = _getValidationOperatorConfig(category, operator);
+    if (!operatorConfig) return;
+    if (validationRuleHint) validationRuleHint.textContent = VALIDATION_RULES[category].hint || '';
+    if (validationRuleValue1Label) validationRuleValue1Label.textContent = operatorConfig.value1Label || 'Value';
+    if (validationRuleValue2Label) validationRuleValue2Label.textContent = operatorConfig.value2Label || 'Second value';
+    if (validationRuleValue1Group) validationRuleValue1Group.classList.toggle('d-none', operatorConfig.valueCount < 1);
+    if (validationRuleValue2Group) validationRuleValue2Group.classList.toggle('d-none', operatorConfig.valueCount < 2);
+    if (validationRuleValue1) validationRuleValue1.placeholder = operatorConfig.value1Label ? ('Enter ' + operatorConfig.value1Label.toLowerCase()) : 'Enter value';
+    if (validationRuleValue2) validationRuleValue2.placeholder = operatorConfig.value2Label ? ('Enter ' + operatorConfig.value2Label.toLowerCase()) : 'Enter second value';
+    if (validationRulePreview) {
+      var previewValue = _serializeValidationRule(
+        category, operator,
+        validationRuleValue1 && !validationRuleValue1Group.classList.contains('d-none') ? validationRuleValue1.value : '',
+        validationRuleValue2 && !validationRuleValue2Group.classList.contains('d-none') ? validationRuleValue2.value : ''
+      );
+      validationRulePreview.textContent = previewValue || 'No validation selected.';
+    }
+  }
+
+  function _openValidationRuleModal(cell) {
+    if (!cell || !validationRuleCategory || !validationRuleOperator) return;
+    _activeValidationCell = cell;
+    var parsed = _parseValidationRule(cell.dataset.curVal !== undefined ? cell.dataset.curVal : '');
+    _populateValidationCategoryOptions(parsed.category);
+    _populateValidationOperatorOptions(parsed.category, parsed.operator);
+    if (validationRuleValue1) validationRuleValue1.value = parsed.value1;
+    if (validationRuleValue2) validationRuleValue2.value = parsed.value2;
+    if (validationRuleStepLabel) {
+      validationRuleStepLabel.textContent = cell.dataset.stepNoVal ? ('Step ' + cell.dataset.stepNoVal + ' validation rule') : 'Validation rule';
+    }
+    _refreshValidationRuleForm();
+    var modal = _ensureValidationRuleModal();
+    if (modal) modal.show();
+  }
+
+  function _bindValidationEdit(cell) {
+    cell.addEventListener('click', function() { _openValidationRuleModal(cell); });
+  }
+
+  document.querySelectorAll('.cell-validation').forEach(_bindValidationEdit);
+
+  if (validationRuleCategory) {
+    validationRuleCategory.addEventListener('change', function() {
+      _populateValidationOperatorOptions(validationRuleCategory.value, '');
+      if (validationRuleValue1) validationRuleValue1.value = '';
+      if (validationRuleValue2) validationRuleValue2.value = '';
+      _refreshValidationRuleForm();
+    });
+  }
+  if (validationRuleOperator) validationRuleOperator.addEventListener('change', _refreshValidationRuleForm);
+  if (validationRuleValue1) validationRuleValue1.addEventListener('input', _refreshValidationRuleForm);
+  if (validationRuleValue2) validationRuleValue2.addEventListener('input', _refreshValidationRuleForm);
+
+  if (validationRuleModalEl) {
+    validationRuleModalEl.addEventListener('shown.bs.modal', function() {
+      if (validationRuleValue1 && !validationRuleValue1Group.classList.contains('d-none')) {
+        validationRuleValue1.focus(); validationRuleValue1.select();
+      }
+    });
+    validationRuleModalEl.addEventListener('hidden.bs.modal', function() {
+      _activeValidationCell = null;
+      if (validationRuleSaveBtn) {
+        validationRuleSaveBtn.disabled = false;
+        validationRuleSaveBtn.innerHTML = '<i class="bi bi-save me-1"></i>Save';
+      }
+    });
+  }
+
+  if (validationRuleSaveBtn) {
+    validationRuleSaveBtn.addEventListener('click', function() {
+      if (!_activeValidationCell) return;
+      var cell = _activeValidationCell;
+      var current = cell.dataset.curVal !== undefined ? cell.dataset.curVal : '';
+      var nextValue = _serializeValidationRule(
+        validationRuleCategory ? validationRuleCategory.value : '',
+        validationRuleOperator ? validationRuleOperator.value : '',
+        validationRuleValue1   ? validationRuleValue1.value   : '',
+        validationRuleValue2   ? validationRuleValue2.value   : ''
+      );
+      validationRuleSaveBtn.disabled = true;
+      validationRuleSaveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+      if (nextValue === current) {
+        var m = _ensureValidationRuleModal(); if (m) m.hide(); return;
+      }
+      saveValidation(cell.dataset.stepNoVal, nextValue, cell).then(function(ok) {
+        if (ok) { var m2 = _ensureValidationRuleModal(); if (m2) m2.hide(); }
+        else { validationRuleSaveBtn.disabled = false; validationRuleSaveBtn.innerHTML = '<i class="bi bi-save me-1"></i>Save'; }
+      });
+    });
+  }
+
+  if (validationRuleClearBtn) {
+    validationRuleClearBtn.addEventListener('click', function() {
+      if (!_activeValidationCell) return;
+      validationRuleSaveBtn.disabled = true;
+      validationRuleSaveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+      saveValidation(_activeValidationCell.dataset.stepNoVal, '', _activeValidationCell).then(function(ok) {
+        if (ok) {
+          if (validationRuleValue1) validationRuleValue1.value = '';
+          if (validationRuleValue2) validationRuleValue2.value = '';
+          _refreshValidationRuleForm();
+          var m = _ensureValidationRuleModal(); if (m) m.hide();
+        } else {
+          validationRuleSaveBtn.disabled = false;
+          validationRuleSaveBtn.innerHTML = '<i class="bi bi-save me-1"></i>Save';
+        }
+      });
+    });
+  }
+
+
+
+    // Inline locator-value editing
+  function _truncLoc(v) { return v.length > 30 ? v.slice(0, 30) + '\u2026' : v; }
+
+  function saveLocatorValue(cell) {
+    const stepNo   = cell.dataset.stepNoVal;
+    const locId    = cell.dataset.locId;
+    const newValue = cell.textContent.trim();
+    const orig     = cell.dataset.origValue;
+    cell.textContent = _truncLoc(newValue);
+    if (newValue === orig) return;
+    cell.dataset.origValue = newValue;
+    cell.dataset.fullValue = newValue;
+
+    cell.style.outline = '2px solid #ffc107';
+    showEditStatus('saving');
+    fetch('/sessions/{{ record_id }}/steps/' + stepNo + '/update-locator/', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+      body:    JSON.stringify({locator_id: parseInt(locId), value: newValue})
+    })
+    .then(r => r.json())
+    .then(data => {
+      const ok = !!data.ok;
+      cell.style.outline = ok ? '2px solid #198754' : '2px solid #dc3545';
+      showEditStatus(ok ? 'saved' : 'error');
+      setTimeout(function() { cell.style.outline = ''; }, 1200);
+    })
+    .catch(function() {
+      cell.style.outline = '2px solid #dc3545';
+      showEditStatus('error');
+      setTimeout(function() { cell.style.outline = ''; }, 1200);
+    });
+  }
+
+  // Strategy dropdown: set primary locator
+  document.querySelectorAll('.strategy-select').forEach(function(sel) {
+    sel.addEventListener('change', function() {
+      const recordId = this.dataset.recordId;
+      const stepNo   = this.dataset.stepNo;
+      const strategy = this.value;
+      const row      = this.closest('tr');
+      showEditStatus('saving');
+      fetch('/sessions/' + recordId + '/steps/' + stepNo + '/set-primary-locator/', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body:    JSON.stringify({strategy: strategy}),
+      })
+      .then(r => r.json())
+      .then(function(data) {
+        if (!data.ok) { showEditStatus('error'); return; }
+        showEditStatus('saved');
+        const locCell = row.querySelector('.loc-value-cell');
+        if (locCell && data.locator !== undefined) {
+          const full = data.locator;
+          locCell.dataset.fullValue = full;
+          locCell.dataset.origValue = full;
+          locCell.dataset.locId     = data.locator_id;
+          locCell.textContent       = _truncLoc(full);
+          locCell.title             = full;
+        }
+      })
+      .catch(function() { showEditStatus('error'); });
+    });
+  });
+
+  // ── Playwright Identity: click row to set primary locator ───────────
+  document.querySelectorAll('.pw-identity-cell').forEach(function(cell) {
+    cell.addEventListener('click', function(e) {
+      const locRow = e.target.closest('.pw-loc-row');
+      if (!locRow) return;
+      if (locRow.dataset.primary === 'true') return; // already primary
+      const recordId = locRow.dataset.recordId;
+      const stepNo   = locRow.dataset.stepNo;
+      const strategy = locRow.dataset.strategy;
+      showEditStatus('saving');
+      fetch('/sessions/' + recordId + '/steps/' + stepNo + '/set-primary-locator/', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body:    JSON.stringify({strategy: strategy}),
+      })
+      .then(r => r.json())
+      .then(function(data) {
+        if (!data.ok) { showEditStatus('error'); return; }
+        showEditStatus('saved');
+        // Update radio icons and badges in this cell
+        cell.querySelectorAll('.pw-loc-row').forEach(function(r) {
+          const isPrimary = r.dataset.strategy === strategy;
+          r.dataset.primary = isPrimary ? 'true' : 'false';
+          const icon = r.querySelector('.pw-loc-radio');
+          if (icon) {
+            icon.className = isPrimary
+              ? 'bi bi-record-circle-fill text-primary pw-loc-radio'
+              : 'bi bi-circle text-muted pw-loc-radio';
+          }
+          const badge = r.querySelector('.pw-loc-badge');
+          if (badge) {
+            if (isPrimary) {
+              badge.classList.remove('bg-secondary', 'opacity-75');
+              badge.classList.add('bg-primary');
+            } else {
+              badge.classList.remove('bg-primary');
+              badge.classList.add('bg-secondary', 'opacity-75');
+            }
+          }
+        });
+        // Refresh PW Code cell and panel since locator changed
+        if (data.playwright_code !== undefined) {
+          var pwCell = document.querySelector('.pw-code-cell[data-step-no="' + stepNo + '"]');
+          if (pwCell) pwCell.textContent = data.playwright_code || '\u2014';
+        }
+        if (window.refreshPlaywrightCode) window.refreshPlaywrightCode();
+        if (window.refreshSeleniumCode)   window.refreshSeleniumCode();
+        // Auto-refresh the page so all columns reflect the updated primary locator
+        setTimeout(function() { window.location.reload(); }, 400);
+      })
+      .catch(function() { showEditStatus('error'); });
+    });
+  });
+
+  document.querySelectorAll('.loc-value-cell').forEach(function(cell) {
+    const fullVal = cell.dataset.fullValue || cell.textContent.trim();
+    cell.dataset.origValue = fullVal;
+    cell.dataset.fullValue = fullVal;
+    cell.textContent = _truncLoc(fullVal);
+    cell.addEventListener('focus', function() { this.textContent = this.dataset.fullValue; });
+    cell.addEventListener('blur', function() { saveLocatorValue(this); });
+    cell.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
+      if (e.key === 'Escape') { e.stopPropagation(); this.textContent = this.dataset.origValue; this.blur(); }
+    });
+  });
+
+  // Direct AJAX step delete
+  const tbody = document.querySelector('table tbody');
+
+  if (tbody) {
+    tbody.addEventListener('click', function(e) {
+      const btn = e.target.closest('.delete-step-btn');
+      if (!btn) return;
+      const row      = btn.closest('tr');
+      const stepNo   = row.dataset.stepNo;
+      const recordId = btn.dataset.recordId;
+      btn.disabled = true;
+      fetch('/sessions/' + recordId + '/steps/' + stepNo + '/delete/', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': '{{ csrf_token }}',
+          'Accept': 'application/json',
+        }
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          row.remove();
+          const remaining = document.querySelectorAll('table tbody tr[data-step-no]');
+          remaining.forEach(function(tr, idx) {
+            tr.dataset.stepNo = idx + 1;
+            const cell = tr.querySelector('.step-no-cell');
+            if (cell) cell.textContent = idx + 1;
+          });
+          if (window.refreshPlaywrightCode) window.refreshPlaywrightCode();
+          if (window.refreshSeleniumCode)   window.refreshSeleniumCode();
+          if (remaining.length === 0) {
+            document.querySelector('.card')?.remove();
+            document.querySelector('form[action*="replay"]')?.closest('form')?.remove();
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'text-center py-5 text-muted';
+            emptyDiv.innerHTML = '<i class="bi bi-inbox" style="font-size:3rem;"></i><p class="mt-2">No steps found for this session.</p>';
+            document.getElementById('editSaveStatus')?.closest('.d-flex.gap-2')?.remove();
+            document.querySelector('.page-header-shell').insertAdjacentElement('afterend', emptyDiv);
+          }
+        } else {
+          btn.disabled = false;
+        }
+      })
+      .catch(function() { btn.disabled = false; });
+    });
+  }
+
+  // Drag-and-drop row reordering
+  {% if request.user.is_superuser or folder_name != "Recordings" %}
+  if (tbody) {
+    Sortable.create(tbody, {
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'table-warning',
+    onEnd: function() {
+      const rows = tbody.querySelectorAll('tr');
+      rows.forEach(function(tr, idx) {
+        const cell = tr.querySelector('.step-no-cell');
+        if (cell) cell.textContent = idx + 1;
+      });
+      saveOrder();
+    }
+    });
+  }
+  {% endif %}
+
+  function saveOrder() {
+    if (!tbody) return;
+    const rows = tbody.querySelectorAll('tr[data-step-no]');
+    const order = Array.from(rows).map(tr => parseInt(tr.dataset.stepNo));
+    const btn = document.getElementById('saveOrderBtn');
+    btn.classList.remove('d-none', 'btn-success', 'btn-danger');
+    btn.classList.add('btn-warning');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+
+    fetch('{% url "reorder_steps" record_id %}', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+      body: JSON.stringify({order: order, folder_name: '{{ folder_name|escapejs }}'})
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        const savedRows = Array.from(tbody.querySelectorAll('tr[data-step-no]'));
+        savedRows.forEach(function(tr, idx) {
+          tr.dataset.stepNo = idx + 1;
+        });
+        savedRows.sort(function(a, b) {
+          return parseInt(a.dataset.stepNo) - parseInt(b.dataset.stepNo);
+        });
+        savedRows.forEach(function(tr) {
+          tbody.appendChild(tr);
+          const cell = tr.querySelector('.step-no-cell');
+          if (cell) cell.textContent = tr.dataset.stepNo;
+        });
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> Saved';
+        btn.classList.replace('btn-warning', 'btn-success');
+        if (window.refreshPlaywrightCode) window.refreshPlaywrightCode();
+        if (window.refreshSeleniumCode)   window.refreshSeleniumCode();
+        setTimeout(function() {
+          btn.classList.add('d-none');
+          btn.classList.replace('btn-success', 'btn-warning');
+          btn.innerHTML = '<i class="bi bi-save"></i> Save Order';
+          btn.disabled = false;
+        }, 1500);
+      } else {
+        btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Error';
+        btn.classList.replace('btn-warning', 'btn-danger');
+        btn.disabled = false;
+      }
+    })
+    .catch(function() {
+      btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Error';
+      btn.classList.replace('btn-warning', 'btn-danger');
+      btn.disabled = false;
+    });
+  }
+
+  // ── Bulk checkbox selection & delete ──────────────────────────────────
+  const selectAllCb   = document.getElementById('selectAllCb');
+  const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+  const bulkCountEl   = document.getElementById('bulkDeleteCount');
+
+  function updateBulkUI() {
+    const checked = document.querySelectorAll('.row-cb:checked');
+    const n = checked.length;
+    bulkDeleteBtn.classList.toggle('d-none', n === 0);
+    if (bulkCountEl) bulkCountEl.textContent = n;
+    const totalCbs = document.querySelectorAll('.row-cb').length;
+    if (selectAllCb) {
+      selectAllCb.indeterminate = n > 0 && n < totalCbs;
+      selectAllCb.checked = n > 0 && n === totalCbs;
+    }
+    // Hide/show Play, Replay & Continue, Record More when rows are selected
+    const hasSelection = n > 0;
+    const playForm = document.getElementById('playForm');
+    const replayContinueForm = document.getElementById('replayContinueForm');
+    const addStepBtn = document.getElementById('addStepBtn');
+    const addEventsBtn = document.getElementById('addEventsBtn');
+    if (playForm) playForm.classList.toggle('d-none', hasSelection);
+    if (replayContinueForm) replayContinueForm.classList.toggle('d-none', hasSelection);
+    if (addStepBtn) addStepBtn.classList.toggle('d-none', hasSelection);
+    if (addEventsBtn) addEventsBtn.classList.toggle('d-none', hasSelection);
+    // Highlight selected rows
+    document.querySelectorAll('tbody tr').forEach(function(tr) {
+      const cb = tr.querySelector('.row-cb');
+      tr.classList.toggle('row-selected', !!(cb && cb.checked));
+    });
+  }
+
+  if (selectAllCb) {
+    selectAllCb.addEventListener('change', function() {
+      document.querySelectorAll('.row-cb').forEach(function(cb) {
+        cb.checked = selectAllCb.checked;
+      });
+      updateBulkUI();
+    });
+  }
+
+  document.querySelectorAll('.row-cb').forEach(function(cb) {
+    cb.addEventListener('change', updateBulkUI);
+  });
+
+  // ── Bulk delete modal wiring ─────────────────────────────────────────
+  let _pendingDeleteStepNos = [];
+  let _bulkModal            = null;   // lazily created after Bootstrap JS loads
+  const bulkDeleteConfirm = document.getElementById('bulkDeleteConfirmBtn');
+  const bulkModalCount    = document.getElementById('bulkDeleteModalCount');
+
+  if (bulkDeleteBtn) {
+    bulkDeleteBtn.addEventListener('click', function() {
+      _pendingDeleteStepNos = Array.from(document.querySelectorAll('.row-cb:checked'))
+                                   .map(function(cb) { return parseInt(cb.value); });
+      if (_pendingDeleteStepNos.length === 0) return;
+      if (bulkModalCount) bulkModalCount.textContent = _pendingDeleteStepNos.length;
+      // Reset confirm button state
+      bulkDeleteConfirm.disabled = false;
+      bulkDeleteConfirm.innerHTML = '<i class="bi bi-trash me-1"></i>Delete Steps';
+      if (!_bulkModal) _bulkModal = new bootstrap.Modal(document.getElementById('bulkDeleteModal'));
+      _bulkModal.show();
+    });
+  }
+
+  if (bulkDeleteConfirm) {
+    bulkDeleteConfirm.addEventListener('click', function() {
+      if (_pendingDeleteStepNos.length === 0) return;
+      bulkDeleteConfirm.disabled = true;
+      bulkDeleteConfirm.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
+      bulkDeleteBtn.disabled = true;
+      fetch('/sessions/{{ record_id }}/steps/bulk-delete/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body: JSON.stringify({step_nos: _pendingDeleteStepNos})
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        _bulkModal.hide();
+        if (data.ok) {
+          window.location.reload();
+        } else {
+          bulkDeleteBtn.disabled = false;
+          bulkDeleteConfirm.disabled = false;
+          bulkDeleteConfirm.innerHTML = '<i class="bi bi-trash me-1"></i>Delete Steps';
+        }
+      })
+      .catch(function() {
+        _bulkModal.hide();
+        bulkDeleteBtn.disabled = false;
+        bulkDeleteConfirm.disabled = false;
+        bulkDeleteConfirm.innerHTML = '<i class="bi bi-trash me-1"></i>Delete Steps';
+      });
+    });
+  }
+
+  // ── Column-toggle buttons ─────────────────────────────────────────────
+  (function () {
+    var _table = document.querySelector('.steps-table');
+    if (!_table) return;
+    var _LS_KEY = 'col_toggle_{{ record_id|stringformat:"s"|slice:":8" }}_{{ session_engine }}';
+    // Restore persisted state
+    try {
+      var _saved = JSON.parse(localStorage.getItem(_LS_KEY) || '{}');
+      Object.keys(_saved).forEach(function (cls) {
+        if (_saved[cls] === false) _table.classList.add(cls);
+      });
+    } catch (e) {}
+
+    document.querySelectorAll('.col-toggle-btn').forEach(function (btn) {
+      var hideClass = btn.dataset.hideClass;
+      // Sync button state with any restored table class
+      if (_table.classList.contains(hideClass)) {
+        btn.classList.remove('active');
+        btn.style.opacity = '.45';
+      }
+      btn.addEventListener('click', function () {
+        var isHidden = _table.classList.toggle(hideClass);
+        this.classList.toggle('active', !isHidden);
+        this.style.opacity = isHidden ? '.45' : '';
+        // Persist
+        try {
+          var _st = JSON.parse(localStorage.getItem(_LS_KEY) || '{}');
+          _st[hideClass] = !isHidden;
+          localStorage.setItem(_LS_KEY, JSON.stringify(_st));
+        } catch (e) {}
+      });
+    });
+  })();
+
+  // ── Edit-lock: acquire on load, heartbeat every 15 s, release on unload ──
+  (function() {
+    var _rid  = '{{ record_id }}';
+    var _csrf = document.querySelector('[name=csrfmiddlewaretoken]') &&
+                document.querySelector('[name=csrfmiddlewaretoken]').value;
+    if (!_rid || !_csrf) return;
+
+    function _lockPost(endpoint) {
+      return fetch('/api/edit-lock/' + _rid + '/' + endpoint + '/', {
+        method: 'POST',
+        headers: {'X-CSRFToken': _csrf},
+        keepalive: true,
+      });
+    }
+
+    // Acquire immediately
+    _lockPost('acquire');
+
+    // Heartbeat every 15 seconds
+    var _heartbeatTimer = setInterval(function() { _lockPost('heartbeat'); }, 15000);
+
+    // Release on page unload (navigation away / tab close)
+    window.addEventListener('beforeunload', function() {
+      clearInterval(_heartbeatTimer);
+      _lockPost('release');
+    });
+  })();
+
+  // ── Add Step: live-append recording ──────────────────────────────────
+  (function () {
+    var RID   = '{{ record_id }}';
+    var CSRF  = '{{ csrf_token }}';
+    var SINCE = {{ max_step_no }};   // last known step_no
+
+    var addBtn      = document.getElementById('addStepBtn');
+    var stopBtn      = document.getElementById('stopAddStepBtn');
+    var pauseBtn     = document.getElementById('pauseAddStepBtn');
+    var resumeBtn    = document.getElementById('resumeAddStepBtn');
+    var badge        = document.getElementById('liveRecordingBadge');
+    var pollTimer = null;
+    var _userStopped = false;  // true when user explicitly clicked Stop
+    var _reloadAfterRecordingStops = false;
+    var _reloadAfterNewStepsTimer = null;
+
+    function _clearRecordingQueryFlag() {
+      try {
+        var url = new URL(window.location.href);
+        if (!url.searchParams.has('recording')) {
+          return;
+        }
+        url.searchParams.delete('recording');
+        var nextUrl = url.pathname + (url.search ? url.search : '') + (url.hash ? url.hash : '');
+        window.history.replaceState({}, document.title, nextUrl);
+      } catch (e) {}
+    }
+
+    function _schedulePageReload(delayMs) {
+      if (_userStopped) {
+        return;
+      }
+      if (_reloadAfterNewStepsTimer) {
+        clearTimeout(_reloadAfterNewStepsTimer);
+      }
+      _reloadAfterNewStepsTimer = setTimeout(function() {
+        window.location.reload();
+      }, delayMs || 250);
+    }
+
+    /* ── helpers ── */
+    function _esc(s) {
+      if (s == null) return '';
+      return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function _actionBadge(action) {
+      var a = (action || '').toLowerCase();
+      if (a === 'click')
+        return '<span class="badge bg-primary badge-action"><i class="bi bi-cursor-fill"></i> Click</span>';
+      if (a === 'input' || a === 'change')
+        return '<span class="badge bg-warning text-dark badge-action"><i class="bi bi-keyboard"></i> ' + _esc(action.charAt(0).toUpperCase() + action.slice(1)) + '</span>';
+      if (a === 'keydown')
+        return '<span class="badge bg-secondary badge-action"><i class="bi bi-arrow-return-left"></i> Keydown</span>';
+      if (a === 'submit')
+        return '<span class="badge bg-success badge-action"><i class="bi bi-send-fill"></i> Submit</span>';
+      if (a === 'dblclick')
+        return '<span class="badge bg-info text-dark badge-action"><i class="bi bi-cursor-fill"></i> Dblclick</span>';
+      if (a === 'navigate' || a === 'navigation')
+        return '<span class="badge badge-action" style="background:#7c3aed;color:#fff"><i class="bi bi-arrow-right-circle-fill"></i> Navigate</span>';
+      return '<span class="badge bg-light text-dark badge-action"><i class="bi bi-gear"></i> ' + _esc(action.charAt(0).toUpperCase() + action.slice(1)) + '</span>';
+    }
+    function _stepDescription(s, rawObj) {
+      if (s.steps_description) return String(s.steps_description);
+      var action = String(s.action || '').toLowerCase();
+      var tag = (rawObj && rawObj.tag) || s.element_tag || '';
+      var text = (rawObj && rawObj.text) || '';
+      var name = (rawObj && (rawObj.name || rawObj.id)) || s.field_name || '';
+      var value = (rawObj && rawObj.value) || s.field_value || '';
+      var key = (rawObj && rawObj.key) || '';
+      if (action === 'click') {
+        if (text) return "Left-mouse-click on '" + text + "'";
+        if (tag && name) return 'Left-mouse-click on ' + tag + " '" + name + "'";
+        if (tag) return 'Left-mouse-click on <' + tag + '>';
+        return 'Left-mouse-click';
+      }
+      if (action === 'dblclick') {
+        if (text) return "Double-click on '" + text + "'";
+        if (tag && name) return 'Double-click on ' + tag + " '" + name + "'";
+        return 'Double-click';
+      }
+      if (action === 'contextmenu') {
+        if (text) return "Right-click on '" + text + "'";
+        if (tag && name) return 'Right-click on ' + tag + " '" + name + "'";
+        return 'Right-click';
+      }
+      if (action === 'input' || action === 'change') {
+        return "User input recorded: '" + (text || value) + "'";
+      }
+      if (action === 'keydown') {
+        return key ? "Key press: '" + key + "'" : 'Key press';
+      }
+      if (action === 'submit') return 'Form submitted';
+      if (action === 'navigate' || action === 'navigation') return 'Navigation';
+      return String(s.action || '');
+    }
+    function _stepLabel(s, rawObj) {
+      if (s && s.field_name) return s.field_name;
+      return '';
+    }
+    function _buildRow(s) {
+      /* parse raw_event safely */
+      var rawObj = null;
+      var rawStr = '';
+      try {
+        rawObj = typeof s.raw_event === 'string' ? JSON.parse(s.raw_event) : s.raw_event;
+        rawStr = JSON.stringify(rawObj, null, 2);
+      } catch(e) { rawStr = String(s.raw_event || ''); }
+      var stepDescription = _stepDescription(s, rawObj);
+      var labelText = _stepLabel(s, rawObj);
+      var actionHint = rawObj && rawObj.text ? '<span class="elem-text-hint">' + _esc(rawObj.text.length > 50 ? rawObj.text.slice(0, 50) + '\u2026' : rawObj.text) + '</span>' : '';
+
+      /* ── locator / identity data ── */
+      var primaryLoc = null;
+      if (s.strategies && s.strategies.length) {
+        primaryLoc = s.strategies.find(function(st) { return st.is_primary; }) || s.strategies[0];
+      }
+      var locFull = (primaryLoc && primaryLoc.locator) ? primaryLoc.locator : (s.locator || '');
+      var locId   = (primaryLoc && primaryLoc.locator_id) ? primaryLoc.locator_id : (s.locator_id || null);
+      var identityHtml;
+      if (s.strategies && s.strategies.length) {
+        var opts = s.strategies.map(function(st) {
+          return '<option value="' + _esc(st.strategy) + '"' + (st.is_primary ? ' selected' : '') + '>' + _esc(st.strategy) + '</option>';
+        }).join('');
+        identityHtml = '<td class="cell-strategy small" data-label="Identity" style="width:220px;max-width:220px;">' +
+          '<select class="form-select form-select-sm strategy-select mb-1"' +
+          ' data-record-id="' + RID + '" data-step-no="' + s.step_no + '">' + opts + '</select>' +
+          (locFull
+            ? '<code class="d-inline-block" style="font-size:.68rem;color:#1e3c5e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;vertical-align:middle;" title="' + _esc(locFull) + '">' + _esc(locFull.length > 42 ? locFull.slice(0, 42) + '\u2026' : locFull) + '</code>'
+            : '<span class="text-muted">&mdash;</span>') +
+          '</td>';
+      } else if (s.strategy || locFull) {
+        identityHtml = '<td class="cell-strategy small" data-label="Identity">' +
+          (s.strategy ? '<span class="badge bg-secondary opacity-75 me-1" style="font-size:.6rem;min-width:5rem;text-align:center;">' + _esc(s.strategy) + '</span>' : '') +
+          (locFull ? '<code>' + _esc(locFull) + '</code>' : '<span class="text-muted">&mdash;</span>') +
+          '</td>';
+      } else {
+        identityHtml = '<td class="cell-strategy small" data-label="Identity"><span class="text-muted">&mdash;</span></td>';
+      }
+
+      /* ── editable data entry cell ── */
+      var dataHtml;
+      if (s.field_value != null && String(s.field_value) !== '') {
+        if (s.data_id) {
+          dataHtml = '<td class="cell-data small cell-data-editable" data-label="Data Entry"' +
+            ' data-step-no-val="' + s.step_no + '"' +
+            ' data-cur-val="' + _esc(String(s.field_value)) + '"' +
+            ' title="' + _esc(String(s.field_value)) + '"' +
+            ' style="min-width:80px;cursor:pointer;">' +
+            '<span class="data-val-view d-inline-flex align-items-center gap-1">' +
+            '<span class="data-val-text">' + (String(s.field_value).length > 40 ? _esc(String(s.field_value).substring(0, 40)) + '\u2026' : _esc(String(s.field_value))) + '</span>' +
+            '<i class="bi bi-pencil text-muted" style="font-size:.65rem;opacity:.45;flex-shrink:0;"></i>' +
+            '</span></td>';
+        } else {
+          dataHtml = '<td class="cell-data small" data-label="Data Entry">' + _esc(String(s.field_value)) + '</td>';
+        }
+      } else {
+        dataHtml = '<td class="cell-data small" data-label="Data Entry"><span class="text-muted">&mdash;</span></td>';
+      }
+
+      var validationVal = s.validation != null ? String(s.validation) : '';
+      var validationHtml = '<td class="cell-validation small" data-label="Validation"' +
+        ' data-step-no-val="' + s.step_no + '"' +
+        ' data-cur-val="' + _esc(validationVal) + '"' +
+        ' style="min-width:120px;cursor:pointer;">' +
+        '<div class="validation-view d-flex align-items-center gap-1">' +
+        (validationVal
+          ? '<span class="badge bg-info text-dark validation-badge" style="font-size:.68rem;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _esc(validationVal) + '">' + _esc(validationVal) + '</span>'
+          : '<span class="text-muted validation-empty" style="font-size:.75rem;">&mdash;</span>') +
+        '<i class="bi bi-pencil text-muted ms-1" style="font-size:.62rem;opacity:.4;flex-shrink:0;"></i>' +
+        '</div>' +
+      '</td>';
+
+      var labelHtml = '<td class="cell-locator small step-field-name-cell step-field-name-editable" data-step-no="' + s.step_no + '" data-data-id="' + (s.data_id || '') + '" data-cur-val="' + _esc(labelText) + '" data-label="Name" style="width:120px;max-width:120px;overflow:hidden;cursor:pointer;">' +
+        '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px;">' +
+        (labelText ? '<span title="' + _esc(labelText) + '">' + _esc(labelText.length > 45 ? labelText.slice(0, 45) + '\u2026' : labelText) + '</span>' : '<span class="text-muted">&mdash;</span>') +
+        '</div>' +
+      '</td>';
+
+      return (
+        '<td class="cell-cb"><input type="checkbox" class="step-cb row-cb" value="' + s.step_no + '"></td>' +
+        '<td class="cell-drag drag-handle text-muted text-center" style="cursor:grab;"><i class="bi bi-grip-vertical"></i></td>' +
+        '<td class="cell-no small step-no-cell"><span class="step-no-badge">' + s.step_no + '</span></td>' +
+        '<td class="cell-action" data-label="Action">' + _actionBadge(s.action) + actionHint + '</td>' +
+        '<td class="cell-steps small" data-label="Steps" title="' + _esc(stepDescription) + '">' + _esc(stepDescription.length > 40 ? stepDescription.slice(0, 39) + '\u2026' : stepDescription) + '</td>' +
+        '<td class="small col-pw pw-code-cell" data-label="PW Code" style="font-family:\'Fira Code\',Consolas,monospace;font-size:.7rem;color:#000;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;user-select:none;" title="Click to edit">&mdash;</td>' +
+        '<td class="cell-tag" data-label="Element"><code class="small">' + _esc(s.element_tag || '\u2014') + '</code></td>' +
+        identityHtml +
+        labelHtml +
+        dataHtml +
+        validationHtml +
+        '<td class="cell-recorder small text-muted" data-label="Recorder">' + _esc(s.recorder || '\u2014') + '</td>' +
+        '<td class="cell-runner small text-muted" data-label="Script Runner">' + _esc(s.runner || '\u2014') + '</td>' +
+        '<td class="cell-timestamp small text-muted" data-label="Timestamp">' + _esc(s.created_at || '') + '</td>' +
+        '<td class="cell-raw" data-label="Raw Event">' +
+          '<button class="btn btn-outline-secondary btn-sm" type="button"' +
+          ' data-bs-toggle="collapse" data-bs-target="#raw-' + s.step_no + '"><i class="bi bi-code-slash"></i></button>' +
+          '<div class="collapse mt-1" id="raw-' + s.step_no + '">' +
+          '<pre class="raw-event raw-event-pre bg-light border rounded p-2">' + _esc(rawStr) + '</pre></div>' +
+        '</td>' +
+        '<td class="cell-delete" data-label="Delete">' +
+          '<button type="button" class="btn btn-sm btn-outline-danger delete-step-btn"' +
+          ' data-step-no="' + s.step_no + '" data-action="' + _esc(s.action || '') + '"' +
+          ' data-record-id="' + RID + '"><i class="bi bi-trash"></i></button>' +
+        '</td>'
+      );
+    }
+
+    /* Wire up event listeners on a newly created <tr> so that editable
+       cells (locator, data) and strategy dropdowns work identically to
+       the server-rendered rows. */
+    function _bindRowEvents(tr) {
+      /* strategy dropdown */
+      tr.querySelectorAll('.strategy-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+          var recId    = this.dataset.recordId;
+          var stepNo   = this.dataset.stepNo;
+          var strategy = this.value;
+          var row      = this.closest('tr');
+          showEditStatus('saving');
+          fetch('/sessions/' + recId + '/steps/' + stepNo + '/set-primary-locator/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ strategy: strategy }),
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (!data.ok) { showEditStatus('error'); return; }
+            showEditStatus('saved');
+            var locCell = row.querySelector('.loc-value-cell');
+            if (locCell && data.locator !== undefined) {
+              var full = data.locator;
+              locCell.dataset.fullValue = full;
+              locCell.dataset.origValue = full;
+              locCell.dataset.locId     = data.locator_id;
+              locCell.textContent       = _truncLoc(full);
+              locCell.title             = full;
+            }
+          })
+          .catch(function() { showEditStatus('error'); });
+        });
+      });
+      /* editable locator cell */
+      tr.querySelectorAll('.loc-value-cell').forEach(function(cell) {
+        var fullVal = cell.dataset.fullValue || cell.textContent.trim();
+        cell.dataset.origValue = fullVal;
+        cell.dataset.fullValue = fullVal;
+        cell.textContent = _truncLoc(fullVal);
+        cell.addEventListener('focus', function() { this.textContent = this.dataset.fullValue; });
+        cell.addEventListener('blur',  function() { saveLocatorValue(this); });
+        cell.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter')  { e.preventDefault(); this.blur(); }
+          if (e.key === 'Escape') { e.stopPropagation(); this.textContent = this.dataset.origValue; this.blur(); }
+        });
+      });
+      /* editable data-entry cell */
+      tr.querySelectorAll('.cell-data-editable').forEach(_bindDataEdit);
+      /* editable validation cell */
+      tr.querySelectorAll('.cell-validation').forEach(_bindValidationEdit);
+    }
+
+    function _appendStep(s) {
+      if (s.step_no <= SINCE) return;
+      SINCE = s.step_no;
+
+      var tbody = document.querySelector('#sessionTabSteps table.steps-table tbody');
+      if (!tbody) {
+        _schedulePageReload(150);
+        return;
+      }
+
+      var emptyState = document.querySelector('#sessionTabSteps .text-center.py-5');
+      if (emptyState) {
+        emptyState.remove();
+      }
+
+      if (tbody.querySelector('tr[data-step-no="' + s.step_no + '"]')) {
+        return;
+      }
+
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-step-no', s.step_no);
+      tr.innerHTML = _buildRow(s);
+      tbody.appendChild(tr);
+      _bindRowEvents(tr);
+
+      try {
+        if (typeof window.refreshSeleniumCode === 'function') {
+          window.refreshSeleniumCode();
+        }
+      } catch (e) {}
+    }
+
+    function _poll() {
+      return fetch('/api/sessions/' + RID + '/steps/since/' + SINCE + '/?_ts=' + Date.now(), {
+        cache: 'no-store',
+        headers: {
+          'X-CSRFToken': CSRF,
+          'Cache-Control': 'no-cache'
+        }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.steps) d.steps.forEach(_appendStep);
+        if (d.recording_stopped) {
+          _stopLive();
+          if (d.recording_error && !_userStopped) {
+            var msg = d.recording_error;
+            alert('Recording stopped unexpectedly:\n\n' + msg);
+          }
+          if (!_userStopped) {
+            window.location.reload();
+          }
+        }
+      })
+      .catch(function() {});
+    }
+
+    function _startLive(startPaused) {
+      _userStopped = false;
+      _reloadAfterRecordingStops = false;
+      _clearRecordingQueryFlag();
+      window._hotkeyIsRecording = true;
+      if (addBtn)  addBtn.classList.add('d-none');
+      if (addEventsBtn) addEventsBtn.classList.add('d-none');
+      if (stopBtn)  stopBtn.classList.remove('d-none');
+      if (pauseBtn)  pauseBtn.classList.toggle('d-none',  !!startPaused);
+      if (resumeBtn) resumeBtn.classList.toggle('d-none', !startPaused);
+      if (badge) {
+        badge.classList.remove('d-none');
+        badge.style.opacity = startPaused ? '0.5' : '';
+      }
+      var pf = document.getElementById('playForm');
+      var rc = document.getElementById('replayContinueForm');
+      if (pf) pf.classList.add('d-none');
+      if (rc) rc.classList.add('d-none');
+      _poll();
+      pollTimer = setInterval(_poll, 2000);
+    }
+
+    function _stopLive() {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      if (_reloadAfterNewStepsTimer) {
+        clearTimeout(_reloadAfterNewStepsTimer);
+        _reloadAfterNewStepsTimer = null;
+      }
+      window._hotkeyIsRecording = false;   // ESC reverts to stop-replay mode
+      if (stopBtn)  stopBtn.classList.add('d-none');
+      if (pauseBtn) pauseBtn.classList.add('d-none');
+      if (resumeBtn) resumeBtn.classList.add('d-none');
+      if (badge)   badge.classList.add('d-none');
+      var pf = document.getElementById('playForm');
+      var rc = document.getElementById('replayContinueForm');
+      if (pf) pf.classList.remove('d-none');
+      if (rc) rc.classList.remove('d-none');
+      if (addBtn) addBtn.classList.remove('d-none');
+      if (addEventsBtn) addEventsBtn.classList.remove('d-none');
+    }
+
+    // Auto-start if the server says this session is already being recorded
+    {% if is_recording_this %}
+    _startLive({% if is_recording_paused %}true{% else %}false{% endif %});
+    {% else %}
+    // Fallback: if ?recording=1 is in URL (just started), force live mode
+    if (window.location.search.indexOf('recording=1') !== -1) {
+      _startLive(false);
+    }
+    {% endif %}
+
+    if (addBtn) {
+      addBtn.addEventListener('click', function () {
+        addBtn.disabled = true;
+        fetch('/sessions/' + RID + '/continue/', {
+          method:  'POST',
+          headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          addBtn.disabled = false;
+          if (d.ok) { _startLive(false); }
+          else { alert(d.error || 'Could not start recording.'); }
+        })
+        .catch(function() { addBtn.disabled = false; });
+      });
+    }
+
+    var addEventsForm = document.getElementById('addEventsForm');
+    var addEventsBtn = document.getElementById('addEventsBtn');
+    var addEventsStartBtn = document.getElementById('addEventsStartBtn');
+    var addEventsModalEl = document.getElementById('addEventsModal');
+    var addEventsModal = (
+      addEventsModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal
+    ) ? bootstrap.Modal.getOrCreateInstance(addEventsModalEl) : null;
+    var addEventsSourceRecord = document.getElementById('addEventsSourceRecord');
+    var addEventsSourceMeta = document.getElementById('addEventsSourceMeta');
+    var addEventsSearch = document.getElementById('addEventsSearch');
+
+    function syncAddEventsSource() {
+      if (!addEventsSourceRecord) return;
+      var option = addEventsSourceRecord.options[addEventsSourceRecord.selectedIndex];
+      var sourceName = option ? (option.dataset.recordName || option.textContent || '') : '';
+      var folder = option ? (option.dataset.folder || '') : '';
+      var engine = option ? (option.dataset.engine || 'selenium') : 'selenium';
+      var hasValue = option && option.value;
+
+      if (addEventsSourceMeta) {
+        var pieces = [];
+        if (sourceName.trim()) pieces.push('Source: ' + sourceName.trim());
+        if (folder.trim()) pieces.push('Folder: ' + folder.trim());
+        pieces.push('Engine: ' + engine);
+        addEventsSourceMeta.textContent = pieces.join(' | ');
+        addEventsSourceMeta.classList.toggle('d-none', !hasValue);
+      }
+      if (addEventsStartBtn) addEventsStartBtn.disabled = !hasValue;
+    }
+
+    // Searchable filter for addEventsSourceRecord
+    if (addEventsSearch && addEventsSourceRecord) {
+      var _allOptions = [];
+      for (var _i = 0; _i < addEventsSourceRecord.options.length; _i++) {
+        var _o = addEventsSourceRecord.options[_i];
+        _allOptions.push({
+          value: _o.value,
+          text: (_o.textContent || _o.innerText || '').toLowerCase(),
+          label: _o.textContent || _o.innerText || '',
+          recordName: _o.getAttribute('data-record-name') || '',
+          folder: _o.getAttribute('data-folder') || '',
+          engine: _o.getAttribute('data-engine') || 'selenium'
+        });
+      }
+      function _filterOptions() {
+        var q = (addEventsSearch.value || '').toLowerCase().replace(/^\s+|\s+$/g, '');
+        var sel = addEventsSourceRecord;
+        // Remove all existing options
+        sel.length = 0;
+        for (var i = 0; i < _allOptions.length; i++) {
+          var opt = _allOptions[i];
+          if (!q || opt.text.indexOf(q) !== -1) {
+            var newOpt = document.createElement('option');
+            newOpt.value = opt.value;
+            newOpt.textContent = opt.label;
+            newOpt.setAttribute('data-record-name', opt.recordName);
+            newOpt.setAttribute('data-folder', opt.folder);
+            newOpt.setAttribute('data-engine', opt.engine);
+            sel.add(newOpt);
+          }
+        }
+        if (sel.options.length > 0) {
+          sel.selectedIndex = 0;
+        }
+        syncAddEventsSource();
+      }
+      addEventsSearch.addEventListener('input', _filterOptions);
+      addEventsSearch.addEventListener('keyup', _filterOptions);
+      window._filterOptions = _filterOptions;
+      if (addEventsModalEl) {
+        addEventsModalEl.addEventListener('shown.bs.modal', function() {
+          addEventsSearch.value = '';
+          _filterOptions();
+          setTimeout(function() { addEventsSearch.focus(); }, 100);
+        });
+      }
+    }
+
+    if (addEventsForm && addEventsSourceRecord) {
+      addEventsSourceRecord.addEventListener('change', function() {
+        syncAddEventsSource();
+      });
+
+      // Double-click on an option submits the form immediately
+      addEventsSourceRecord.addEventListener('dblclick', function() {
+        if (addEventsSourceRecord.value) {
+          addEventsForm.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+      });
+
+      addEventsForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (addEventsStartBtn) addEventsStartBtn.disabled = true;
+        var formData = new FormData(addEventsForm);
+        var csrfVal = addEventsForm.querySelector('[name=csrfmiddlewaretoken]');
+        fetch(addEventsForm.action, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrfVal ? csrfVal.value : CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+          body: formData
+        })
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+          if (!data.ok) {
+            throw new Error(data.error || 'Could not attach steps.');
+          }
+          if (addEventsModal) addEventsModal.hide();
+          window.location.reload();
+        })
+        .catch(function (error) {
+          alert(error.message || 'Could not attach steps.');
+        })
+        .finally(function () {
+          if (addEventsStartBtn) addEventsStartBtn.disabled = false;
+        });
+      });
+
+      if (addEventsModalEl) {
+        addEventsModalEl.addEventListener('shown.bs.modal', function () {
+          syncAddEventsSource();
+        });
+        addEventsModalEl.addEventListener('hidden.bs.modal', function () {
+          addEventsForm.reset();
+          syncAddEventsSource();
+        });
+      }
+
+      syncAddEventsSource();
+    }
+
+    function _doStopRecording(event) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      _userStopped = true;
+      _reloadAfterRecordingStops = false;
+      if (_reloadAfterNewStepsTimer) {
+        clearTimeout(_reloadAfterNewStepsTimer);
+        _reloadAfterNewStepsTimer = null;
+      }
+      // Stop polling immediately so no concurrent requests interfere
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (stopBtn) stopBtn.disabled = true;
+      window._hotkeyIsRecording = false;
+      fetch('/record/stop-ajax/', {
+        method:  'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': CSRF,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ record_id: RID })
+      })
+      .then(function(r) {
+        return r.json().catch(function() {
+          return { ok: false, error: 'Invalid stop response.' };
+        }).then(function(data) {
+          if (!r.ok || !data.ok) {
+            throw new Error(data.error || 'Could not stop recording.');
+          }
+          return data;
+        });
+      })
+      .then(function(d) {
+        try {
+          localStorage.setItem('recordingMonitorStop', JSON.stringify({ record_id: RID, ts: Date.now() }));
+        } catch (e) {}
+        _stopLive();
+        _clearRecordingQueryFlag();
+        window.location.reload();
+      })
+      .catch(function(err) {
+        alert((err && err.message) || 'Could not stop recording.');
+        window._hotkeyIsRecording = true;
+      })
+      .finally(function() { if (stopBtn) stopBtn.disabled = false; });
+    }
+
+    if (stopBtn) {
+      stopBtn.addEventListener('click', _doStopRecording);
+    }
+
+    /* ESC key stops recording when active */
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && window._hotkeyIsRecording) {
+        e.preventDefault();
+        _doStopRecording(e);
+      }
+    });
+
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', function () {
+        pauseBtn.disabled = true;
+        fetch('/record/pause-ajax/', {
+          method:  'POST',
+          headers: { 'X-CSRFToken': CSRF }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          pauseBtn.disabled = false;
+          if (d.ok) {
+            pauseBtn.classList.add('d-none');
+            if (resumeBtn) resumeBtn.classList.remove('d-none');
+            if (badge) { badge.style.opacity = '0.5'; }
+          }
+        })
+        .catch(function() { pauseBtn.disabled = false; });
+      });
+    }
+
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', function () {
+        resumeBtn.disabled = true;
+        fetch('/record/resume-ajax/', {
+          method:  'POST',
+          headers: { 'X-CSRFToken': CSRF }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          resumeBtn.disabled = false;
+          if (d.ok) {
+            resumeBtn.classList.add('d-none');
+            if (pauseBtn) pauseBtn.classList.remove('d-none');
+            if (badge) { badge.style.opacity = ''; }
+          }
+        })
+        .catch(function() { resumeBtn.disabled = false; });
+      });
+    }
+  })();
+</script>
+<script>
+  (function() {
+    function getCsrfCookie() {
+      var match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+      return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function triggerPageF1Replay() {
+      var csrf = getCsrfCookie();
+      fetch('/api/open-detached-monitor/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }
+      }).catch(function() {})
+        .finally(function() {
+          fetch('/api/hotkey/play/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: 'record_id={{ record_id }}'
+          }).catch(function() {});
+        });
+    }
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key !== 'F1' || event.repeat || event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+      if (document.querySelector('.modal.show')) {
+        return;
+      }
+      event.preventDefault();
+      triggerPageF1Replay();
+    });
+
+    /* Play engine dropdown selector */
+    document.querySelectorAll('.play-engine-opt').forEach(function(el){
+      el.addEventListener('click', function(e){
+        e.preventDefault();
+        var engine = this.dataset.engine;
+        var input = document.getElementById('playEngineInput');
+        if(input) input.value = engine;
+        document.getElementById('playForm').requestSubmit();
+      });
+    });
+
+    /* Engine toggle switch */
+    var engineToggle = document.getElementById('engineToggle');
+    var engineInput = document.getElementById('playEngineInput');
+    var labelSe = document.getElementById('engineLabelSe');
+    var labelPw = document.getElementById('engineLabelPw');
+
+    function updateEngineLabels(isPw) {
+      if (isPw) {
+        labelSe.classList.remove('fw-bold', 'text-primary');
+        labelSe.classList.add('text-muted');
+        labelPw.classList.remove('text-muted');
+        labelPw.classList.add('fw-bold', 'text-success');
+      } else {
+        labelPw.classList.remove('fw-bold', 'text-success');
+        labelPw.classList.add('text-muted');
+        labelSe.classList.remove('text-muted');
+        labelSe.classList.add('fw-bold', 'text-primary');
+      }
+      if (engineInput) engineInput.value = isPw ? 'playwright' : 'selenium';
+    }
+
+    if (engineToggle) {
+      updateEngineLabels(engineToggle.checked);
+      engineToggle.addEventListener('change', function(){
+        var isPw = this.checked;
+        updateEngineLabels(isPw);
+        /* Update column visibility */
+        var stepsCard = document.querySelector('.steps-card');
+        if (stepsCard) {
+          stepsCard.classList.remove('engine-selenium', 'engine-playwright');
+          stepsCard.classList.add('engine-' + (isPw ? 'playwright' : 'selenium'));
+        }
+        /* Persist choice to session_meta */
+        fetch("{% url 'set_engine' record_id %}", {
+          method: 'POST',
+          headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'engine=' + (isPw ? 'playwright' : 'selenium')
+        });
+      });
+    }
+  })();
+</script>
+
+<!-- PW Code Edit Modal -->
+<div class="modal fade" id="pwCodeModal" tabindex="-1" aria-labelledby="pwCodeModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title" id="pwCodeModalLabel"><i class="bi bi-code-slash"></i> Edit PW Code — Step <span id="pwCodeStepNo"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <textarea id="pwCodeEditor" class="form-control" rows="12"
+                  style="font-family:'Fira Code',Consolas,monospace;font-size:.8rem;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="pwCodeModalSaveBtn"><i class="bi bi-check-lg"></i> Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  var tabButtons = document.querySelectorAll('.session-tab-btn');
+  var tabPanes = {
+    steps: document.getElementById('sessionTabSteps'),
+    data: document.getElementById('sessionTabData')
+  };
+
+  function activateSessionTab(name) {
+    tabButtons.forEach(function(btn) {
+      var isActive = btn.dataset.sessionTab === name;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    Object.keys(tabPanes).forEach(function(key) {
+      if (tabPanes[key]) {
+        tabPanes[key].classList.toggle('active', key === name);
+      }
+    });
+  }
+
+  tabButtons.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      activateSessionTab(btn.dataset.sessionTab || 'steps');
+    });
+  });
+
+  var modalEl = document.getElementById('pwCodeModal');
+  if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+  var modal = new bootstrap.Modal(modalEl);
+  var editor = document.getElementById('pwCodeEditor');
+  var stepNoSpan = document.getElementById('pwCodeStepNo');
+  var saveBtn = document.getElementById('pwCodeModalSaveBtn');
+  var activeCell = null;
+
+  document.querySelectorAll('.pw-code-cell').forEach(function(cell){
+    cell.addEventListener('click', function(e){
+      e.stopPropagation();
+      activeCell = cell;
+      var code = cell.textContent.trim();
+      stepNoSpan.textContent = cell.dataset.stepNo;
+      editor.value = (code === '—' || code === '\u2014') ? '' : code;
+      modal.show();
+      setTimeout(function(){ editor.focus(); }, 300);
+    });
+  });
+
+  saveBtn.addEventListener('click', function(){
+    if (!activeCell) return;
+    var newCode = editor.value.trim();
+    var stepNo  = activeCell.dataset.stepNo;
+    activeCell.textContent = newCode || '\u2014';
+
+    // Save PW code
+    fetch("{% url 'session_steps' record_id %}", {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'action=save_pw_code&step_no=' + encodeURIComponent(stepNo) + '&playwright_code=' + encodeURIComponent(newCode)
+    }).then(function(){
+      // Sync: refresh Playwright / Selenium Code panels
+      if (window.refreshPlaywrightCode) window.refreshPlaywrightCode();
+      if (window.refreshSeleniumCode)   window.refreshSeleniumCode();
+
+      // Sync: extract value and update Data column
+      var extractedValue = _extractValueFromPwCode(newCode);
+      if (extractedValue !== null) {
+        var dataCell = document.querySelector('.cell-data-editable[data-step-no-val="' + stepNo + '"]');
+        if (dataCell) {
+          var curVal = dataCell.dataset.curVal !== undefined ? dataCell.dataset.curVal : '';
+          if (extractedValue !== curVal) {
+            // Update display immediately
+            dataCell.dataset.curVal = extractedValue;
+            var t = dataCell.querySelector('.data-val-text');
+            if (t) t.textContent = extractedValue;
+            // Persist to DB (suppress redundant PW refresh since we already called it above)
+            fetch('/sessions/{{ record_id }}/steps/' + stepNo + '/update-data/', {
+              method:  'POST',
+              headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+              body:    JSON.stringify({value: extractedValue, folder_name: '{{ folder_name|escapejs }}'})
+            }).catch(function(){});
+          }
+        }
+      }
+    });
+    modal.hide();
+  });
+});
+</script>
+{% endblock %}

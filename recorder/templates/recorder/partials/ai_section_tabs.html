@@ -1,0 +1,48 @@
+<style>
+  .ai-section-tabs {
+    display: inline-flex;
+    gap: .55rem;
+    padding: .35rem;
+    margin-bottom: 1rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.76);
+    border: 1px solid rgba(31,111,182,0.12);
+    box-shadow: 0 12px 24px rgba(20,52,87,0.06);
+    flex-wrap: wrap;
+  }
+  .ai-section-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    border: 0;
+    border-radius: 999px;
+    padding: .6rem 1rem;
+    background: transparent;
+    color: #4f6479;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .ai-section-tab.is-active {
+    background: linear-gradient(135deg, #1f6fb6, #154f85);
+    color: #fff;
+    box-shadow: 0 10px 18px rgba(20,79,133,0.22);
+  }
+  @media (max-width: 767.98px) {
+    .ai-section-tabs {
+      display: grid;
+      width: 100%;
+    }
+    .ai-section-tab {
+      width: 100%;
+      text-align: left;
+      justify-content: flex-start;
+    }
+  }
+</style>
+
+<nav class="ai-section-tabs" aria-label="AI pages">
+  <a href="{% url 'ai_databank' %}?tab=flow" class="ai-section-tab{% if active_ai_section == 'databank' and active_inner_tab == 'flow' %} is-active{% endif %}"><i class="bi bi-diagram-3"></i> Workflow Board</a>
+  <a href="{% url 'ai_databank' %}" class="ai-section-tab{% if active_ai_section == 'databank' and active_inner_tab != 'flow' %} is-active{% endif %}"><i class="bi bi-database"></i> Objects</a>
+  <a href="{% url 'workflow_assistant' %}" class="ai-section-tab{% if active_ai_section == 'workflow' %} is-active{% endif %}"><i class="bi bi-cpu"></i> AI RAG</a>
+  <a href="{% url 'ai_locator_stats' %}" class="ai-section-tab{% if active_ai_section == 'stats' %} is-active{% endif %}"><i class="bi bi-bar-chart-line"></i> Locator Stats</a>
+</nav>

@@ -1,0 +1,168 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}API TestLab{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260624-3">
+    <style>
+        :root {
+            --primary: {{ app_theme.primary_color|default:'#0f766e' }};
+            --primary-strong: {{ app_theme.primary_color|default:'#0f766e' }};
+            --accent: {{ app_theme.accent_color|default:'#c0841f' }};
+            --bg: {{ app_theme.background_color|default:'#eef3f7' }};
+            --bg-alt: {{ app_theme.background_color|default:'#e8eef5' }};
+            --surface: {{ app_theme.surface_color|default:'#ffffff' }};
+            --text: {{ app_theme.text_color|default:'#0f172a' }};
+            --border: {{ app_theme.border_color|default:'#dbe3ec' }};
+            --sidebar-start: {{ app_theme.sidebar_start_color|default:'#0f172a' }};
+            --sidebar-end: {{ app_theme.sidebar_end_color|default:'#1e293b' }};
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="{% if app_theme.theme_mode == 'dark' %}theme-dark{% endif %}">
+    {% if user.is_authenticated %}
+    <nav class="sidebar" id="appSidebar">
+        <div class="brand">
+            <h4>API TestLab</h4>
+        </div>
+        <div class="nav-section">Modules</div>
+        <a href="/" class="nav-link">
+            <i class="bi bi-record-circle"></i> Web Automation
+        </a>
+        <a href="/api-lab/" class="nav-link active">
+            <i class="bi bi-plug"></i> API Lab
+        </a>
+        <a href="/db-lab/" class="nav-link">
+            <i class="bi bi-database"></i> DB Lab
+        </a>
+        <div class="nav-section">Main</div>
+        <a href="{% url 'api:dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+            Dashboard
+        </a>
+        <div class="nav-section">Testing</div>
+        <a href="{% url 'api:testcase_list' %}" class="nav-link {% if 'testcase' in request.resolver_match.url_name %}active{% endif %}">
+            Test Cases
+        </a>
+        <a href="{% url 'api:execution_history' %}" class="nav-link {% if 'execution' in request.resolver_match.url_name %}active{% endif %}">
+            Execution History
+        </a>
+        <div class="nav-section">Configuration</div>
+        <a href="{% url 'api:module_list' %}" class="nav-link {% if 'module' in request.resolver_match.url_name %}active{% endif %}">
+            Modules
+        </a>
+        <a href="{% url 'api:environment_list' %}" class="nav-link {% if 'environment' in request.resolver_match.url_name %}active{% endif %}">
+            Environments
+        </a>
+        {% if user.api_profile.role == 'admin' %}
+        <div class="nav-section">Administration</div>
+        <a href="{% url 'api:user_list' %}" class="nav-link {% if 'user' in request.resolver_match.url_name %}active{% endif %}">
+            Users
+        </a>
+        <a href="{% url 'api:audit_log_list' %}" class="nav-link {% if 'audit' in request.resolver_match.url_name %}active{% endif %}">
+            Audit Logs
+        </a>
+        <a href="{% url 'api:theme_settings' %}" class="nav-link {% if request.resolver_match.url_name == 'theme_settings' %}active{% endif %}">
+            Themes
+        </a>
+        {% endif %}
+    </nav>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <div class="main-content">
+        <div class="top-bar">
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+                    Menu
+                </button>
+                <h5 class="mb-0 topbar-title">{% block page_title %}Dashboard{% endblock %}</h5>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <span class="text-muted small user-chip">
+                    {{ user.username }}
+                    <span class="badge bg-secondary">{{ user.api_profile.role }}</span>
+                </span>
+                <a href="{% url 'api:logout' %}" class="btn btn-sm btn-outline-secondary">
+                    Logout
+                </a>
+                <a href="/" class="btn btn-sm btn-outline-secondary" title="Back to Web Automation">
+                    <i class="bi bi-arrow-left"></i> Home
+                </a>
+            </div>
+        </div>
+        <div class="page-content">
+            {% if messages %}
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    {% else %}
+    <div class="container">
+        {% block auth_content %}{% endblock %}
+    </div>
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (function () {
+            const sidebar = document.getElementById('appSidebar');
+            const toggle = document.getElementById('sidebarToggle');
+            const backdrop = document.getElementById('sidebarBackdrop');
+
+            if (!sidebar || !toggle || !backdrop) {
+                return;
+            }
+
+            const closeSidebar = function () {
+                sidebar.classList.remove('show');
+                backdrop.classList.remove('show');
+            };
+
+            const openSidebar = function () {
+                sidebar.classList.add('show');
+                backdrop.classList.add('show');
+            };
+
+            toggle.addEventListener('click', function () {
+                if (sidebar.classList.contains('show')) {
+                    closeSidebar();
+                } else {
+                    openSidebar();
+                }
+            });
+
+            backdrop.addEventListener('click', closeSidebar);
+
+            sidebar.querySelectorAll('.nav-link').forEach(function (link) {
+                link.addEventListener('click', function () {
+                    if (window.innerWidth < 992) {
+                        closeSidebar();
+                    }
+                });
+            });
+
+            window.addEventListener('resize', function () {
+                if (window.innerWidth >= 992) {
+                    closeSidebar();
+                }
+            });
+        })();
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+
+

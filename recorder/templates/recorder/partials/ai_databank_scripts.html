@@ -1,0 +1,250 @@
+<script>
+(function () {
+  function getCsrf() {
+    var m = document.cookie.match(/(?:^|; )csrftoken[^=]*=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : ((document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '');
+  }
+
+  var scrapeBtn      = document.getElementById('scrapeNowBtn');
+  var scrapeStatus   = document.getElementById('scrapeStatus');
+  var filterForm     = document.getElementById('aiDatabankFilterForm');
+  var searchInput    = document.getElementById('q');
+  var pageNameFilter = document.getElementById('pageNameFilter');
+  var screenshotModal      = document.getElementById('aiDatabankScreenshotModal');
+  var screenshotModalImage = document.getElementById('aiDatabankScreenshotModalImage');
+  var screenshotModalMeta  = document.getElementById('aiDatabankScreenshotMeta');
+  var screenshotOpenLink   = document.getElementById('aiDatabankScreenshotOpenLink');
+  var scrapeLaunchUrlInput = document.getElementById('scrapeLaunchUrl');
+
+  var filterTimer  = 0;
+  var monitorWin   = null;   // reference to the floating scrape monitor window
+  var DEFAULT_LAUNCH_URL = 'http://127.0.0.1:8000/ai-databank/';
+
+  /* ── Status bar helpers ──────────────────────────────────── */
+  function setStatus(text, cls) {
+    if (!scrapeStatus) return;
+    scrapeStatus.className = 'small ' + (cls || 'text-muted');
+    scrapeStatus.textContent = text;
+  }
+  function setStatusHtml(html, cls) {
+    if (!scrapeStatus) return;
+    scrapeStatus.className = 'small ' + (cls || 'text-muted');
+    scrapeStatus.innerHTML = html;
+  }
+
+  function getLaunchUrl() {
+    var value = scrapeLaunchUrlInput ? scrapeLaunchUrlInput.value.trim() : '';
+    return value || DEFAULT_LAUNCH_URL;
+  }
+
+  function persistLaunchUrl() {
+    try {
+      window.localStorage.setItem('aiDatabankLaunchUrl', getLaunchUrl());
+    } catch (e) {}
+  }
+
+  /* ── Open / focus the floating scrape monitor window ─────── */
+  function openMonitorWindow() {
+    persistLaunchUrl();
+    var url = '/scrape-monitor/?launch_url=' + encodeURIComponent(getLaunchUrl());
+    if (monitorWin && !monitorWin.closed) {
+      monitorWin.focus();
+      return monitorWin;
+    }
+    monitorWin = window.open(
+      url, 'ScrapeMonitor',
+      'width=560,height=460,resizable=yes,scrollbars=no,location=no,toolbar=no,menubar=no,status=no'
+    );
+    return monitorWin;
+  }
+
+  function keepMonitorOnTop() {
+    if (!monitorWin || monitorWin.closed) return;
+    try { monitorWin.focus(); } catch (e) {}
+    window.setTimeout(function () {
+      if (!monitorWin || monitorWin.closed) return;
+      try { monitorWin.focus(); } catch (e) {}
+    }, 150);
+    window.setTimeout(function () {
+      if (!monitorWin || monitorWin.closed) return;
+      try { monitorWin.focus(); } catch (e) {}
+    }, 450);
+  }
+
+  function prepareScrapeBrowser(onDone) {
+    persistLaunchUrl();
+    fetch('{% url "ai_databank_open_browser" %}', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrf(),
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      body: 'launch_url=' + encodeURIComponent(getLaunchUrl())
+    })
+    .then(function (r) {
+      var ct = r.headers.get('content-type') || '';
+      if (ct.indexOf('application/json') >= 0) return r.json().then(function (d) { return {ok: r.ok, data: d}; });
+      return r.text().then(function (t) {
+        return {ok: false, data: {ok: false, error: (t || '').replace(/\s+/g,' ').trim().slice(0,220)||'Server error.'}};
+      });
+    })
+    .then(function (res) {
+      if (onDone) onDone(res);
+    })
+    .catch(function (err) {
+      if (onDone) onDone({ok: false, data: {ok: false, error: err.message || 'Browser preparation failed.'}});
+    });
+  }
+
+  /* ── Main trigger: open monitor only — scrape starts when user clicks ▶ ── */
+  function runScrape() {
+    var monitor = openMonitorWindow();
+    if (!monitor || monitor.closed) {
+      setStatus('Scrape Monitor popup was blocked. Allow popups for this site and try again.', 'text-danger');
+      return;
+    }
+    keepMonitorOnTop();
+    setStatus('Opening ' + getLaunchUrl() + ' in the scrape browser…', 'text-primary');
+    prepareScrapeBrowser(function (res) {
+      keepMonitorOnTop();
+      if (!res.ok || !res.data.ok) {
+        var errMsg = res.data.error || 'Could not open the scrape browser.';
+        var configUrl = res.data.config_url || '';
+        if (configUrl) setStatusHtml(errMsg + ' <a href="' + configUrl + '" class="alert-link">Open Configuration →</a>', 'text-danger');
+        else setStatus(errMsg, 'text-danger');
+        return;
+      }
+      setStatus((res.data.message || 'Browser prepared.') + ' Click ▶ Start in Scrape Monitor to begin.', 'text-primary');
+    });
+  }
+
+  /* ── Called by the monitor window to actually fire the POST ─ */
+  window.fireScrapePost = function (onResult) {
+    persistLaunchUrl();
+    var launchUrl = (window.localStorage.getItem('aiDatabankLaunchUrl') || '').trim() || DEFAULT_LAUNCH_URL;
+    fetch('{% url "ai_databank_scrape" %}', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCsrf(),
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      body: 'launch_url=' + encodeURIComponent(launchUrl)
+    })
+    .then(function (r) {
+      var ct = r.headers.get('content-type') || '';
+      if (ct.indexOf('application/json') >= 0) return r.json().then(function (d) { return {ok: r.ok, data: d}; });
+      return r.text().then(function (t) {
+        return {ok: false, data: {ok: false, error: (t || '').replace(/\s+/g,' ').trim().slice(0,220)||'Server error.'}};
+      });
+    })
+    .then(function (res) {
+      if (onResult) onResult(res);
+      if (!res.ok || !res.data.ok) {
+        var errMsg = res.data.error || 'Scrape failed.';
+        var configUrl = res.data.config_url || '';
+        if (configUrl) setStatusHtml(errMsg + ' <a href="' + configUrl + '" class="alert-link">Open Configuration →</a>', 'text-danger');
+        else setStatus(errMsg, 'text-danger');
+        return;
+      }
+      var modeLabel = res.data.mode === 'launch' ? 'Launching browser and scraping' : 'Scraping via attached browser';
+      setStatus(modeLabel + ' — watching in Scrape Monitor.', 'text-primary');
+      /* Light poll to update inline status bar when scrape completes */
+      var jobId = res.data.job_id;
+      var pollId = setInterval(function () {
+        fetch('/api/ai-databank/scrape/status/' + jobId + '/', {headers:{'X-Requested-With':'XMLHttpRequest'}})
+        .then(function (r2) { return r2.json(); })
+        .then(function (job) {
+          if (!job.ok) { clearInterval(pollId); return; }
+          if (job.status === 'done') {
+            setStatus('Scraped ' + job.saved_rows + ' objects from ' + (job.page_name || 'current page') + '.', 'text-success');
+            clearInterval(pollId);
+            setTimeout(function () { window.location.reload(); }, 1400);
+          } else if (job.status === 'error') {
+            setStatus(job.message || 'Scrape failed.', 'text-danger');
+            clearInterval(pollId);
+          } else if (job.status === 'stopped') {
+            setStatus('Scrape stopped.', 'text-muted');
+            clearInterval(pollId);
+          }
+        })
+        .catch(function () { clearInterval(pollId); });
+      }, 600);
+      setTimeout(function () { clearInterval(pollId); }, 120000);
+    })
+    .catch(function (err) {
+      setStatus(err.message || 'Scrape failed.', 'text-danger');
+      if (onResult) onResult({ok: false, data: {ok: false, error: err.message}});
+    });
+  };
+
+  if (scrapeBtn) scrapeBtn.addEventListener('click', runScrape);
+
+  if (scrapeLaunchUrlInput) {
+    try {
+      var savedLaunchUrl = window.localStorage.getItem('aiDatabankLaunchUrl') || '';
+      scrapeLaunchUrlInput.value = savedLaunchUrl.trim() || scrapeLaunchUrlInput.value.trim() || DEFAULT_LAUNCH_URL;
+    } catch (e) {
+      scrapeLaunchUrlInput.value = scrapeLaunchUrlInput.value.trim() || DEFAULT_LAUNCH_URL;
+    }
+    scrapeLaunchUrlInput.addEventListener('change', persistLaunchUrl);
+    scrapeLaunchUrlInput.addEventListener('input', function () {
+      window.clearTimeout(filterTimer);
+      filterTimer = window.setTimeout(persistLaunchUrl, 150);
+    });
+    persistLaunchUrl();
+  }
+
+  function submitFilters() {
+    if (!filterForm) return;
+    filterForm.requestSubmit ? filterForm.requestSubmit() : filterForm.submit();
+  }
+
+  if (pageNameFilter) {
+    pageNameFilter.addEventListener('change', function () { submitFilters(); });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      window.clearTimeout(filterTimer);
+      filterTimer = window.setTimeout(submitFilters, 300);
+    });
+  }
+
+  document.querySelectorAll('.js-adb-shot').forEach(function (link) {
+    link.addEventListener('click', function () {
+      var screenshotUrl = link.getAttribute('data-screenshot-url') || link.getAttribute('href') || '';
+      var pageName      = link.getAttribute('data-page-name')      || 'Untitled page';
+      var elementType   = link.getAttribute('data-element-type')   || 'element';
+      var itemId        = link.getAttribute('data-item-id')        || '';
+      if (screenshotModalImage) { screenshotModalImage.src = screenshotUrl; screenshotModalImage.alt = 'Screenshot ' + itemId; }
+      if (screenshotOpenLink)   screenshotOpenLink.href = screenshotUrl;
+      if (screenshotModalMeta)  screenshotModalMeta.textContent = pageName + ' · ' + elementType + (itemId ? ' · Row #' + itemId : '');
+    });
+  });
+
+  if (screenshotModal) {
+    screenshotModal.addEventListener('hidden.bs.modal', function () {
+      if (screenshotModalImage) screenshotModalImage.src = '';
+      if (screenshotOpenLink)   screenshotOpenLink.href = '#';
+      if (screenshotModalMeta)  screenshotModalMeta.textContent = '';
+    });
+  }
+
+  document.querySelectorAll('.adb-shot-highlight').forEach(function (el) {
+    el.style.left   = (el.dataset.leftPct   || '0') + '%';
+    el.style.top    = (el.dataset.topPct    || '0') + '%';
+    el.style.width  = (el.dataset.widthPct  || '0') + '%';
+    el.style.height = (el.dataset.heightPct || '0') + '%';
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.repeat || ev.altKey || ev.metaKey) return;
+    if (!ev.ctrlKey || !ev.shiftKey || ev.key !== 'F6') return;
+    if (document.querySelector('.modal.show, .offcanvas.show')) return;
+    ev.preventDefault();
+    runScrape();
+  });
+})();
+</script>

@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^& \"C:\\\\web__automation\\\\\\.venv\\\\Scripts\\\\python\\.exe\" -c \"import psycopg2; conn=psycopg2\\.connect\\(dbname='automation_db',user='postgres',password='password',host='localhost'\\); cur=conn\\.cursor\\(\\); cur\\.execute\\(\\\\\"SELECT table_name,column_name FROM information_schema\\.columns WHERE table_name IN \\('steps','locators','data','run_table'\\) ORDER BY table_name,ordinal_position\\\\\"\\); \\[print\\(r\\) for r in cur\\.fetchall\\(\\)\\]; conn\\.close\\(\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

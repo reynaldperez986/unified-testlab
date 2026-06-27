@@ -1,0 +1,746 @@
+{% extends "recorder/base.html" %}
+{% block title %}Run History — WebConX Automation{% endblock %}
+
+{% block content %}
+<style>
+  .hist-tree-root { display: grid; gap: 1rem; }
+
+  #histBulkBar {
+    top: .6rem !important;
+    border-radius: .9rem;
+    border: 1px solid rgba(27, 71, 108, .1);
+    background: rgba(255,255,255,.88) !important;
+    backdrop-filter: blur(10px);
+  }
+
+  .history-date-input {
+    width: min(160px, 100%);
+  }
+
+  html.ui-dark #histBulkBar {
+    background: rgba(13, 24, 39, .86) !important;
+    border-color: rgba(141, 176, 214, .12);
+  }
+
+  @media (max-width: 768px) {
+    #histBulkBar {
+      gap: .55rem !important;
+      padding: .72rem !important;
+    }
+
+    #histBulkBar > * {
+      flex: 1 1 100%;
+    }
+
+    #histBulkBar .btn {
+      width: 100%;
+    }
+
+    .history-filter-actions {
+      flex-wrap: wrap;
+    }
+
+    .history-filter-actions .btn {
+      flex: 1 1 calc(50% - .5rem);
+    }
+
+    .history-date-input {
+      width: 100%;
+    }
+  }
+
+  .hist-folder-node {
+    --tree-indent: 1.25rem;
+    --tree-line: #c6d6e6;
+    position: relative;
+    z-index: 0;
+  }
+  /* Lift folder node above siblings when a dropdown is open inside it */
+  .hist-folder-node:has(.dropdown-menu.show) {
+    z-index: 10 !important;
+  }
+  /* Lift the table row above sibling rows when its dropdown is open */
+  .folder-tree-table tr:has(.dropdown-menu.show) {
+    position: relative;
+    z-index: 20 !important;
+  }
+  .hist-folder-node[data-tree-depth="0"] { margin-bottom: 1rem; }
+  .hist-folder-node[data-tree-depth]:not([data-tree-depth="0"]) {
+    margin-top: .75rem;
+    padding-left: calc(var(--tree-indent) + .4rem);
+  }
+  .hist-folder-node[data-tree-depth]:not([data-tree-depth="0"])::before {
+    content: ""; position: absolute; left: .25rem; top: -1rem;
+    bottom: calc(100% - 2.2rem); width: 1px; background: var(--tree-line);
+    pointer-events: none;
+  }
+  .hist-folder-node[data-tree-depth]:not([data-tree-depth="0"])::after {
+    content: ""; position: absolute; left: .25rem; top: 1.15rem;
+    width: .95rem; height: 1px; background: var(--tree-line);
+    pointer-events: none;
+  }
+
+  .folder-tree-header {
+    position: relative; z-index: 1; display: flex; align-items: center;
+    gap: .35rem; flex-wrap: wrap; padding: .18rem .45rem;
+    border: 1px solid rgba(23, 69, 109, 0.18); border-radius: .8rem;
+    background:
+      radial-gradient(circle at top right, rgba(255, 211, 132, 0.2), transparent 34%),
+      linear-gradient(135deg, #2a6ea8 0%, #1f5c90 58%, #18476f 100%);
+    box-shadow: 0 10px 22px rgba(28, 67, 105, .16);
+  }
+  .folder-tree-header.is-root { padding: .22rem .55rem; }
+  .folder-tree-toggle { min-width: 0; color: inherit; position: relative; z-index: 2; }
+  .folder-tree-toggle:hover { color: inherit; }
+  .folder-tree-caret { width: 1.2rem; height: 1.2rem; color: rgba(255,255,255,.75); font-size: .82rem; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .folder-tree-caret::before { content: ""; width: .5rem; height: .5rem; border-right: .12rem solid currentColor; border-bottom: .12rem solid currentColor; transform: rotate(-45deg); transition: transform .18s ease; }
+  .folder-tree-toggle[aria-expanded="true"] .folder-tree-caret::before { transform: rotate(45deg); }
+  .folder-tree-label { min-width: 0; display: flex; align-items: center; gap: .42rem; flex-wrap: wrap; }
+  .folder-tree-name { font-weight: 600; color: #ffffff; font-size: .82rem; }
+  .folder-tree-path { font-size: .74rem; color: rgba(255,255,255,.74); }
+  .folder-tree-badge { background: rgba(255,255,255,.18); color: #ffffff; border: 1px solid rgba(255,255,255,.28); font-size: .68rem; padding: .22rem .38rem; }
+  .folder-tree-actions { display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; margin-left: auto; }
+  .folder-tree-header .btn.btn-sm {
+    --bs-btn-padding-y: .12rem; --bs-btn-padding-x: .32rem;
+    --bs-btn-font-size: .7rem; --bs-btn-border-radius: .3rem;
+  }
+
+  .folder-tree-children {
+    position: relative; margin-left: 1rem; padding-left: .75rem;
+    border-left: 1px solid var(--tree-line);
+  }
+  .folder-tree-table { margin-top: .6rem; }
+  .folder-tree-table.has-children { margin-top: .9rem; margin-left: 1.2rem; }
+  .folder-tree-table-label { font-size:.72rem; color:#5f7890 !important; letter-spacing:.03em; }
+  .folder-tree-table .card { border-radius: .8rem; border-color: rgba(29, 70, 107, 0.12); background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(247,250,253,.94) 100%); box-shadow: 0 14px 28px rgba(25, 57, 92, 0.08); }
+  .hist-folder-node[data-tree-depth]:not([data-tree-depth="0"]) .folder-tree-table .card { border-left: 3px solid #f2d48e; }
+  .folder-tree-table .table > :not(caption) > * > * { padding: .38rem .5rem; vertical-align: middle; }
+  .folder-tree-table .table thead th { padding-top: .42rem; padding-bottom: .42rem; font-size: .72rem; line-height: 1.1; color: #274b68; border-bottom-color: #dbe6f1; }
+  .folder-tree-table .table tbody td { font-size: .82rem; line-height: 1.2; }
+  .folder-tree-table .table thead,
+  .folder-tree-table .table thead tr,
+  .folder-tree-table .table thead th {
+    background: linear-gradient(180deg, #f0f6fc 0%, #dfeaf5 100%) !important;
+    background-image: none !important;
+    color: #274b68 !important;
+  }
+  .folder-tree-table .table tbody tr:hover > td { background-color: #edf4fb; }
+  .collapse.folder-collapse {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(245, 249, 253, 0.92) 100%);
+    border-radius: 0 0 .8rem .8rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.72);
+  }
+
+  /* ── Mobile: reduce tree indentation ── */
+  @media (max-width: 768px) {
+    .hist-folder-node,
+    .folder-tree-node {
+      --tree-indent: .55rem;
+    }
+    .hist-folder-node[data-tree-depth]:not([data-tree-depth="0"]),
+    .folder-tree-node[data-tree-depth]:not([data-tree-depth="0"]) {
+      padding-left: calc(var(--tree-indent) + .2rem);
+    }
+    .folder-tree-children {
+      margin-left: .4rem;
+      padding-left: .45rem;
+    }
+    .folder-tree-header {
+      padding: .28rem .42rem;
+      gap: .3rem;
+      border-radius: .65rem;
+      min-height: 2.6rem;
+    }
+    .folder-tree-toggle {
+      min-height: 2.4rem;
+      padding: .25rem .1rem;
+    }
+    .folder-tree-caret {
+      width: 1.5rem;
+      height: 1.5rem;
+      font-size: 1rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .folder-tree-name { font-size: .8rem; }
+    .folder-tree-badge { font-size: .62rem; padding: .18rem .3rem; }
+    .folder-tree-table.has-children { margin-left: .4rem; }
+    .collapse.folder-collapse { padding: .35rem .4rem .45rem; }
+    .folder-tree-drag-handle {
+      min-width: 1.5rem;
+      min-height: 1.5rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .folder-tree-actions .btn {
+      min-height: 2rem;
+      min-width: 2rem;
+      padding: .2rem .35rem;
+    }
+  }
+  @media (max-width: 480px) {
+    .hist-folder-node,
+    .folder-tree-node {
+      --tree-indent: .3rem;
+    }
+    .folder-tree-children {
+      margin-left: .2rem;
+      padding-left: .25rem;
+    }
+    .folder-tree-header {
+      padding: .2rem .3rem;
+      min-height: 2.4rem;
+    }
+    .folder-tree-caret {
+      width: 1.3rem;
+      height: 1.3rem;
+      font-size: .92rem;
+    }
+    .folder-tree-name { font-size: .74rem; }
+    .folder-tree-table.has-children { margin-left: .2rem; }
+  }
+</style>
+<div class="page-header-shell">
+  <div>
+    <h4 class="page-title mb-1 fw-bold">
+      <i class="bi bi-clock-history"></i> Run History
+    {% if total_runs %}
+      <span class="badge bg-secondary ms-2 fs-6">{{ total_runs }} run{{ total_runs|pluralize }}</span>
+    {% endif %}
+    </h4>
+    <div class="page-header-meta">Review results, filter run history, and clear old execution data from any device.</div>
+  </div>
+</div>
+
+{# ── Bulk action bar ─────────────────────────────────────────────────────── #}
+<div id="histBulkBar" class="d-none sticky-top bg-white border-bottom shadow-sm px-3 py-2 d-flex align-items-center gap-3" style="z-index:100;">
+  <span class="fw-semibold text-primary" id="histBulkCount">0 selected</span>
+  <button type="button" class="btn btn-sm btn-danger" id="histBulkDeleteBtn">
+    <i class="bi bi-trash"></i> Delete Selected
+  </button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" id="histBulkClear">
+    <i class="bi bi-x-lg"></i> Clear selection
+  </button>
+</div>
+
+{# ── Date filter ─────────────────────────────────────────────────────────── #}
+<form method="get" class="card shadow-sm p-3 mb-4">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-sm-auto">
+      <label class="form-label mb-1 small fw-semibold text-muted">From</label>
+      <input type="date" name="date_from" class="form-control form-control-sm history-date-input"
+             value="{{ date_from }}">
+    </div>
+    <div class="col-12 col-sm-auto">
+      <label class="form-label mb-1 small fw-semibold text-muted">To</label>
+      <input type="date" name="date_to" id="histDateTo" class="form-control form-control-sm history-date-input"
+             value="{{ date_to }}">
+    </div>
+    <div class="col-12 col-sm-auto d-flex gap-2 history-filter-actions">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="bi bi-funnel"></i> Filter
+      </button>
+      <a href="{% url 'history' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-x-circle"></i> Clear
+      </a>
+    </div>
+    {% if date_from or date_to %}
+    <div class="col-12 col-sm-auto">
+      <span class="badge bg-info text-dark fs-7 p-2">
+        <i class="bi bi-calendar-range"></i>
+        {% if date_from %}{{ date_from }}{% else %}…{% endif %}
+        &nbsp;→&nbsp;
+        {% if date_to %}{{ date_to }}{% else %}…{% endif %}
+      </span>
+    </div>
+    {% endif %}
+  </div>
+</form>
+
+{% if folder_roots %}
+
+<div class="hist-tree-root">
+  {% for folder_node in folder_roots %}
+    {% include "recorder/_history_folder_node.html" with folder_node=folder_node depth=0 %}
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-clock-history" style="font-size:3rem;"></i>
+  <p class="mt-3">
+    {% if date_from or date_to %}
+      No runs found for the selected date range.
+      <a href="{% url 'history' %}" class="d-block mt-2">Clear filter</a>
+    {% else %}
+      No replay runs yet.<br>
+      Go to <a href="{% url 'sessions_list' %}">Projects</a> and hit Replay to get started.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+
+{# ── Delete Selected Runs modal ─────────────────────────────────────────── #}
+<div class="modal fade" id="deleteRunsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-trash-fill me-2"></i>Delete Run<span id="deleteRunsPlural">s</span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-3">Are you sure you want to delete <strong id="deleteRunsCount">0</strong> run record<span id="deleteRunsCountPlural">s</span>?</p>
+        <div id="deleteRunsStats">
+          <div class="text-center text-muted py-2"><span class="spinner-border spinner-border-sm"></span> Loading details&hellip;</div>
+        </div>
+        <p class="text-muted small mt-3 mb-0"><i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>This action <strong>cannot be undone</strong>.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i> Cancel</button>
+        <form method="post" action="{% url 'delete_runs' %}" id="deleteRunsForm">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}" id="deleteRunsNext">
+          <div id="deleteRunsInputs"></div>
+          <button type="submit" class="btn btn-danger"><i class="bi bi-trash-fill"></i> Yes, Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Clear History modal (shared, wired per-folder via JS) ─────────────── #}
+<div class="modal fade" id="clearHistoryModal" tabindex="-1" aria-labelledby="clearHistoryModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="clearHistoryModalLabel">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>Clear Run History
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">You are about to delete all run history for folder:</p>
+        <p class="fw-bold fs-5 text-danger mb-3" id="clearHistoryFolderName"></p>
+        <div id="clearHistoryStats">
+          <div class="text-center text-muted py-2"><span class="spinner-border spinner-border-sm"></span> Loading stats&hellip;</div>
+        </div>
+        <p class="text-muted small mt-3 mb-0"><i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>This action <strong>cannot be undone</strong>. All run records for this folder will be permanently removed.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-lg"></i> Cancel
+        </button>
+        <form method="post" action="{% url 'clear_history' %}" id="clearHistoryForm" class="d-inline">
+          {% csrf_token %}
+          <input type="hidden" name="folder_name" id="clearHistoryFolderInput">
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash-fill"></i> Yes, Delete All
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Delete Folder modal ───────────────────────────────────────────────── #}
+{% if 'delete_folder' in visible_actions %}
+<div class="modal fade" id="histDeleteFolderModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-folder-x me-2"></i>Clear Folder History</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">You are about to permanently delete all run history for folder:</p>
+        <p class="fw-bold fs-5 mb-3" id="histDeleteFolderName"></p>
+        <div class="alert alert-info py-2 small mb-2">
+          <i class="bi bi-info-circle-fill me-1"></i>
+          Only run records will be removed. The folder and its sessions on <strong>Projects</strong> will <strong>not</strong> be affected.
+        </div>
+        <div id="histDeleteFolderLoading" class="text-center py-2">
+          <span class="spinner-border spinner-border-sm text-primary me-1"></span>
+          <span class="text-muted small">Loading folder details&hellip;</span>
+        </div>
+        <div id="histDeleteFolderStats" class="d-none">
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-3">
+              <tbody id="histDeleteFolderStatsBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="alert alert-danger py-2 small mb-0">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          This action <strong>cannot be undone</strong>. All run records for this folder will be permanently removed.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="post" action="{% url 'history_delete_folder' %}" id="histDeleteFolderForm">
+          {% csrf_token %}
+          <input type="hidden" name="folder_name" id="histDeleteFolderInput">
+          <input type="hidden" name="next" value="{% url 'history' %}">
+          <button type="submit" class="btn btn-danger"><i class="bi bi-trash-fill"></i> Clear Run History</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if folder_roots %}
+<script>
+(function () {
+  // ── Inline run detail expand (AJAX) ─────────────────────────────────────
+  document.querySelectorAll('.hist-expand-btn').forEach(function (btn) {
+    const collapseEl = document.querySelector(btn.dataset.bsTarget);
+    if (!collapseEl) return;
+    collapseEl.addEventListener('show.bs.collapse', function () {
+      const content = this.querySelector('.hist-detail-content');
+      if (!content || content.dataset.loaded) return;
+      content.dataset.loaded = '1';
+      fetch(btn.dataset.partialUrl)
+        .then(function (resp) { return resp.text(); })
+        .then(function (html) { content.innerHTML = html; })
+        .catch(function () { content.innerHTML = '<span class="text-danger">Failed to load run details.</span>'; });
+    });
+    collapseEl.addEventListener('show.bs.collapse', function () {
+      btn.classList.replace('btn-outline-secondary', 'btn-secondary');
+    });
+    collapseEl.addEventListener('hide.bs.collapse', function () {
+      btn.classList.replace('btn-secondary', 'btn-outline-secondary');
+    });
+  });
+
+  // ── Clear History modal — populate folder name + fetch stats on show ────
+  var clearModal = document.getElementById('clearHistoryModal');
+  if (clearModal) {
+    clearModal.addEventListener('show.bs.modal', function (event) {
+      var btn    = event.relatedTarget;
+      var folder = btn ? btn.dataset.folder : '';
+      document.getElementById('clearHistoryFolderName').textContent = folder;
+      document.getElementById('clearHistoryFolderInput').value      = folder;
+
+      var grp = btn ? btn.closest('.hist-folder-node') : null;
+      var checkedIds = grp
+        ? Array.from(grp.querySelectorAll('.hist-row-check:checked')).map(function (c) { return c.value; })
+        : [];
+
+      var form = document.getElementById('clearHistoryForm');
+      form.querySelectorAll('.clear-run-id-input').forEach(function (el) { el.remove(); });
+      checkedIds.forEach(function (id) {
+        var inp = document.createElement('input');
+        inp.type = 'hidden'; inp.name = 'run_ids'; inp.value = id;
+        inp.className = 'clear-run-id-input';
+        form.appendChild(inp);
+      });
+
+      var statsEl = document.getElementById('clearHistoryStats');
+      statsEl.innerHTML = '<div class="text-center text-muted py-2"><span class="spinner-border spinner-border-sm"></span> Loading stats&hellip;</div>';
+
+      var url = '/history/clear-stats/?folder_name=' + encodeURIComponent(folder);
+      checkedIds.forEach(function (id) { url += '&run_ids=' + encodeURIComponent(id); });
+      fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          statsEl.innerHTML =
+            '<div class="table-responsive">' +
+            '<table class="table table-sm table-borderless mb-0 align-middle">' +
+            '<tbody>' +
+            '<tr><th class="text-muted fw-normal ps-0"><i class="bi bi-files me-1"></i>Files</th>' +
+                '<td><span class="badge bg-dark">' + d.file_count + '</span></td></tr>' +
+            '<tr><th class="text-muted fw-normal ps-0"><i class="bi bi-list-check me-1"></i>Steps</th>' +
+                '<td><span class="badge bg-primary">' + d.step_count + '</span></td></tr>' +
+            '<tr><th class="text-muted fw-normal ps-0"><i class="bi bi-geo-alt me-1"></i>Locators</th>' +
+                '<td><span class="badge bg-info text-dark">' + d.locator_count + '</span></td></tr>' +
+            '<tr><th class="text-muted fw-normal ps-0"><i class="bi bi-database me-1"></i>Data entries</th>' +
+                '<td><span class="badge bg-warning text-dark">' + d.data_count + '</span></td></tr>' +
+            '</tbody></table></div>';
+        })
+        .catch(function () {
+          statsEl.innerHTML = '<span class="text-danger small">Could not load stats.</span>';
+        });
+    });
+  }
+
+  // Download dropdowns rely on Bootstrap's native data-bs-toggle="dropdown".
+  // Overflow clipping is handled by the :has(.dropdown-menu.show) CSS in base.html.
+
+  // ── Shared: open delete-runs modal with stats fetch ──────────────────────
+  var _deleteModal = new bootstrap.Modal(document.getElementById('deleteRunsModal'));
+
+  function openDeleteModal(ids) {
+    var n = ids.length;
+    document.getElementById('deleteRunsCount').textContent = n;
+    document.getElementById('deleteRunsCountPlural').textContent = n === 1 ? '' : 's';
+    document.getElementById('deleteRunsPlural').textContent = n === 1 ? '' : 's';
+    var container = document.getElementById('deleteRunsInputs');
+    container.innerHTML = '';
+    ids.forEach(function (id) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'run_ids'; inp.value = id;
+      container.appendChild(inp);
+    });
+    document.getElementById('deleteRunsNext').value = window.location.href.replace(window.location.origin, '');
+    var statsEl = document.getElementById('deleteRunsStats');
+    statsEl.innerHTML = '<div class="text-center text-muted py-2"><span class="spinner-border spinner-border-sm"></span> Loading details&hellip;</div>';
+    _deleteModal.show();
+    var url = '/history/run-stats/?' + ids.map(function(id){ return 'run_ids=' + encodeURIComponent(id); }).join('&');
+    fetch(url)
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var filenameRows = (d.filenames || []).map(function(f){
+          return '<tr><td class="text-muted small">Filename</td><td class="fw-semibold">' + f + '</td></tr>';
+        }).join('');
+        statsEl.innerHTML =
+          '<div class="table-responsive">'
+          + '<table class="table table-sm table-bordered mb-0"><tbody>'
+          + filenameRows
+          + '<tr><td class="text-muted small" style="width:40%">Steps</td><td>' + d.steps + '</td></tr>'
+          + '<tr><td class="text-muted small">Locators</td><td>' + d.locators + '</td></tr>'
+          + '<tr><td class="text-muted small">Data entries</td><td>' + d.data_entries + '</td></tr>'
+          + '</tbody></table></div>';
+      })
+      .catch(function(){
+        statsEl.innerHTML = '<span class="text-danger small">Could not load details.</span>';
+      });
+  }
+
+  // ── Bulk row selection ──────────────────────────────────────────────────
+  (function () {
+    var bar          = document.getElementById('histBulkBar');
+    var bulkCount    = document.getElementById('histBulkCount');
+    var bulkDelBtn   = document.getElementById('histBulkDeleteBtn');
+    var bulkClearBtn = document.getElementById('histBulkClear');
+
+    function getChecked() {
+      return Array.from(document.querySelectorAll('.hist-row-check:checked'));
+    }
+
+    function updateBar() {
+      var checked = getChecked();
+      var n = checked.length;
+      if (n > 0) {
+        bar.classList.remove('d-none');
+        bar.classList.add('d-flex');
+        bulkCount.textContent = n + ' selected';
+      } else {
+        bar.classList.add('d-none');
+        bar.classList.remove('d-flex');
+      }
+      // Show/hide each folder's Clear History button
+      document.querySelectorAll('.hist-folder-node').forEach(function (grp) {
+        var groupChecked = grp.querySelectorAll('.hist-row-check:checked').length;
+        var btn = grp.querySelector(':scope > .folder-tree-header .hist-clear-btn');
+        if (!btn) return;
+        btn.classList.toggle('d-none', groupChecked < 1);
+      });
+    }
+
+    document.addEventListener('change', function (e) {
+      if (e.target.classList.contains('hist-row-check')) {
+        updateBar();
+        var table = e.target.closest('table');
+        if (table) {
+          var all = table.querySelectorAll('.hist-row-check');
+          var allChecked = Array.from(all).every(function (c) { return c.checked; });
+          var sa = table.querySelector('.hist-select-all');
+          if (sa) sa.checked = allChecked;
+        }
+      }
+      if (e.target.classList.contains('hist-select-all')) {
+        var table = e.target.closest('table');
+        if (table) {
+          table.querySelectorAll('.hist-row-check').forEach(function (c) {
+            c.checked = e.target.checked;
+          });
+        }
+        updateBar();
+      }
+    });
+
+    if (bulkClearBtn) {
+      bulkClearBtn.addEventListener('click', function () {
+        document.querySelectorAll('.hist-row-check, .hist-select-all').forEach(function (c) {
+          c.checked = false;
+        });
+        updateBar();
+      });
+    }
+
+    if (bulkDelBtn) {
+      bulkDelBtn.addEventListener('click', function () {
+        var ids = getChecked().map(function(cb){ return cb.value; });
+        openDeleteModal(ids);
+      });
+    }
+  })();
+
+  // ── Per-row delete button ────────────────────────────────────────────────
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.hist-delete-run-btn');
+    if (!btn) return;
+    openDeleteModal([btn.dataset.runId]);
+  });
+
+  // ── Delete Folder button ─────────────────────────────────────────────────
+  {% if 'delete_folder' in visible_actions %}
+  (function () {
+    var dfModal = new bootstrap.Modal(document.getElementById('histDeleteFolderModal'));
+    document.getElementById('histDeleteFolderModal').addEventListener('show.bs.modal', function () {
+      document.getElementById('histDeleteFolderLoading').classList.remove('d-none');
+      document.getElementById('histDeleteFolderStats').classList.add('d-none');
+    });
+    document.addEventListener('click', function (e) {
+      var icon = e.target.closest('.hist-del-folder-btn');
+      if (!icon) return;
+      e.stopPropagation();
+      var folderName = icon.dataset.folderName;
+      document.getElementById('histDeleteFolderName').textContent  = folderName;
+      document.getElementById('histDeleteFolderInput').value        = folderName;
+      document.getElementById('histDeleteFolderLoading').classList.remove('d-none');
+      document.getElementById('histDeleteFolderStats').classList.add('d-none');
+      dfModal.show();
+      fetch('/api/folders/' + encodeURIComponent(folderName) + '/stats/')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var rows = [
+            '<tr><td class="text-muted" style="width:40%">Files</td><td><strong>' + (d.sessions ? d.sessions.length : 0) + '</strong></td></tr>',
+            '<tr><td class="text-muted">Runs</td><td><strong>'         + (d.runs         || 0) + '</strong></td></tr>',
+            '<tr><td class="text-muted">Steps</td><td><strong>'        + (d.steps        || 0) + '</strong></td></tr>',
+            '<tr><td class="text-muted">Locators</td><td><strong>'     + (d.locators     || 0) + '</strong></td></tr>',
+            '<tr><td class="text-muted">Data entries</td><td><strong>' + (d.data_entries || 0) + '</strong></td></tr>',
+          ];
+          document.getElementById('histDeleteFolderStatsBody').innerHTML = rows.join('');
+          document.getElementById('histDeleteFolderLoading').classList.add('d-none');
+          document.getElementById('histDeleteFolderStats').classList.remove('d-none');
+        })
+        .catch(function () {
+          document.getElementById('histDeleteFolderLoading').classList.add('d-none');
+        });
+    });
+  })();
+  {% endif %}
+
+  // ── Folder collapse: chevron & folder icon toggle ────────────────────────
+  document.querySelectorAll('.folder-collapse').forEach(function (el) {
+    el.addEventListener('hide.bs.collapse', function (e) {
+      if (e.target !== this) return;
+      const node = this.closest('.hist-folder-node');
+      const btn  = node ? node.querySelector(':scope > .folder-tree-header .group-toggle') : null;
+      if (btn) {
+        const icon = btn.querySelector('.folder-tree-icon');
+        if (icon) icon.classList.replace('bi-folder2-open', 'bi-folder2');
+      }
+    });
+    el.addEventListener('show.bs.collapse', function (e) {
+      if (e.target !== this) return;
+      const node = this.closest('.hist-folder-node');
+      const btn  = node ? node.querySelector(':scope > .folder-tree-header .group-toggle') : null;
+      if (btn) {
+        const icon = btn.querySelector('.folder-tree-icon');
+        if (icon) icon.classList.replace('bi-folder2', 'bi-folder2-open');
+      }
+    });
+  });
+
+})();
+</script>
+<script>
+  // ── Auto-submit filter form when end-date is picked ─────────
+  (function () {
+    var dateTo = document.getElementById('histDateTo');
+    if (dateTo) {
+      dateTo.addEventListener('change', function () {
+        this.closest('form').submit();
+      });
+    }
+  }());
+
+  // ── Auto-refresh after action buttons ──────────────────────────
+  (function() {
+    const AUTO_REFRESH_DELAY = 2000; // 2 seconds
+    const actionButtons = [
+      'a[href*="/replay/"]',
+      'button[onclick*="location"]',
+      'button.start-replay-btn'
+    ];
+
+    function showLoadingState(btn) {
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      var originalHTML = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner-grow spinner-grow-sm me-1"></span>Processing...';
+      return originalHTML;
+    }
+
+    actionButtons.forEach(function(selector) {
+      document.querySelectorAll(selector).forEach(function(btn) {
+        ['click', 'touchstart'].forEach(function(event) {
+          btn.addEventListener(event, function(e) {
+            if (e.type === 'touchstart') {
+              e.preventDefault();
+              showLoadingState(btn);
+            } else if (e.type === 'click') {
+              showLoadingState(btn);
+            }
+            setTimeout(function() {
+              location.reload();
+            }, AUTO_REFRESH_DELAY);
+          }, { passive: false });
+        });
+      });
+    });
+
+    // Poll for remote action status
+    let lastRemoteActionTime = 0;
+    setInterval(function() {
+      fetch('/api/remote-action-status/?since=' + lastRemoteActionTime)
+        .then(r => r.json())
+        .then(d => {
+          lastRemoteActionTime = d.last_action;
+          if (d.should_refresh) {
+            console.log('Remote action detected, refreshing...');
+            location.reload();
+          }
+        })
+        .catch(e => console.error('Remote action polling error:', e));
+    }, 3000); // Poll every 3 seconds
+  });
+</script>
+{% endif %}
+
+{# ── Screenshot modal (always in DOM; used by run_detail_partial buttons) #}
+<div class="modal fade" id="ssModalHistory" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0"><i class="bi bi-camera-fill me-1"></i> Step Screenshot</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2 text-center">
+        <img id="ssModalHistoryImg" src="" alt="screenshot" class="img-fluid rounded" style="max-height:80vh;">
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  // Delegated listener — works even after run_detail_partial is injected via innerHTML
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-ss-partial');
+    if (!btn) return;
+    document.getElementById('ssModalHistoryImg').src = btn.dataset.ssUrl;
+  });
+  document.getElementById('ssModalHistory').addEventListener('hide.bs.modal', function () {
+    document.getElementById('ssModalHistoryImg').src = '';
+  });
+})();
+</script>
+{% endblock %}

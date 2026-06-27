@@ -1,0 +1,157 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DB TestLab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="{% static 'css/app.css' %}" rel="stylesheet">
+    <style>
+        :root {
+            --primary: {{ app_theme.primary_color|default:'#0f766e' }};
+            --accent: {{ app_theme.accent_color|default:'#f59e0b' }};
+            --bg: {{ app_theme.background_color|default:'#f3f7f5' }};
+            --surface: {{ app_theme.surface_color|default:'#ffffff' }};
+            --text: {{ app_theme.text_color|default:'#122322' }};
+            --border: {{ app_theme.border_color|default:'#d7e2df' }};
+            --sidebar-start: {{ app_theme.sidebar_start_color|default:'#0b2d2a' }};
+            --sidebar-end: {{ app_theme.sidebar_end_color|default:'#133734' }};
+        }
+    </style>
+</head>
+<body>
+<div class="bg-blur bg-blur-one"></div>
+<div class="bg-blur bg-blur-two"></div>
+
+{% if request.user.is_authenticated %}
+<div class="app-layout">
+    <nav class="sidebar" id="appSidebar">
+        <a class="brand-mark mb-3" href="/">
+            <span class="brand-dot"></span>
+            <span>DB TestLab</span>
+        </a>
+
+        <div class="nav-section">Modules</div>
+        <a class="side-link" href="/">
+            <i class="bi bi-record-circle"></i> Web Automation
+        </a>
+        <a class="side-link" href="/api-lab/">
+            <i class="bi bi-plug"></i> API Lab
+        </a>
+        <a class="side-link active" href="/db-lab/">
+            <i class="bi bi-database"></i> DB Lab
+        </a>
+        <div class="nav-section">Main</div>
+        <a class="side-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="/db-lab/">
+            <i class="bi bi-grid-1x2"></i> Dashboard
+        </a>
+
+        <div class="nav-section">Testing</div>
+        <a class="side-link {% if 'connection' in request.resolver_match.url_name %}active{% endif %}" href="/db-lab/connections/">
+            <i class="bi bi-diagram-3"></i> Connections
+        </a>
+        <a class="side-link {% if 'testcase' in request.resolver_match.url_name %}active{% endif %}" href="/db-lab/testcases/">
+            <i class="bi bi-clipboard-check"></i> Test Cases
+        </a>
+        <a class="side-link {% if 'execution' in request.resolver_match.url_name %}active{% endif %}" href="/db-lab/executions/">
+            <i class="bi bi-clock-history"></i> Executions
+        </a>
+
+        {% if is_admin %}
+        <div class="nav-section">Administration</div>
+        <a class="side-link {% if 'admin_user' in request.resolver_match.url_name %}active{% endif %}" href="/db-lab/administration/users/">
+            <i class="bi bi-people"></i> Users
+        </a>
+        <a class="side-link {% if 'admin_theme' in request.resolver_match.url_name %}active{% endif %}" href="/db-lab/administration/themes/">
+            <i class="bi bi-palette"></i> Themes
+        </a>
+        <a class="side-link {% if 'audit_log' in request.resolver_match.url_name %}active{% endif %}" href="/db-lab/administration/audit-logs/">
+            <i class="bi bi-file-earmark-text"></i> Audit Logs
+        </a>
+        {% endif %}
+    </nav>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <div class="main-content">
+        <header class="topbar">
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm d-lg-none" id="sidebarToggle" aria-label="Toggle navigation">
+                    <i class="bi bi-list"></i>
+                </button>
+                <h1 class="h6 mb-0">DB TestLab</h1>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="user-pill">{{ request.user.username }}</span>
+                <form method="post" action="/logout/">
+                    {% csrf_token %}
+                    <button class="btn btn-soft btn-sm" type="submit">Logout</button>
+                </form>
+                <a href="/" class="btn btn-soft btn-sm" title="Back to Web Automation"><i class="bi bi-arrow-left"></i> Home</a>
+            </div>
+        </header>
+        <main class="content-wrap">
+{% else %}
+<main class="container py-4 py-md-5">
+{% endif %}
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert modern-alert alert-{{ message.tags }} fade-in-up">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="page-shell fade-in-up">
+        {% block content %}{% endblock %}
+    </div>
+
+{% if request.user.is_authenticated %}
+        </main>
+    </div>
+</div>
+
+
+{% else %}
+</main>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'js/app.js' %}"></script>
+<script>
+    (function () {
+        const sidebar = document.getElementById("appSidebar");
+        const toggle = document.getElementById("sidebarToggle");
+        const backdrop = document.getElementById("sidebarBackdrop");
+
+        if (!sidebar || !toggle || !backdrop) {
+            return;
+        }
+
+        function closeSidebar() {
+            sidebar.classList.remove("show");
+            backdrop.classList.remove("show");
+        }
+
+        function openSidebar() {
+            sidebar.classList.add("show");
+            backdrop.classList.add("show");
+        }
+
+        toggle.addEventListener("click", function () {
+            if (sidebar.classList.contains("show")) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+
+        backdrop.addEventListener("click", closeSidebar);
+    })();
+</script>
+</body>
+</html>
+

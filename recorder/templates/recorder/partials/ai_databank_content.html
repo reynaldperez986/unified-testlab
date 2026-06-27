@@ -1,0 +1,785 @@
+<form style="display:none">{% csrf_token %}</form>
+<style>
+  .adb-shell {
+    display: grid;
+    gap: 1rem;
+  }
+  .adb-hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .adb-hero-copy {
+    display: grid;
+    gap: .45rem;
+    align-content: start;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .adb-header-actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: .8rem;
+    flex-wrap: wrap;
+  }
+  .adb-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .35rem .75rem;
+    border-radius: 999px;
+    background: rgba(31, 111, 182, 0.12);
+    color: #1f6fb6;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    justify-self: start;
+    margin: 0;
+  }
+  .adb-subtitle {
+    max-width: 58rem;
+    margin: .15rem 0 0;
+    color: #5f748a;
+    font-size: .96rem;
+    line-height: 1.6;
+  }
+  .adb-hero-metrics {
+    display: flex;
+    gap: .8rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .adb-metric {
+    display: inline-flex;
+    flex-direction: column;
+    min-width: 8rem;
+    padding: .9rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(31,111,182,0.28);
+    background: linear-gradient(135deg, #1f6fb6 0%, #2d87d4 60%, #56a3e6 100%);
+    box-shadow: 0 8px 20px rgba(20,80,160,0.22), 0 1px 4px rgba(20,80,160,0.12);
+  }
+  .adb-metric-label {
+    font-size: .75rem;
+    color: rgba(255,255,255,0.75);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: .2rem;
+  }
+  .adb-metric-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+  }
+  .adb-metric-text {
+    font-size: .78rem;
+    color: rgba(255,255,255,0.7);
+    margin-top: .18rem;
+  }
+  .adb-tabs {
+    display: inline-flex;
+    gap: .55rem;
+    padding: .35rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(31, 111, 182, 0.12);
+    box-shadow: 0 12px 24px rgba(20, 52, 87, 0.06);
+  }
+  .adb-tabs .nav-link {
+    border-radius: 999px;
+    padding: .55rem 1rem;
+    color: #4f6479;
+    font-weight: 700;
+  }
+  .adb-tabs .nav-link.active {
+    background: linear-gradient(135deg, #1f6fb6, #154f85);
+    box-shadow: 0 10px 18px rgba(20, 79, 133, 0.22);
+  }
+  .adb-panel {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(31, 111, 182, 0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.84), rgba(245,249,253,0.96));
+    box-shadow: 0 18px 34px rgba(20, 52, 87, 0.08);
+    overflow: hidden;
+  }
+  .adb-toolbar {
+      .adb-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+  }
+  .adb-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: .9rem;
+  }
+  .adb-block {
+    grid-column: span 12;
+    padding: 1rem;
+    border-radius: 1.1rem;
+    border: 1px solid rgba(31, 111, 182, 0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(243,248,252,0.86));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+  }
+  .adb-block-title {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin-bottom: .8rem;
+    color: #17324f;
+    font-size: .92rem;
+    font-weight: 800;
+    letter-spacing: .01em;
+  }
+  .adb-block-title i {
+    color: #1f6fb6;
+  }
+  .adb-status {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .85rem 1rem 0;
+    color: #60758b;
+    font-size: .86rem;
+  }
+  .adb-status-dot {
+    width: .62rem;
+    height: .62rem;
+    border-radius: 999px;
+    background: rgba(31, 111, 182, 0.3);
+    box-shadow: 0 0 0 6px rgba(31, 111, 182, 0.08);
+    flex: 0 0 auto;
+  }
+  .adb-page-scroll {
+    max-height: calc(100vh - 17.5rem);
+    overflow: auto;
+    padding: .25rem;
+    border-radius: 1rem;
+    background: linear-gradient(180deg, rgba(255,255,255,0.36), rgba(240,246,251,0.48));
+  }
+  .adb-table {
+    --bs-table-bg: transparent;
+  }
+  .adb-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: rgba(239, 246, 252, 0.96);
+    color: #35526d;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-bottom-width: 1px;
+  }
+  .adb-table tbody td {
+    background: rgba(255, 255, 255, 0.84);
+  }
+  .adb-table tbody tr td:first-child {
+    border-top-left-radius: .9rem;
+    border-bottom-left-radius: .9rem;
+  }
+  .adb-table tbody tr td:last-child {
+    border-top-right-radius: .9rem;
+    border-bottom-right-radius: .9rem;
+  }
+  .adb-page-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .38rem .68rem;
+    border-radius: 999px;
+    background: rgba(31, 111, 182, 0.1);
+    color: #1f6fb6;
+    font-size: .76rem;
+    font-weight: 700;
+  }
+  .adb-url {
+    display: block;
+    color: #5f748a;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .adb-element-card {
+    display: grid;
+    gap: .35rem;
+  }
+  .adb-locator-stack {
+    display: grid;
+    gap: .55rem;
+  }
+  .adb-locator-item {
+    padding: .6rem .7rem;
+    border-radius: .9rem;
+    background: rgba(31, 111, 182, 0.06);
+    border: 1px solid rgba(31, 111, 182, 0.08);
+  }
+  .adb-locator-label {
+    color: #17324f;
+    font-size: .8rem;
+    font-weight: 800;
+    margin-bottom: .15rem;
+  }
+  .adb-locator-value {
+    color: #60758b;
+    font-size: .78rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .adb-shot {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+    overflow: hidden;
+    border-radius: .9rem;
+    background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(242,247,252,0.92));
+    box-shadow: 0 12px 22px rgba(17, 24, 39, 0.08);
+  }
+  .adb-shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .adb-shot-highlight {
+    position: absolute;
+    border: 2px solid #dc3545;
+    background: rgba(220, 53, 69, 0.12);
+    box-shadow: 0 0 0 9999px rgba(220, 53, 69, 0.04), 0 0 0 1px rgba(255, 255, 255, 0.75) inset;
+    pointer-events: none;
+    border-radius: .2rem;
+  }
+  .adb-modal-image {
+    display: block;
+    width: 100%;
+    max-height: 75vh;
+    object-fit: contain;
+    border-radius: .75rem;
+    background: rgba(15, 23, 42, 0.04);
+  }
+  .adb-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+  .adb-pagination .btn-group {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    flex-wrap: wrap;
+  }
+  .adb-pagination .page-gap {
+    color: #60758b;
+    font-size: .82rem;
+    padding: 0 .15rem;
+  }
+  .adb-pagination .page-number.is-active {
+    background: #4d6b8a;
+    border-color: #4d6b8a;
+    color: #fff;
+    cursor: default;
+  }
+  .adb-muted {
+    color: #60758b;
+  }
+  @media (min-width: 992px) {
+    .adb-block.is-wide {
+      grid-column: span 7;
+    }
+    .adb-block.is-narrow {
+      grid-column: span 5;
+    }
+  }
+  @media (max-width: 991.98px) {
+    .adb-hero {
+      align-items: flex-start;
+    }
+    .adb-header-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+    .adb-subtitle {
+      font-size: .9rem;
+    }
+    .adb-tabs {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .adb-tabs .nav-item {
+      flex: 1 1 0;
+    }
+    .adb-tabs .nav-link {
+      width: 100%;
+      text-align: center;
+    }
+    .adb-hero-metrics,
+    .adb-metric {
+      width: 100%;
+    }
+    .adb-page-scroll {
+      max-height: none;
+    }
+  }
+  @media (max-width: 767.98px) {
+    .adb-toolbar {
+      padding: .85rem;
+    }
+    .adb-block {
+      padding: .9rem;
+    }
+    .adb-table,
+    .adb-table tbody,
+    .adb-table tr,
+    .adb-table td {
+      display: block;
+      width: 100%;
+    }
+    .adb-table thead {
+      display: none;
+    }
+    .adb-table tbody {
+      display: grid;
+      gap: .9rem;
+    }
+    .adb-table tbody tr {
+      display: grid;
+      gap: .65rem;
+      padding: .85rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(31, 111, 182, 0.12);
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(244,248,252,0.92));
+      box-shadow: 0 14px 24px rgba(20, 52, 87, 0.08);
+    }
+    .adb-table tbody td {
+      padding: .15rem 0;
+      border: 0;
+      background: transparent;
+      min-width: 0 !important;
+      width: 100% !important;
+    }
+    .adb-table tbody td::before {
+      content: attr(data-label);
+      display: block;
+      margin-bottom: .35rem;
+      color: #60758b;
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .adb-table tbody tr td:first-child,
+    .adb-table tbody tr td:last-child {
+      border-radius: 0;
+    }
+    .adb-shot {
+      max-width: 100%;
+    }
+  }
+  /* ── Scrape progress modal ─────────────────────────────── */
+  .scrape-modal-header {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .4rem;
+    padding: .52rem .85rem;
+    background: linear-gradient(135deg, #001122 0%, #002147 60%, #1a5276 100%);
+    box-shadow: 0 2px 12px rgba(0,0,0,.26);
+    border-radius: 0;
+  }
+  .scrape-modal-header::after {
+    content: "";
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.18) 30%, rgba(99,179,237,.22) 60%, transparent 100%);
+    pointer-events: none;
+  }
+  .scrape-track {
+    height: 5px;
+    background: #eef0f3;
+    overflow: hidden;
+  }
+  .scrape-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #1f6fb6, #56a3e6);
+    box-shadow: 0 0 6px rgba(31,111,182,.55);
+    border-radius: 0;
+    transition: width .4s cubic-bezier(.4,0,.2,1);
+    min-width: 3px;
+  }
+  .scrape-bar.is-scanning {
+    background: linear-gradient(90deg, #1f6fb6 30%, #56a3e6 70%, #1f6fb6 100%);
+    background-size: 200% 100%;
+    animation: scrapeScan .9s linear infinite;
+  }
+  .scrape-bar.is-paused {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    box-shadow: 0 0 5px rgba(245,158,11,.4);
+    animation: none;
+  }
+  .scrape-bar.is-done {
+    background: linear-gradient(90deg, #10b981, #34d399);
+    box-shadow: 0 0 6px rgba(16,185,129,.45);
+    animation: none;
+  }
+  .scrape-bar.is-error {
+    background: linear-gradient(90deg, #ef4444, #f87171);
+    box-shadow: 0 0 5px rgba(239,68,68,.45);
+    animation: none;
+  }
+  .scrape-bar.is-stopped {
+    background: #9ca3af;
+    box-shadow: none;
+    animation: none;
+  }
+  @keyframes scrapeScan {
+    0%   { background-position: 200% 0; }
+    100% { background-position:   0% 0; }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; animation: spin 1.2s linear infinite; }
+  .scrape-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .18rem;
+    padding: .1rem .38rem;
+    border-radius: 99px;
+    font-size: .63rem;
+    font-weight: 700;
+    letter-spacing: .025em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .scrape-badge-running  { background: rgba(16,185,129,.22);  color: #6ee7b7; }
+  .scrape-badge-paused   { background: rgba(245,158,11,.22); color: #fcd34d; }
+  .scrape-badge-done     { background: rgba(59,130,246,.22);  color: #93c5fd; }
+  .scrape-badge-error    { background: rgba(239,68,68,.22);   color: #fca5a5; }
+  .scrape-badge-stopped  { background: rgba(156,163,175,.2);  color: #d1d5db; }
+  .scrape-badge-starting { background: rgba(31,111,182,.22);  color: #93c5fd; }
+  .scrape-ctrl-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border-radius: .4rem;
+    border: 1px solid;
+    font-size: .8rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background .12s, opacity .12s, transform .1s;
+    background: rgba(255,255,255,.08);
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .scrape-ctrl-btn:active { transform: scale(.9); }
+  .scrape-ctrl-btn:disabled { opacity: .38; cursor: default; }
+  .scrape-ctrl-btn.btn-start  { border-color: #6ee7b7; color: #10b981; }
+  .scrape-ctrl-btn.btn-start:not(:disabled):hover  { background: rgba(16,185,129,.12); }
+  .scrape-ctrl-btn.btn-pause  { border-color: #fcd34d; color: #f59e0b; }
+  .scrape-ctrl-btn.btn-pause:not(:disabled):hover  { background: rgba(245,158,11,.12); }
+  .scrape-ctrl-btn.btn-stop   { border-color: #fca5a5; color: #ef4444; }
+  .scrape-ctrl-btn.btn-stop:not(:disabled):hover   { background: rgba(239,68,68,.1); }
+</style>
+<div class="adb-shell">
+<div class="page-header-shell">
+  <div class="adb-hero">
+    <div class="adb-hero-copy">
+      <h1 class="page-title"><i class="bi bi-database"></i> AI Databank</h1>
+      <div class="adb-kicker"><i class="bi bi-collection"></i> Object Library</div>
+      <p class="adb-subtitle">Browse captured objects, review locator fallbacks, preview screenshots, and trigger fresh scraping from the current Chrome session or a direct URL. Built to stay readable on desktop and mobile.</p>
+    </div>
+  </div>
+  <div class="adb-header-actions">
+    <div class="adb-hero-metrics">
+      <div class="adb-metric">
+        <span class="adb-metric-label">Captured Rows</span>
+        <span class="adb-metric-value">{{ total_rows }}</span>
+        <span class="adb-metric-text">Across the current databank view</span>
+      </div>
+      <div class="adb-metric">
+        <span class="adb-metric-label">Active Page</span>
+        <span class="adb-metric-value">{{ current_page_name|default:"All"|truncatechars:16 }}</span>
+        <span class="adb-metric-text">Current page context</span>
+      </div>
+    </div>
+  </div>
+  </div>
+</div>
+
+<div class="card border-0 adb-panel">
+  <div class="card-body p-0">
+    <div class="adb-toolbar">
+      <div class="adb-grid">
+        <div class="adb-block is-wide">
+          <div class="adb-block-title"><i class="bi bi-lightning-charge"></i> Capture Page</div>
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-lg-7">
+              <label for="scrapeLaunchUrl" class="form-label small text-muted mb-1">Launch URL</label>
+              <input id="scrapeLaunchUrl" class="form-control" value="http://127.0.0.1:8000/ai-databank/" placeholder="https://example.com/page-to-scrape">
+            </div>
+            <div class="col-12 col-lg-5">
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <button type="button" class="btn btn-success btn-sm" id="scrapeNowBtn"><i class="bi bi-lightning-charge"></i> Open Scrape Monitor</button>
+                <span class="small text-muted">Ctrl+Shift+F6 opens the monitor with this URL selected. Scraping does not start until you press <strong>Start</strong>.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="adb-block is-narrow">
+          <div class="adb-block-title"><i class="bi bi-compass"></i> Current Context</div>
+          <div class="d-flex flex-column gap-2">
+            <div class="adb-page-pill"><i class="bi bi-file-earmark-text"></i> {{ current_page_name|default:"All pages" }}</div>
+            <div class="small adb-muted adb-url">{{ current_page_url|default:"Current filtered view across captured pages" }}</div>
+            <div class="small adb-muted">Press <strong>Ctrl+Shift+F6</strong> to trigger a scrape.</div>
+          </div>
+        </div>
+      </div>
+
+      <form method="get" class="adb-grid" id="aiDatabankFilterForm">
+        <div class="adb-block is-wide">
+          <div class="adb-block-title"><i class="bi bi-sliders"></i> Filter Objects</div>
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-lg-7">
+              <label for="q" class="form-label small text-muted mb-1">Search</label>
+              <input id="q" name="q" value="{{ query }}" class="form-control" placeholder="Search by URL, title, type, or locator JSON">
+            </div>
+            <div class="col-12 col-lg-5">
+              <label for="pageNameFilter" class="form-label small text-muted mb-1">Page Name</label>
+              <select id="pageNameFilter" name="page_name" class="form-select">
+                <option value="">All pages</option>
+                {% for page_name_option in available_page_names %}
+                <option value="{{ page_name_option }}"{% if page_name_option == selected_page_name %} selected{% endif %}>{{ page_name_option }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="adb-block is-narrow d-flex flex-column justify-content-between gap-3">
+          <div>
+            <div class="adb-block-title"><i class="bi bi-stars"></i> Live Search</div>
+            <div class="small adb-muted">Search applies automatically as you type, and page filters apply immediately when you switch the current page.</div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm align-self-start"><i class="bi bi-search"></i> Apply Filters</button>
+        </div>
+      </form>
+
+      <div class="adb-status" id="scrapeStatusWrap">
+        <span class="adb-status-dot"></span>
+        <span id="scrapeStatus">Attach mode scrapes the already-open debug browser. Launch mode opens the URL above in a fresh browser only after you press Start in the monitor.</span>
+      </div>
+    </div>
+
+    <div class="table-responsive table-scroll adb-page-scroll">
+      <table class="table table-hover align-middle adb-table">
+        <thead>
+          <tr>
+            <th>Preview</th>
+            <th>Page Name</th>
+            <th>Page URL</th>
+            <th>Element</th>
+            <th>Available Locators</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in page_obj %}
+          <tr>
+            <td style="width: 180px;" data-label="Preview">
+              <a href="{% url 'ai_databank_screenshot' item.id %}"
+                 class="adb-shot border js-adb-shot"
+                 data-bs-toggle="modal"
+                 data-bs-target="#aiDatabankScreenshotModal"
+                 data-screenshot-url="{% url 'ai_databank_screenshot' item.id %}"
+                 data-page-name="{{ item.page_name|escape }}"
+                 data-element-type="{{ item.element_type|escape }}"
+                 data-item-id="{{ item.id }}"
+                 aria-label="Open screenshot {{ item.id }} in modal">
+                <img src="{% url 'ai_databank_screenshot' item.id %}" alt="Screenshot {{ item.id }}" class="img-fluid" loading="lazy">
+                {% if item.highlight %}
+                <span
+                  class="adb-shot-highlight"
+                  data-left-pct="{{ item.highlight.left_pct|floatformat:4 }}"
+                  data-top-pct="{{ item.highlight.top_pct|floatformat:4 }}"
+                  data-width-pct="{{ item.highlight.width_pct|floatformat:4 }}"
+                  data-height-pct="{{ item.highlight.height_pct|floatformat:4 }}"
+                ></span>
+                {% endif %}
+              </a>
+            </td>
+            <td style="min-width: 220px;" data-label="Page Name">
+              <div class="fw-semibold">{{ item.page_name }}</div>
+            </td>
+            <td style="min-width: 320px;" data-label="Page URL">
+              <div class="small adb-url">{{ item.page_url }}</div>
+            </td>
+            <td style="min-width: 220px;" data-label="Element">
+              <div class="adb-element-card">
+                <div><span class="badge text-bg-secondary">{{ item.element_type }}</span></div>
+                <div class="small">Tag: {{ item.tag_name|default:"-" }}</div>
+                <div class="small adb-muted text-break">{{ item.text|default:"-" }}</div>
+              </div>
+            </td>
+            <td style="min-width: 300px;" data-label="Available Locators">
+              {% if item.available_locators %}
+              <div class="adb-locator-stack">
+                {% for locator in item.available_locators %}
+                <div class="adb-locator-item">
+                  <div class="adb-locator-label">{{ locator.strategy }}</div>
+                  <div class="adb-locator-value">{{ locator.prepared_locator }}</div>
+                </div>
+                {% endfor %}
+              </div>
+              {% else %}
+              <span class="text-muted small">No locator captured</span>
+              {% endif %}
+            </td>
+            <td style="min-width: 150px;" data-label="Updated">
+              <div>{{ item.updated_at|date:"Y-m-d H:i" }}</div>
+              <div class="small adb-muted">Created {{ item.created_at|date:"Y-m-d H:i" }}</div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-4">No databank rows found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if page_obj.paginator.num_pages > 1 %}
+      <div class="card-footer adb-pagination">
+        <div class="small adb-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+    <div class="btn-group">
+      {% if page_obj.has_previous %}
+      <a class="btn btn-outline-secondary btn-sm" href="?q={{ query|urlencode }}&page_name={{ selected_page_name|urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a>
+      {% endif %}
+      {% if page_obj.number|add:"-3" > 1 %}
+      <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&page_name={{ selected_page_name|urlencode }}&page=1">1</a>
+      {% if page_obj.number|add:"-3" > 2 %}
+      <span class="page-gap">...</span>
+      {% endif %}
+      {% endif %}
+      {% for num in page_obj.paginator.page_range %}
+      {% if num >= page_obj.number|add:"-2" and num <= page_obj.number|add:"2" %}
+      {% if num == page_obj.number %}
+      <span class="btn btn-secondary btn-sm page-number is-active">{{ num }}</span>
+      {% else %}
+      <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&page_name={{ selected_page_name|urlencode }}&page={{ num }}">{{ num }}</a>
+      {% endif %}
+      {% endif %}
+      {% endfor %}
+      {% if page_obj.number|add:"3" < page_obj.paginator.num_pages %}
+      {% if page_obj.number|add:"3" < page_obj.paginator.num_pages|add:"-1" %}
+      <span class="page-gap">...</span>
+      {% endif %}
+      <a class="btn btn-outline-secondary btn-sm page-number" href="?q={{ query|urlencode }}&page_name={{ selected_page_name|urlencode }}&page={{ page_obj.paginator.num_pages }}">{{ page_obj.paginator.num_pages }}</a>
+      {% endif %}
+      {% if page_obj.has_next %}
+      <a class="btn btn-outline-secondary btn-sm" href="?q={{ query|urlencode }}&page_name={{ selected_page_name|urlencode }}&page={{ page_obj.next_page_number }}">Next</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+</div>
+
+<div class="modal fade" id="aiDatabankScreenshotModal" tabindex="-1" aria-labelledby="aiDatabankScreenshotModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="aiDatabankScreenshotModalLabel">Screenshot Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-3" id="aiDatabankScreenshotMeta"></div>
+        <img id="aiDatabankScreenshotModalImage" src="" alt="Databank screenshot preview" class="adb-modal-image" loading="lazy">
+      </div>
+      <div class="modal-footer">
+        <a id="aiDatabankScreenshotOpenLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary">Open in new tab</a>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Scrape Progress Modal ──────────────────────────────────────── -->
+<div class="modal fade" id="scrapeProgressModal" tabindex="-1" aria-labelledby="scrapeProgressModalLabel"
+     aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:460px;">
+    <div class="modal-content border-0 overflow-hidden" style="border-radius:1rem;box-shadow:0 24px 70px rgba(7,32,68,.22);">
+
+      <!-- Header -->
+      <div class="scrape-modal-header position-relative" id="scrapeProgressModalLabel">
+        <i class="bi bi-lightning-charge text-warning" style="font-size:.95rem;flex-shrink:0;"></i>
+        <span class="text-white fw-semibold flex-grow-1" style="font-size:.9rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Scrape Page</span>
+        <span id="scrapeModalBadge" class="scrape-badge scrape-badge-starting">
+          <i class="bi bi-hourglass-split" style="font-size:.6rem;"></i> Starting
+        </span>
+        <!-- Control buttons -->
+        <button type="button" id="scrapeCtrlStart" class="scrape-ctrl-btn btn-start ms-1"
+                title="Start / Restart scrape (Ctrl+Shift+F6)" onclick="scrapeModalStart()">
+          <i class="bi bi-play-fill" style="font-size:.9rem;"></i>
+        </button>
+        <button type="button" id="scrapeCtrlPause" class="scrape-ctrl-btn btn-pause"
+                title="Pause / Resume" onclick="scrapeModalPause()" disabled>
+          <i class="bi bi-pause-fill" style="font-size:.9rem;"></i>
+        </button>
+        <button type="button" id="scrapeCtrlStop" class="scrape-ctrl-btn btn-stop"
+                title="Stop scrape" onclick="scrapeModalStop()" disabled>
+          <i class="bi bi-stop-fill" style="font-size:.9rem;"></i>
+        </button>
+        <!-- Close (only after terminal state) -->
+        <button type="button" id="scrapeModalCloseBtn" class="scrape-ctrl-btn ms-1" title="Close"
+                style="display:none;border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.85);"
+                data-bs-dismiss="modal">
+          <i class="bi bi-x-lg" style="font-size:.85rem;"></i>
+        </button>
+      </div>
+
+      <!-- Progress track -->
+      <div class="scrape-track w-100">
+        <div class="scrape-bar is-scanning" id="scrapeModalBar" style="width:0%;"></div>
+      </div>
+
+      <!-- Info rows -->
+      <div class="modal-body py-3 px-4">
+        <div class="d-flex align-items-start gap-3 mb-2">
+          <span class="text-muted small" style="min-width:4.5rem;">Status</span>
+          <span id="scrapeModalMessage" class="small fw-semibold" style="color:#1e40af;flex:1;">Preparing…</span>
+        </div>
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <span class="text-muted small" style="min-width:4.5rem;">Elements</span>
+          <span id="scrapeModalCount" class="small text-muted">—</span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+          <span class="text-muted small" style="min-width:4.5rem;">Page</span>
+          <span id="scrapeModalPage" class="small text-muted text-truncate" style="max-width:300px;">—</span>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="modal-footer border-top py-2 px-4 justify-content-end gap-2">
+        <button type="button" id="scrapeModalDismissBtn" class="btn btn-sm btn-outline-secondary"
+                data-bs-dismiss="modal" style="display:none;">
+          <i class="bi bi-check2"></i> Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>

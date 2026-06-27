@@ -1,0 +1,276 @@
+{% extends "recorder/base.html" %}
+{% block title %}Replay — {{ record_name|default:session_id }}{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a href="{% url 'session_steps' session_id %}" class="btn btn-sm btn-outline-secondary me-2">
+    <i class="bi bi-arrow-left"></i> Steps
+  </a>
+  <h5 class="d-inline fw-bold"><i class="bi bi-play-circle"></i> Replay Session</h5>
+  {% if record_name %}<span class="fw-semibold ms-2">{{ record_name }}</span>{% endif %}
+</div>
+
+{% if not has_job %}
+{# ── Confirmation modal (auto-opens) ────────────────────────── #}
+<div class="modal fade" id="confirmReplayModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="confirmReplayLabel" aria-modal="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmReplayLabel">
+          <i class="bi bi-play-circle text-success"></i> Start Replay
+        </h5>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1">This will open a browser and replay all <strong>{{ step_count }}</strong> recorded step{{ step_count|pluralize }}.</p>
+        <p class="text-muted small mb-3">You can pause or stop the replay at any time.</p>
+        <form id="replayForm" method="post">
+          {% csrf_token %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="headless" id="headless">
+            <label class="form-check-label" for="headless">Run headless (no visible browser window)</label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <a href="{% url 'sessions_list' %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" form="replayForm" class="btn btn-success">
+          <i class="bi bi-play-fill"></i> Start Replay
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const _modal = new bootstrap.Modal(document.getElementById('confirmReplayModal'));
+  _modal.show();
+</script>
+
+{% endblock %}
+
+{% block scripts %}
+{% if not has_job %}
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    new bootstrap.Modal(document.getElementById('confirmReplayModal')).show();
+  });
+</script>
+{% endif %}
+{# ── Live progress panel ────────────────────────────────────── #}
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+  <span id="statusBadge" class="badge fs-6 px-3 py-2 bg-primary">Running…</span>
+  <span class="text-muted small">Step <span id="doneCount">0</span> / <span id="totalCount">{{ step_count }}</span></span>
+
+  <div class="ms-auto d-flex gap-2">
+    <button id="btnPause" class="btn btn-warning btn-sm" onclick="togglePause()">
+      <i class="bi bi-pause-fill"></i> Pause
+    </button>
+    <button id="btnStop" class="btn btn-danger btn-sm" onclick="stopReplay()">
+      <i class="bi bi-stop-fill"></i> Stop
+    </button>
+    <a href="{% url 'replay' session_id %}" class="btn btn-outline-success btn-sm" id="btnReplayAgain" style="display:none">
+      <i class="bi bi-arrow-repeat"></i> Replay Again
+    </a>
+    <a href="{% url 'sessions_list' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-collection"></i> Sessions
+    </a>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive" style="max-height:65vh;overflow-y:auto;" id="tableWrapper">
+    <table class="table table-sm align-middle mb-0" id="resultsTable">
+      <thead class="table-dark" style="position:sticky;top:0;z-index:1;">
+        <tr>
+          <th style="width:55px">#</th>
+          <th>Action</th>
+          <th>Page URL</th>
+          <th>Result</th>
+          <th style="width:70px">Status</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+</div>
+<div id="paginationBar" class="mt-2 d-flex align-items-center gap-2 flex-wrap" style="display:none"></div>
+
+<script>
+  const SESSION_ID = "{{ session_id }}";
+  const STATUS_URL = "/sessions/" + SESSION_ID + "/replay/status/";
+  const PAUSE_URL  = "/sessions/" + SESSION_ID + "/replay/pause/";
+  const STOP_URL   = "/sessions/" + SESSION_ID + "/replay/stop/";
+  const CSRF       = "{{ csrf_token }}";
+  const PAGE_SIZE  = 100;
+
+  let pollTimer   = null;
+  let lastCount   = 0;
+  let allRows     = [];      // store all result objects
+  let currentPage = 1;
+  let isRunning   = true;   // auto-follow last page while running
+
+  const statusBadge    = document.getElementById("statusBadge");
+  const doneCount      = document.getElementById("doneCount");
+  const totalCount     = document.getElementById("totalCount");
+  const resultsBody    = document.getElementById("resultsBody");
+  const tableWrapper   = document.getElementById("tableWrapper");
+  const paginationBar  = document.getElementById("paginationBar");
+  const btnPause       = document.getElementById("btnPause");
+  const btnStop        = document.getElementById("btnStop");
+  const btnReplayAgain = document.getElementById("btnReplayAgain");
+
+  const ACTION_COLORS = {
+    click:   "bg-primary",
+    dblclick:"bg-info text-dark",
+    input:   "bg-warning text-dark",
+    change:  "bg-warning text-dark",
+    keydown: "bg-secondary",
+    submit:  "bg-success",
+  };
+
+  function badgeClass(action) {
+    return "badge " + (ACTION_COLORS[action] || "bg-light text-dark");
+  }
+
+  function buildRow(r) {
+    const tr = document.createElement("tr");
+    tr.className = r.ok ? "step-ok" : "step-fail";
+    tr.innerHTML = `
+      <td class="small text-muted">${r.step_no}</td>
+      <td><span class="${badgeClass(r.action)}">${r.action}</span></td>
+      <td class="small text-truncate" style="max-width:220px;">
+        <a href="${r.page_url}" target="_blank" class="text-decoration-none">${r.page_url}</a>
+      </td>
+      <td class="small">${r.status}</td>
+      <td class="text-center">${r.ok
+        ? '<i class="bi bi-check-circle-fill text-success"></i>'
+        : '<i class="bi bi-x-circle-fill text-danger"></i>'}
+      </td>`;
+    return tr;
+  }
+
+  function totalPages() {
+    return Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
+  }
+
+  function renderPage(page) {
+    currentPage = Math.min(Math.max(1, page), totalPages());
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const slice = allRows.slice(start, start + PAGE_SIZE);
+    resultsBody.innerHTML = "";
+    slice.forEach(r => resultsBody.appendChild(buildRow(r)));
+    tableWrapper.scrollTop = 0;
+    renderPagination();
+  }
+
+  function renderPagination() {
+    const tp = totalPages();
+    if (tp <= 1) { paginationBar.style.display = "none"; return; }
+    paginationBar.style.display = "";
+
+    const start = (currentPage - 1) * PAGE_SIZE + 1;
+    const end   = Math.min(currentPage * PAGE_SIZE, allRows.length);
+
+    let html = `<span class="text-muted small me-2">Showing ${start}–${end} of ${allRows.length}</span>`;
+    html += `<nav><ul class="pagination pagination-sm mb-0">`;
+
+    html += `<li class="page-item${currentPage===1?' disabled':''}">
+      <a class="page-link" href="#" onclick="goPage(1);return false;">&laquo;</a></li>`;
+    html += `<li class="page-item${currentPage===1?' disabled':''}">
+      <a class="page-link" href="#" onclick="goPage(${currentPage-1});return false;">&lsaquo;</a></li>`;
+
+    const range = 2;
+    for (let p = Math.max(1, currentPage-range); p <= Math.min(tp, currentPage+range); p++) {
+      html += `<li class="page-item${p===currentPage?' active':''}">
+        <a class="page-link" href="#" onclick="goPage(${p});return false;">${p}</a></li>`;
+    }
+
+    html += `<li class="page-item${currentPage===tp?' disabled':''}">
+      <a class="page-link" href="#" onclick="goPage(${currentPage+1});return false;">&rsaquo;</a></li>`;
+    html += `<li class="page-item${currentPage===tp?' disabled':''}">
+      <a class="page-link" href="#" onclick="goPage(${tp});return false;">&raquo;</a></li>`;
+    html += `</ul></nav>`;
+    paginationBar.innerHTML = html;
+  }
+
+  function goPage(p) {
+    isRunning = false;   // user navigated manually — stop auto-following
+    renderPage(p);
+  }
+
+  function updateStatusBadge(status) {
+    const MAP = {
+      running: ["Running…",  "bg-primary"],
+      paused:  ["Paused",    "bg-warning text-dark"],
+      stopped: ["Stopped",   "bg-secondary"],
+      done:    ["Completed", "bg-success"],
+      error:   ["Error",     "bg-danger"],
+    };
+    const [label, cls] = MAP[status] || [status, "bg-secondary"];
+    statusBadge.textContent = label;
+    statusBadge.className = "badge fs-6 px-3 py-2 " + cls;
+
+    if (status === "paused") {
+      btnPause.innerHTML = '<i class="bi bi-play-fill"></i> Resume';
+      btnPause.className = "btn btn-success btn-sm";
+    } else {
+      btnPause.innerHTML = '<i class="bi bi-pause-fill"></i> Pause';
+      btnPause.className = "btn btn-warning btn-sm";
+    }
+
+    if (["done", "stopped", "error"].includes(status)) {
+      isRunning = false;
+      btnPause.disabled = true;
+      btnStop.disabled  = true;
+      btnReplayAgain.style.display = "";
+      clearInterval(pollTimer);
+      renderPage(currentPage);   // final render with pagination
+    }
+  }
+
+  function poll() {
+    fetch(STATUS_URL)
+      .then(r => r.json())
+      .then(data => {
+        totalCount.textContent = data.total;
+        const newRows = data.results.slice(lastCount);
+        newRows.forEach(r => allRows.push(r));
+        lastCount = data.results.length;
+        doneCount.textContent = lastCount;
+        // While running, stay on last page and append new rows live
+        if (isRunning) {
+          currentPage = totalPages();
+          const start = (currentPage - 1) * PAGE_SIZE;
+          const slice = allRows.slice(start);
+          // Only append the genuinely new rows to avoid full re-render
+          newRows.forEach(r => {
+            const tr = buildRow(r);
+            resultsBody.appendChild(tr);
+            tr.scrollIntoView({behavior: "smooth", block: "nearest"});
+          });
+          renderPagination();
+        }
+        updateStatusBadge(data.status);
+      })
+      .catch(() => {});
+  }
+
+  function togglePause() {
+    fetch(PAUSE_URL, {
+      method: "POST",
+      headers: {"X-CSRFToken": CSRF, "Content-Type": "application/json"},
+    }).then(r => r.json()).then(d => updateStatusBadge(d.status));
+  }
+
+  function stopReplay() {
+    fetch(STOP_URL, {
+      method: "POST",
+      headers: {"X-CSRFToken": CSRF, "Content-Type": "application/json"},
+    }).then(r => r.json()).then(d => updateStatusBadge(d.status));
+  }
+
+  // Start polling every 500 ms
+  pollTimer = setInterval(poll, 500);
+  poll();
+</script>
+{% endif %}
+{% endblock %}

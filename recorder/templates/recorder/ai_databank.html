@@ -1,0 +1,23 @@
+{% extends "recorder/base.html" %}
+
+{% block title %}AI Databank{% endblock %}
+{% block container_class %}container-fluid{% endblock %}
+
+{% block content %}
+{% include "recorder/partials/ai_section_tabs.html" %}
+
+<div class="tab-content" id="aiInnerTabContent">
+  <div class="tab-pane fade{% if active_inner_tab == 'databank' %} show active{% endif %}" id="tabDatabank" role="tabpanel" aria-labelledby="tab-databank-btn">
+    {% include "recorder/partials/ai_databank_content.html" %}
+  </div>
+  <div class="tab-pane fade{% if active_inner_tab == 'flow' %} show active{% endif %}" id="tabFlow" role="tabpanel" aria-labelledby="tab-flow-btn">
+    {% include "recorder/partials/ai_databank_flow_content.html" %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "recorder/partials/ai_databank_scripts.html" %}
+{% include "recorder/partials/ai_databank_flow_scripts.html" %}
+
+{% endblock %}

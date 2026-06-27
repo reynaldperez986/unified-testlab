@@ -1,0 +1,263 @@
+<div class="card shadow-sm {% if is_nested %}border-0{% endif %}">
+  <div class="table-responsive table-scroll">
+    <table class="table table-sm table-hover align-middle mb-0 mobile-stack-table" style="width:100%;font-size:0.8rem;">
+      <thead class="table-dark">
+        <tr style="line-height:1.2;">
+          <th style="width:1.5rem;padding:6px 6px;"></th>
+          {% if feat_bulk_replay %}
+          <th style="width:2rem;padding:6px 6px;" class="text-center">
+            {% if folder_node.sessions %}<input type="checkbox" class="form-check-input select-all-group" title="Select all in group">{% endif %}
+          </th>
+          {% endif %}
+          <th style="min-width:160px;padding:6px 8px;">Filename</th>
+          <th style="width:54px;padding:6px 6px;" class="text-center">Steps</th>
+          <th style="width:124px;padding:6px 8px;">Started</th>
+          <th style="width:124px;padding:6px 8px;">Last Event</th>
+          <th style="width:88px;padding:6px 8px;">Recorder</th>
+          <th class="text-center" style="white-space:nowrap;padding:6px 8px;">Actions</th>
+          <th style="white-space:nowrap;padding:6px 8px;">Last Run Result</th>
+        </tr>
+      </thead>
+      <tbody data-folder-name="{{ folder_node.path }}">
+        {% for s in folder_node.sessions %}
+        <tr class="session-row" draggable="true" data-record-id="{{ s.record_id }}" data-folder-name="{{ folder_node.path }}">
+          <td class="drag-handle text-center mobile-compact-cell" data-label="" style="cursor:grab;color:#adb5bd;user-select:none;font-size:0.85rem;padding:2px 4px;">&#8942;&#8942;</td>
+          {% if feat_bulk_replay %}
+          <td class="text-center mobile-compact-cell" data-label="Select" style="padding:2px 4px;">
+            <input type="checkbox" class="form-check-input session-cb" name="record_ids" value="{{ s.record_id }}">
+          </td>
+          {% endif %}
+          <td class="mobile-primary-cell" data-label="Filename" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;padding:2px 6px;">
+            <div class="mobile-primary-title">
+            <a href="{% url 'last_run' s.record_id %}" class="text-decoration-none fw-semibold">
+              {{ s.record_name|default:"—" }}
+            </a>
+            </div>
+            <div class="mobile-primary-meta d-md-none">
+              <span class="badge bg-info text-dark" style="font-size:0.72rem;">{{ s.total_steps }} step{{ s.total_steps|pluralize }}</span>
+              <span class="badge bg-light text-dark border">{{ s.recorder|default:"—" }}</span>
+            </div>
+          </td>
+          <td class="text-center" data-label="Steps" style="padding:2px 4px;"><span class="badge bg-info text-dark" style="font-size:0.72rem;">{{ s.total_steps }}</span></td>
+          <td class="small text-muted text-truncate" data-label="Started" style="padding:2px 6px;">{{ s.started_at }}</td>
+          <td class="small text-muted text-truncate" data-label="Last Event" style="padding:2px 6px;">{{ s.last_at }}</td>
+          <td class="small text-muted text-truncate" data-label="Recorder" style="padding:2px 6px;">{{ s.recorder|default:"—" }}</td>
+          <td class="text-center text-nowrap mobile-actions-cell" data-label="Actions" style="white-space:nowrap;padding:2px 4px;">
+            <div class="mobile-actions-wrap">
+            <button type="button"
+                    class="btn btn-sm {% if s.engine == 'playwright' %}btn-success{% else %}btn-outline-warning{% endif %} engine-toggle-btn me-1"
+                    title="Engine: {{ s.engine|default:'selenium' }} — click to switch"
+                    data-record-id="{{ s.record_id }}"
+                    data-engine="{{ s.engine|default:'selenium' }}">
+              {% if s.engine == 'playwright' %}<i class="bi bi-lightning-charge-fill"></i>{% else %}<i class="bi bi-browser-chrome"></i>{% endif %}
+            </button>
+            {% if 'view' in visible_actions %}
+            <a href="{% url 'session_steps' s.record_id %}" class="btn btn-sm btn-outline-primary me-1" title="View steps">
+              <i class="bi bi-list-ul"></i>
+            </a>
+            {% endif %}
+            {% if 'replay' in visible_actions %}
+            {% if not is_recording or s.record_id|stringformat:'s' != recording_id %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-success row-replay-btn me-1"
+                    title="Play"
+                    data-record-id="{{ s.record_id }}"
+                    data-record-name="{{ s.record_name|default:'' }}"
+                    data-folder="{{ s.folder }}"
+                    data-engine="{{ s.engine|default:'selenium' }}"
+                    data-headless-state="{% if s.headless_state or headless_default %}true{% else %}false{% endif %}">
+              <i class="bi bi-play-circle"></i>
+            </button>
+            <button type="button"
+                    class="btn btn-sm btn-outline-info remote-action-btn"
+                    title="Execute on remote IP"
+                    data-bs-toggle="modal"
+                    data-bs-target="#remoteActionsModal"
+                    data-record-id="{{ s.record_id }}"
+                    data-record-name="{{ s.record_name|default:'' }}"
+                    data-folder="{{ s.folder }}">
+              <i class="bi bi-cloud-arrow-up"></i>
+            </button>
+            {% endif %}
+            {% endif %}
+            {% if 'headless' in visible_actions %}
+            <button type="button"
+                    class="btn btn-sm {% if s.headless_state or headless_default %}btn-success{% else %}btn-outline-success{% endif %} headless-direct-btn me-1"
+                    title="Toggle headless ({% if s.headless_state or headless_default %}ON{% else %}OFF{% endif %})"
+                    data-record-id="{{ s.record_id }}"
+                    data-folder="{{ s.folder }}"
+                    data-headless-state="{% if s.headless_state or headless_default %}true{% else %}false{% endif %}">
+              <i class="bi bi-display"></i>
+            </button>
+            {% endif %}
+            {% if 'rename' in visible_actions %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary me-1"
+                    title="Rename file"
+                    data-bs-toggle="modal"
+                    data-bs-target="#renameModal"
+                    data-record-id="{{ s.record_id }}"
+                  data-record-name="{{ s.record_name|default:'' }}"
+                  data-folder="{{ s.folder }}"
+                  data-depth="{{ depth|default:0 }}">
+              <i class="bi bi-pencil"></i>
+            </button>
+            {% endif %}
+            {% if 'duplicate' in visible_actions %}
+            {% if depth|default:0 <= 2 %}
+            <form method="post" action="{% url 'duplicate_session' s.record_id %}" class="d-inline-block me-1">
+              {% csrf_token %}
+              <button type="submit"
+                      class="btn btn-sm btn-outline-info"
+                      title="Duplicate file as Copy of {{ s.record_name|default:'this file' }}">
+                <i class="bi bi-files"></i>
+              </button>
+            </form>
+            {% else %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-info me-1"
+                    title="Duplicate file"
+                    data-bs-toggle="modal"
+                    data-bs-target="#duplicateModal"
+                    data-record-id="{{ s.record_id }}"
+                    data-record-name="{{ s.record_name|default:'' }}">
+              <i class="bi bi-files"></i>
+            </button>
+            {% endif %}
+            {% endif %}
+            {% if 'copy' in visible_actions %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-warning me-1"
+                    title="Copy to folder"
+                    data-bs-toggle="modal"
+                    data-bs-target="#folderModal"
+                    data-record-id="{{ s.record_id }}"
+                    data-record-name="{{ s.record_name|default:'—' }}"
+                    data-current-folder="{{ s.folder }}"
+                    data-pos-x="{{ s.pos_x|default:'' }}"
+                    data-pos-y="{{ s.pos_y|default:'' }}"
+                    data-is-primary="{{ s.is_primary|yesno:'true,false' }}"
+                    data-locator-rank="{{ s.locator_rank|default:'' }}"
+                    data-author="{{ s.author|default:'' }}"
+                    data-last-updated-by="{{ s.last_updated_by|default:'' }}"
+                    data-parent-record-id="{{ s.parent_record_id|default:'' }}"
+                    data-sub-record-id="{{ s.sub_record_id|default:'' }}"
+                    data-end-record="{{ s.end_record|default:'' }}"
+                    data-is-baseline="{{ s.is_baseline|yesno:'true,false' }}">
+              <i class="bi bi-folder-symlink"></i>
+            </button>
+            {% endif %}
+            {% if 'delete' in visible_actions %}
+            {% if s.folder == "Recordings" %}
+              {% if request.user.is_superuser %}
+              <button type="button" class="btn btn-sm btn-outline-danger"
+                      data-bs-toggle="modal"
+                      data-bs-target="#deleteModal"
+                      data-record-id="{{ s.record_id }}"
+                      data-record-name="{{ s.record_name|default:'—' }}"
+                      data-folder="{{ s.folder }}"
+                      data-steps="{{ s.total_steps }}"
+                      data-locators="{{ s.total_locators }}"
+                      data-data-count="{{ s.total_data }}">
+                <i class="bi bi-trash"></i>
+              </button>
+              {% endif %}
+            {% else %}
+            <button type="button" class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#deleteModal"
+                    data-record-id="{{ s.record_id }}"
+                    data-record-name="{{ s.record_name|default:'—' }}"
+                    data-folder="{{ s.folder }}"
+                    data-steps="{{ s.total_steps }}"
+                    data-locators="{{ s.total_locators }}"
+                    data-data-count="{{ s.total_data }}">
+              <i class="bi bi-trash"></i>
+            </button>
+            {% endif %}
+            {% endif %}
+            {% if 'download' in visible_actions %}
+            <div class="dropdown d-inline-block ms-1 position-static">
+              <button type="button"
+                      class="btn btn-sm btn-outline-info dropdown-toggle"
+                      data-bs-toggle="dropdown"
+                      data-bs-strategy="fixed"
+                      data-bs-display="static"
+                      aria-expanded="false"
+                      aria-label="Download session"
+                      title="Download">
+                <i class="bi bi-download"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end p-1" style="min-width:130px;">
+                <li><a class="dropdown-item rounded-2 mb-1 fw-semibold" href="{% url 'download_session' s.record_id 'playwright' %}" style="color:#2e7d32;background:rgba(46,125,50,.07);">
+                  <i class="bi bi-filetype-py me-2"></i>Playwright</a></li>
+                <li><a class="dropdown-item rounded-2 mb-1 fw-semibold" href="{% url 'download_session' s.record_id 'selenium' %}" style="color:#b45309;background:rgba(245,158,11,.14);">
+                  <i class="bi bi-filetype-py me-2"></i>Selenium</a></li>
+                <li><a class="dropdown-item rounded-2 mb-1 fw-semibold" href="{% url 'download_session' s.record_id 'csv' %}" style="color:#198754;background:rgba(25,135,84,.07);">
+                  <i class="bi bi-filetype-csv me-2"></i>CSV</a></li>
+                <li><a class="dropdown-item rounded-2 mb-1 fw-semibold" href="{% url 'download_session' s.record_id 'pdf' %}" style="color:#dc3545;background:rgba(220,53,69,.07);">
+                  <i class="bi bi-filetype-pdf me-2"></i>PDF</a></li>
+                <li><a class="dropdown-item rounded-2 fw-semibold" href="{% url 'download_session' s.record_id 'doc' %}" style="color:#0d6efd;background:rgba(13,110,253,.07);">
+                  <i class="bi bi-filetype-docx me-2"></i>DOC</a></li>
+              </ul>
+            </div>
+            {% endif %}
+            </div>
+          </td>
+          <td data-label="Last Run Result">
+            {% if s.run_status == 'pass' %}
+              <button class="sess-expand-btn btn btn-sm btn-outline-success"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#sess-run-{{ s.record_id }}"
+                      data-partial-url="{% url 'session_last_run_partial' s.record_id %}"
+                      title="View last run details">
+                <i class="bi bi-check-circle-fill me-1"></i>Pass
+                <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i>
+              </button>
+            {% elif s.run_status == 'fail' %}
+              <button class="sess-expand-btn btn btn-sm btn-outline-danger"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#sess-run-{{ s.record_id }}"
+                      data-partial-url="{% url 'session_last_run_partial' s.record_id %}"
+                      title="View last run details">
+                <i class="bi bi-x-circle-fill me-1"></i>Fail
+                <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i>
+              </button>
+            {% elif s.run_status == 'not_completed' %}
+              <button class="sess-expand-btn btn btn-sm btn-outline-warning"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#sess-run-{{ s.record_id }}"
+                      data-partial-url="{% url 'session_last_run_partial' s.record_id %}"
+                      title="View last run details">
+                <i class="bi bi-stop-circle-fill me-1"></i>Not Completed
+                <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i>
+              </button>
+            {% else %}
+              <span class="badge bg-secondary"><i class="bi bi-dash me-1"></i>No Runs</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if s.run_status %}
+        <tr class="sess-detail-row mobile-detail-row">
+          <td colspan="{% if feat_bulk_replay %}9{% else %}8{% endif %}" class="p-0 border-0">
+            <div class="collapse" id="sess-run-{{ s.record_id }}">
+              <div class="p-3 bg-light border-top border-bottom">
+                <div class="sess-detail-content text-muted small">
+                  <i class="bi bi-hourglass-split"></i> Loading&hellip;
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+        {% empty %}
+        <tr class="mobile-empty-row">
+          <td colspan="{% if feat_bulk_replay %}9{% else %}8{% endif %}" class="text-center py-4 text-muted small">
+            <i class="bi bi-folder2-open me-1"></i> No files in this folder yet.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

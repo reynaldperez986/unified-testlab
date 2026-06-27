@@ -1,0 +1,93 @@
+{% extends 'api/base.html' %}
+
+{% block title %}Theme Settings - API TestLab{% endblock %}
+{% block page_title %}Theme Settings{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Administration > Themes</h6>
+                <span class="badge bg-secondary">{{ theme.theme_mode|title }}</span>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Theme Mode</label>
+                            {{ form.theme_mode }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Primary Color</label>
+                            {{ form.primary_color }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Accent Color</label>
+                            {{ form.accent_color }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Background Color</label>
+                            {{ form.background_color }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Surface Color</label>
+                            {{ form.surface_color }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Text Color</label>
+                            {{ form.text_color }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sidebar Start</label>
+                            {{ form.sidebar_start_color }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sidebar End</label>
+                            {{ form.sidebar_end_color }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Border Color</label>
+                            {{ form.border_color }}
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">Save Theme</button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="resetToDefaults()">Reset to Default</button>
+                        <a href="{% url 'api:dashboard' %}" class="btn btn-outline-secondary">Back</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const DEFAULTS = {
+    theme_mode:          'light',
+    primary_color:       '#0f766e',
+    accent_color:        '#c0841f',
+    background_color:    '#eef3f7',
+    surface_color:       '#ffffff',
+    text_color:          '#0f172a',
+    sidebar_start_color: '#0f172a',
+    sidebar_end_color:   '#1e293b',
+    border_color:        '#dbe3ec',
+};
+
+function resetToDefaults() {
+    const form = document.querySelector('form');
+    Object.entries(DEFAULTS).forEach(([name, value]) => {
+        const el = form.querySelector(`[name="${name}"]`);
+        if (el) el.value = value;
+    });
+}
+</script>
+{% endblock %}
+
+

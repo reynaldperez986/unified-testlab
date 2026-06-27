@@ -1,0 +1,334 @@
+{% extends "recorder/base.html" %}
+{% block title %}Configuration{% endblock %}
+
+{% block content %}
+<div class="page-header-shell">
+  <div>
+    <h4 class="page-title mb-1 fw-bold"><i class="bi bi-gear-fill"></i> Configuration</h4>
+    <div class="page-header-meta">System, browser, dashboard, and UI settings with responsive editing tables.</div>
+  </div>
+  <span id="cfgStatus" class="page-header-meta">Changes are saved automatically.</span>
+</div>
+
+<form method="post" id="configForm" onsubmit="return false;">
+  {% csrf_token %}
+
+  <div class="row g-4">
+
+    {# ── Standard groups (Replay, Dashboard, UI, Features) ── #}
+    {% for group_name, group_icon, settings in group_list %}
+    {% if group_name != "Recorder" and group_name != "Chrome" and group_name != "Firefox" and group_name != "Edge" and group_name != "Licensing" %}
+    {% with collapse_id="cfg-group-"|add:group_name|slugify %}
+    <div class="col-12">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex align-items-center gap-2 cfg-card-toggle"
+             role="button"
+             data-bs-toggle="collapse"
+             data-bs-target="#{{ collapse_id }}"
+             aria-expanded="true"
+             aria-controls="{{ collapse_id }}"
+             style="cursor:pointer;user-select:none;">
+          <i class="bi {{ group_icon }} fs-5"></i>
+          <span class="fw-semibold flex-grow-1">{{ group_name }}</span>
+          <i class="bi bi-chevron-up cfg-chevron small text-muted"></i>
+        </div>
+        <div class="collapse show" id="{{ collapse_id }}">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0 align-middle mobile-stack-table">
+                <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+                <tbody>
+                  {% for s in settings %}
+                  <tr>
+                    <td class="mobile-primary-cell" data-label="Setting">
+                      <div class="fw-semibold small">{{ s.label }}</div>
+                      {% if s.description %}<div class="text-muted" style="font-size:.77rem">{{ s.description }}</div>{% endif %}
+                    </td>
+                    <td data-label="Value">{% include "recorder/_cfg_input.html" %}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endwith %}
+    {% endif %}
+    {% endfor %}
+
+    {# ── Combined Recorder + Browser Settings card ── #}
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex align-items-center gap-2 cfg-card-toggle"
+             role="button"
+             data-bs-toggle="collapse"
+             data-bs-target="#cfg-group-recorder-browser"
+             aria-expanded="true"
+             aria-controls="cfg-group-recorder-browser"
+             style="cursor:pointer;user-select:none;">
+          <i class="bi bi-record-circle fs-5"></i>
+          <span class="fw-semibold flex-grow-1">Browser Settings</span>
+          <i class="bi bi-chevron-up cfg-chevron small text-muted"></i>
+        </div>
+        <div class="collapse show" id="cfg-group-recorder-browser">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0 align-middle mobile-stack-table" id="recorderBrowserTable">
+                <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+                <tbody>
+
+                {# Recorder rows (always visible) #}
+                {% for group_name, group_icon, settings in group_list %}
+                {% if group_name == "Recorder" %}
+                {% for s in settings %}
+                <tr>
+                  <td class="mobile-primary-cell" data-label="Setting">
+                    <div class="fw-semibold small">{{ s.label }}</div>
+                    {% if s.description %}<div class="text-muted" style="font-size:.77rem">{{ s.description }}</div>{% endif %}
+                  </td>
+                  <td data-label="Value">{% include "recorder/_cfg_input.html" %}</td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+
+                {# Chrome rows #}
+                <tr class="browser-section-divider mobile-section-row" data-browser-divider="chrome">
+                  <td colspan="2" class="cfg-browser-divider-cell" style="background:var(--bs-secondary-bg)">
+                    <span class="small fw-semibold text-secondary">
+                      <i class="bi bi-browser-chrome me-1"></i>Chrome Settings
+                    </span>
+                  </td>
+                </tr>
+                {% for group_name, group_icon, settings in group_list %}
+                {% if group_name == "Chrome" %}
+                {% for s in settings %}
+                <tr data-browser-row="chrome">
+                  <td class="mobile-primary-cell" data-label="Setting">
+                    <div class="fw-semibold small">{{ s.label }}</div>
+                    {% if s.description %}<div class="text-muted" style="font-size:.77rem">{{ s.description }}</div>{% endif %}
+                  </td>
+                  <td data-label="Value">{% include "recorder/_cfg_input.html" %}</td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+
+                {# Firefox rows #}
+                <tr class="browser-section-divider mobile-section-row" data-browser-divider="firefox">
+                  <td colspan="2" class="cfg-browser-divider-cell" style="background:var(--bs-secondary-bg)">
+                    <span class="small fw-semibold text-secondary">
+                      <i class="bi bi-browser-firefox me-1"></i>Firefox Settings
+                    </span>
+                  </td>
+                </tr>
+                {% for group_name, group_icon, settings in group_list %}
+                {% if group_name == "Firefox" %}
+                {% for s in settings %}
+                <tr data-browser-row="firefox">
+                  <td class="mobile-primary-cell" data-label="Setting">
+                    <div class="fw-semibold small">{{ s.label }}</div>
+                    {% if s.description %}<div class="text-muted" style="font-size:.77rem">{{ s.description }}</div>{% endif %}
+                  </td>
+                  <td data-label="Value">{% include "recorder/_cfg_input.html" %}</td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+
+                {# Edge rows #}
+                <tr class="browser-section-divider mobile-section-row" data-browser-divider="edge">
+                  <td colspan="2" class="cfg-browser-divider-cell" style="background:var(--bs-secondary-bg)">
+                    <span class="small fw-semibold text-secondary">
+                      <i class="bi bi-browser-edge me-1"></i>Edge Settings
+                    </span>
+                  </td>
+                </tr>
+                {% for group_name, group_icon, settings in group_list %}
+                {% if group_name == "Edge" %}
+                {% for s in settings %}
+                <tr data-browser-row="edge">
+                  <td class="mobile-primary-cell" data-label="Setting">
+                    <div class="fw-semibold small">{{ s.label }}</div>
+                    {% if s.description %}<div class="text-muted" style="font-size:.77rem">{{ s.description }}</div>{% endif %}
+                  </td>
+                  <td data-label="Value">{% include "recorder/_cfg_input.html" %}</td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Licensing card (shown after Browser Settings) ── #}
+    {% for group_name, group_icon, settings in group_list %}
+    {% if group_name == "Licensing" %}
+    {% with collapse_id="cfg-group-"|add:group_name|slugify %}
+    <div class="col-12">
+      <div class="card shadow-sm h-100">
+        <div class="card-header d-flex align-items-center gap-2 cfg-card-toggle"
+             role="button"
+             data-bs-toggle="collapse"
+             data-bs-target="#{{ collapse_id }}"
+             aria-expanded="true"
+             aria-controls="{{ collapse_id }}"
+             style="cursor:pointer;user-select:none;">
+          <i class="bi {{ group_icon }} fs-5"></i>
+          <span class="fw-semibold flex-grow-1">{{ group_name }}</span>
+          <i class="bi bi-chevron-up cfg-chevron small text-muted"></i>
+        </div>
+        <div class="collapse show" id="{{ collapse_id }}">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0 align-middle mobile-stack-table">
+                <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+                <tbody>
+                  {% for s in settings %}
+                  <tr>
+                    <td class="mobile-primary-cell" data-label="Setting">
+                      <div class="fw-semibold small">{{ s.label }}</div>
+                      {% if s.description %}<div class="text-muted" style="font-size:.77rem">{{ s.description }}</div>{% endif %}
+                    </td>
+                    <td data-label="Value">{% include "recorder/_cfg_input.html" %}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endwith %}
+    {% endif %}
+    {% endfor %}
+
+  </div>{# /row #}
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  [data-bs-toggle="collapse"][aria-expanded="false"] .cfg-chevron { transform: rotate(-180deg); }
+  [data-bs-toggle="collapse"][aria-expanded="true"]  .cfg-chevron { transform: rotate(0deg); }
+  .cfg-chevron { transition: transform .2s ease; }
+  .cfg-browser-divider-cell {
+    padding: .6rem .85rem !important;
+  }
+  .cfg-number-input {
+    max-width: 110px;
+  }
+  @media (max-width: 768px) {
+    .cfg-card-toggle {
+      align-items: flex-start !important;
+      padding-top: .85rem;
+      padding-bottom: .85rem;
+    }
+    .cfg-browser-divider-cell {
+      padding: .7rem .8rem !important;
+    }
+    .cfg-number-input,
+    .cfg-textarea-input,
+    .mobile-stack-table td[data-label="Value"] .form-control,
+    .mobile-stack-table td[data-label="Value"] .form-select {
+      max-width: 100% !important;
+      width: 100%;
+    }
+  }
+</style>
+<script>
+  // ── Auto-save ─────────────────────────────────────────────────────────────
+  const _cfgStatus  = document.getElementById('cfgStatus');
+  const _csrfToken  = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  let   _saveTimer  = null;
+
+  function _cfgSave(key, value) {
+    _cfgStatus.innerHTML = '<span class="text-warning"><i class="bi bi-arrow-repeat me-1"></i>Saving…</span>';
+    fetch('{% url "configuration_api" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrfToken },
+      body: JSON.stringify({ key: key, value: value }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        _cfgStatus.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Saved — reloading…</span>';
+        setTimeout(function() { location.reload(); }, 800);
+      } else {
+        _cfgStatus.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Error: ' + (d.error || 'unknown') + '</span>';
+      }
+    })
+    .catch(function() {
+      _cfgStatus.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Save failed</span>';
+    });
+  }
+
+  document.getElementById('configForm').addEventListener('change', function(e) {
+    const el = e.target;
+    if (!el.name) return;
+    const value = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function() { _cfgSave(el.name, value); }, 300);
+  });
+
+  // Live Enabled / Disabled label
+  document.querySelectorAll('.cfg-checkbox').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+      const lbl = this.closest('.form-check').querySelector('.cfg-bool-label');
+      if (lbl) lbl.textContent = this.checked ? 'Enabled' : 'Disabled';
+    });
+  });
+
+  // Show/hide browser rows based on recorder.browser selection
+  (function () {
+    const browserSelect = document.querySelector('select[name="recorder.browser"]');
+    if (!browserSelect) return;
+
+    function applyBrowser(browser) {
+      const b = (browser || 'chrome').toLowerCase();
+      const active = (b === 'msedge' || b === 'edge') ? 'edge' : b;
+
+      document.querySelectorAll('[data-browser-row]').forEach(function(tr) {
+        tr.style.display = (tr.dataset.browserRow === active) ? '' : 'none';
+      });
+      document.querySelectorAll('[data-browser-divider]').forEach(function(tr) {
+        tr.style.display = (tr.dataset.browserDivider === active) ? '' : 'none';
+      });
+    }
+
+    applyBrowser(browserSelect.value);
+    browserSelect.addEventListener('change', function() { applyBrowser(this.value); });
+  })();
+
+  // Persist collapse state in localStorage
+  (function () {
+    const STORE_KEY = 'cfg_collapse_state';
+    function loadState() {
+      try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch(e) { return {}; }
+    }
+    function saveState(id, expanded) {
+      const s = loadState(); s[id] = expanded; localStorage.setItem(STORE_KEY, JSON.stringify(s));
+    }
+
+    const state = loadState();
+    document.querySelectorAll('.collapse[id^="cfg-group-"]').forEach(function(el) {
+      if (Object.prototype.hasOwnProperty.call(state, el.id) && !state[el.id]) {
+        el.classList.remove('show');
+        const btn = document.querySelector('[data-bs-target="#' + el.id + '"]');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
+      el.addEventListener('show.bs.collapse', function() { saveState(this.id, true);  });
+      el.addEventListener('hide.bs.collapse', function() { saveState(this.id, false); });
+    });
+  })();
+</script>
+{% endblock %}

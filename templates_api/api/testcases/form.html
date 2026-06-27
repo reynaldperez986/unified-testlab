@@ -1,0 +1,745 @@
+{% extends 'api/base.html' %}
+
+{% block title %}{{ title }} - API TestLab{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .searchable-list {
+        max-height: 220px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+    }
+    .searchable-list .list-group-item {
+        cursor: pointer;
+    }
+    .searchable-list.hidden {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{{ form.non_field_errors.0 }}</div>
+                    {% endif %}
+
+                    <h6 class="text-primary mb-3"><i class="bi bi-info-circle"></i> Basic Information</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Test Case Name *</label>
+                            {{ form.name }}
+                            {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors.0 }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Module</label>
+                            <input type="text" id="module-search" class="form-control" placeholder="Search module...">
+                            <div id="module-list" class="list-group searchable-list mt-2 hidden"></div>
+                            <div style="display:none">{{ form.module }}</div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Project</label>
+                            {{ form.project }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Endpoint from Module</label>
+                        <input type="text" id="endpoint-search" list="endpoint-search-options" class="form-control" placeholder="Search endpoint from module...">
+                        <datalist id="endpoint-search-options"></datalist>
+                        <div id="endpoint-list" class="list-group searchable-list mt-2 hidden"></div>
+                        <div class="form-text">Select a module above to populate endpoints, or type manually below.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        {{ form.description }}
+                    </div>
+
+                    <hr class="my-4">
+                    <h6 class="text-primary mb-3"><i class="bi bi-send"></i> Request Configuration</h6>
+                    <div class="row">
+                        <div class="col-md-2 mb-3">
+                            <label class="form-label">HTTP Method *</label>
+                            {{ form.http_method }}
+                        </div>
+                        <div class="col-md-10 mb-3">
+                            <label class="form-label">Endpoint *</label>
+                            {{ form.endpoint }}
+                            {% if form.endpoint.errors %}<div class="text-danger small">{{ form.endpoint.errors.0 }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Headers (JSON)</label>
+                        {{ form.headers }}
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Query Parameters <span class="text-muted fw-normal small">(JSON, optional)</span></label>
+                            {{ form.query_params }}
+                            <div class="form-text">Appended to the URL as <code>?key=value</code>. Example: <code>{"page": 1, "limit": 10}</code></div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Path Parameters <span class="text-muted fw-normal small">(JSON, optional)</span></label>
+                            {{ form.path_params }}
+                            <div class="form-text">Replaces <code>{variable}</code> in the endpoint path. Example: <code>{"id": "123"}</code> for endpoint <code>/users/{id}</code></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Request Body</label>
+                        {{ form.request_body }}
+                    </div>
+
+                    {{ form.form_data }}
+
+                    <hr class="my-4">
+                    <h6 class="text-primary mb-3"><i class="bi bi-ui-checks-grid me-1"></i> Form Data <span class="text-muted fw-normal small">(sent as multipart/form-data; overrides Request Body when rows are present)</span></h6>
+                    <div class="table-responsive mb-2">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="formDataTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:120px">Type</th>
+                                    <th>Key</th>
+                                    <th>Value</th>
+                                    <th>Description</th>
+                                    <th style="width:44px"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="formDataBody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addFormDataRow()">
+                        <i class="bi bi-plus-lg me-1"></i>Add Row
+                    </button>
+
+                    <div class="d-none">
+                        {{ form.auth_type }}
+                        {{ form.auth_credentials }}
+                    </div>
+
+                    <hr class="my-4">
+                    <h6 class="text-primary mb-3"><i class="bi bi-check-circle"></i> Expected Results</h6>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Expected Status Code</label>
+                            {{ form.expected_status_code }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Max Response Time (ms)</label>
+                            {{ form.expected_response_time_ms }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check mt-4">
+                                {{ form.is_active }}
+                                <label class="form-check-label">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Expected Response Content</label>
+                        {{ form.expected_response_content }}
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg"></i> Save Test Case
+                        </button>
+                        <a href="{% url 'api:testcase_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Test Results Section -->
+        <div class="card mt-4">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h6 class="mb-0"><i class="bi bi-play-circle me-2 text-success"></i>Test Results</h6>
+                <div class="d-flex align-items-center gap-2">
+                    {% if tc_id %}
+                    <span id="runSpinner" class="d-none text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Running…</span>
+                    <button id="runTestBtn" class="btn btn-success btn-sm" onclick="runTest()">
+                        <i class="bi bi-play-fill me-1"></i>Run Test
+                    </button>
+                    {% endif %}
+                    <span id="testResultBadge" class="d-none"></span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if tc_id %}
+                {% if environments %}
+                <div class="small text-muted mb-3"><i class="bi bi-info-circle me-1"></i>Using default environment: <strong>{{ environments.0.name }}</strong></div>
+                {% else %}
+                <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle me-1"></i>No active environment found. Create one before running tests.</div>
+                {% endif %}
+                <div id="testResultsPanel" class="d-none">
+                    <div class="row g-2 mb-3">
+                        <div class="col-auto">
+                            <span class="text-muted small">Status:</span>
+                            <span id="resStatus" class="fw-bold ms-1">—</span>
+                        </div>
+                        <div class="col-auto">
+                            <span class="text-muted small">HTTP:</span>
+                            <span id="resHttpCode" class="fw-bold ms-1">—</span>
+                        </div>
+                        <div class="col-auto">
+                            <span class="text-muted small">Time:</span>
+                            <span id="resTime" class="ms-1">—</span>
+                        </div>
+                        <div class="col-auto" id="resChecksGroup">
+                            <span class="text-muted small">Checks:</span>
+                            <span id="resChecks" class="ms-1">—</span>
+                        </div>
+                    </div>
+                    <div id="resErrorBox" class="alert alert-danger py-2 d-none small"></div>
+                    <ul class="nav nav-tabs nav-sm" id="resTabs">
+                        <li class="nav-item"><a class="nav-link active small py-1" data-bs-toggle="tab" href="#resTabBody">Response Body</a></li>
+                        <li class="nav-item"><a class="nav-link small py-1" data-bs-toggle="tab" href="#resTabHeaders">Response Headers</a></li>
+                        <li class="nav-item"><a class="nav-link small py-1" data-bs-toggle="tab" href="#resTabReq">Request</a></li>
+                    </ul>
+                    <div class="tab-content border border-top-0 rounded-bottom p-3" style="background:#1e1e2e;max-height:340px;overflow:auto">
+                        <div class="tab-pane fade show active" id="resTabBody">
+                            <pre id="resBodyPre" class="mb-0 text-light small" style="white-space:pre-wrap;word-break:break-all"></pre>
+                        </div>
+                        <div class="tab-pane fade" id="resTabHeaders">
+                            <pre id="resHeadersPre" class="mb-0 text-light small" style="white-space:pre-wrap"></pre>
+                        </div>
+                        <div class="tab-pane fade" id="resTabReq">
+                            <pre id="resReqPre" class="mb-0 text-light small" style="white-space:pre-wrap;word-break:break-all"></pre>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-muted small"><i class="bi bi-info-circle me-1"></i>Save the test case first, then you can run it and see results here.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function downloadResponseFile(executionId, format) {
+    const jsonTemplate = "{% url 'api:execution_download_response_json' 0 %}";
+    const csvTemplate = "{% url 'api:execution_download_response_csv' 0 %}";
+    const url = format === 'json'
+        ? jsonTemplate.replace('/0/response/download/json/', `/${executionId}/response/download/json/`)
+        : csvTemplate.replace('/0/response/download/csv/', `/${executionId}/response/download/csv/`);
+    const link = document.createElement('a');
+    link.href = url;
+    link.click();
+}
+
+// ── Form Data Table ──────────────────────────────────────────────
+function addFormDataRow(type='text', key='', value='', description='') {
+    const tbody = document.getElementById('formDataBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td>
+            <select class="form-select form-select-sm fd-type" onchange="onFdTypeChange(this)">
+                <option value="text" ${type==='text'?'selected':''}>Text</option>
+                <option value="file" ${type==='file'?'selected':''}>File</option>
+            </select>
+        </td>
+        <td><input type="text" class="form-control form-control-sm fd-key" value="${escHtml(key)}" placeholder="key"></td>
+        <td class="fd-value-cell">
+            ${type==='file'
+                ? `<input type="file" class="form-control form-control-sm fd-file">`
+                : `<input type="text" class="form-control form-control-sm fd-value" value="${escHtml(value)}" placeholder="value">`
+            }
+        </td>
+        <td><input type="text" class="form-control form-control-sm fd-desc" value="${escHtml(description)}" placeholder="description"></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger px-2" onclick="this.closest('tr').remove(); serializeFormData()"><i class="bi bi-trash"></i></button></td>
+    `;
+    tbody.appendChild(tr);
+    tr.querySelectorAll('input,select').forEach(el => el.addEventListener('change', serializeFormData));
+    tr.querySelectorAll('input').forEach(el => el.addEventListener('input', serializeFormData));
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function onFdTypeChange(sel) {
+    const cell = sel.closest('tr').querySelector('.fd-value-cell');
+    if (sel.value === 'file') {
+        cell.innerHTML = `<input type="file" class="form-control form-control-sm fd-file">`;
+        cell.querySelector('.fd-file').addEventListener('change', serializeFormData);
+    } else {
+        cell.innerHTML = `<input type="text" class="form-control form-control-sm fd-value" placeholder="value">`;
+        cell.querySelector('.fd-value').addEventListener('input', serializeFormData);
+    }
+    serializeFormData();
+}
+
+function serializeFormData() {
+    const rows = [];
+    document.querySelectorAll('#formDataBody tr').forEach(tr => {
+        const type = tr.querySelector('.fd-type')?.value || 'text';
+        const key  = tr.querySelector('.fd-key')?.value || '';
+        const desc = tr.querySelector('.fd-desc')?.value || '';
+        let value = '';
+        if (type === 'file') {
+            const fi = tr.querySelector('.fd-file');
+            value = fi && fi.files[0] ? fi.files[0].name : '';
+        } else {
+            value = tr.querySelector('.fd-value')?.value || '';
+        }
+        if (key || value) rows.push({ type, key, value, description: desc });
+    });
+    document.getElementById('id_form_data').value = JSON.stringify(rows);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const raw = document.getElementById('id_form_data')?.value || '[]';
+    let saved = [];
+    try { saved = JSON.parse(raw); } catch {}
+    if (Array.isArray(saved) && saved.length) {
+        saved.forEach(r => addFormDataRow(r.type||'text', r.key||'', r.value||'', r.description||''));
+    }
+    // Serialize on form submit
+    document.querySelector('form[method="post"]').addEventListener('submit', serializeFormData);
+});
+// ─────────────────────────────────────────────────────────────────
+
+let modulesData = [];
+let moduleEndpoints = [];
+let allEndpoints = [];
+let selectedModuleId = '';
+let endpointSearchTimer = null;
+
+// Load modules on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const moduleSearch = document.getElementById('module-search');
+    const endpointSearch = document.getElementById('endpoint-search');
+    const moduleList = document.getElementById('module-list');
+    const endpointList = document.getElementById('endpoint-list');
+    const endpointOptions = document.getElementById('endpoint-search-options');
+
+    fetch('{% url "api:api_modules_list" %}')
+        .then(r => r.json())
+        .then(data => {
+            modulesData = data.modules || [];
+            renderModuleList('');
+            preloadAllEndpoints();
+
+            // If form already has a module value, try to match
+            const moduleInput = document.getElementById('id_module');
+            if (moduleInput && moduleInput.value) {
+                const match = modulesData.find(m => m.name === moduleInput.value);
+                if (match) {
+                    selectedModuleId = String(match.id);
+                    moduleSearch.value = match.name;
+                    renderModuleList(match.name);
+                    onModuleChange(match.id);
+                    hideList(moduleList);
+                }
+            }
+        });
+
+    moduleSearch.addEventListener('input', function() {
+        const moduleInput = document.getElementById('id_module');
+        const selected = modulesData.find(m => String(m.id) === String(selectedModuleId));
+        if (selected && (this.value || '').trim().toLowerCase() !== selected.name.toLowerCase()) {
+            selectedModuleId = '';
+            if (moduleInput) moduleInput.value = '';
+            moduleEndpoints = [];
+            renderEndpointList(endpointSearch.value || '');
+            renderEndpointOptions(endpointSearch.value || '');
+        }
+        renderModuleList(this.value);
+        showList(moduleList);
+    });
+
+    moduleSearch.addEventListener('focus', function() {
+        renderModuleList(this.value);
+        showList(moduleList);
+    });
+
+    endpointSearch.addEventListener('input', function() {
+        if (endpointSearchTimer) {
+            clearTimeout(endpointSearchTimer);
+        }
+        endpointSearchTimer = setTimeout(() => {
+            triggerEndpointSearch(this.value, false);
+        }, 120);
+    });
+
+    endpointSearch.addEventListener('focus', function() {
+        triggerEndpointSearch(this.value, false);
+    });
+
+    endpointSearch.addEventListener('change', function() {
+        triggerEndpointSearch(this.value, true);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!moduleSearch.contains(e.target) && !moduleList.contains(e.target)) {
+            hideList(moduleList);
+        }
+        if (!endpointSearch.contains(e.target) && !endpointList.contains(e.target)) {
+            hideList(endpointList);
+        }
+    });
+});
+
+function showList(el) {
+    if (el) el.classList.remove('hidden');
+}
+
+function hideList(el) {
+    if (el) el.classList.add('hidden');
+}
+
+function renderModuleList(filterText) {
+    const list = document.getElementById('module-list');
+    const query = (filterText || '').toLowerCase();
+    list.innerHTML = '';
+
+    const filtered = modulesData.filter(m => m.name.toLowerCase().includes(query));
+    if (!filtered.length) {
+        const empty = document.createElement('div');
+        empty.className = 'list-group-item text-muted small';
+        empty.textContent = 'No modules found';
+        list.appendChild(empty);
+        return;
+    }
+
+    filtered.forEach(m => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'list-group-item list-group-item-action';
+        if (String(m.id) === String(selectedModuleId)) {
+            item.classList.add('active');
+        }
+        item.textContent = m.name;
+        item.addEventListener('click', function() {
+            selectedModuleId = String(m.id);
+            document.getElementById('module-search').value = m.name;
+            renderModuleList(m.name);
+            onModuleChange(m.id);
+            hideList(list);
+        });
+        list.appendChild(item);
+    });
+}
+
+function renderEndpointList(filterText) {
+    const list = document.getElementById('endpoint-list');
+    const query = (filterText || '').toLowerCase();
+    list.innerHTML = '';
+    const endpointSource = selectedModuleId ? moduleEndpoints : allEndpoints;
+
+    if (!endpointSource.length) {
+        const empty = document.createElement('div');
+        empty.className = 'list-group-item text-muted small';
+        empty.textContent = selectedModuleId ? 'No endpoints found for selected module' : 'Loading endpoints...';
+        list.appendChild(empty);
+        return [];
+    }
+
+    const filtered = endpointSource.filter(ep => {
+        const label = endpointLabel(ep).toLowerCase();
+        return label.includes(query);
+    });
+
+    if (!filtered.length) {
+        const empty = document.createElement('div');
+        empty.className = 'list-group-item text-muted small';
+        empty.textContent = 'No endpoints found';
+        list.appendChild(empty);
+        return [];
+    }
+
+    filtered.forEach(ep => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'list-group-item list-group-item-action';
+        item.textContent = endpointLabel(ep);
+        item.addEventListener('click', function() {
+            document.getElementById('endpoint-search').value = item.textContent;
+            selectEndpointMatch(ep);
+            hideList(list);
+        });
+        list.appendChild(item);
+    });
+
+    return filtered;
+}
+
+function triggerEndpointSearch(rawValue, preferExactSelect) {
+    const value = rawValue || '';
+    const filtered = renderEndpointList(value);
+    renderEndpointOptions(value);
+    showList(document.getElementById('endpoint-list'));
+
+    const typed = value.trim().toLowerCase();
+    if (!typed) return;
+
+    const endpointSource = selectedModuleId ? moduleEndpoints : allEndpoints;
+    const exact = endpointSource.find(ep => endpointLabel(ep).toLowerCase() === typed);
+    if (exact) {
+        selectEndpointMatch(exact);
+        if (preferExactSelect) hideList(document.getElementById('endpoint-list'));
+        return;
+    }
+
+    // Auto-search: if only one candidate remains, pick it automatically.
+    if (Array.isArray(filtered) && filtered.length === 1 && typed.length >= 3) {
+        selectEndpointMatch(filtered[0]);
+    }
+}
+
+function selectEndpointMatch(ep) {
+    if (!ep) return;
+    const epModuleId = ep.module_id != null ? String(ep.module_id) : '';
+    const sameSelectedModule = selectedModuleId && (!epModuleId || epModuleId === String(selectedModuleId));
+
+    if (sameSelectedModule) {
+        onEndpointSelect(ep.id);
+        return;
+    }
+
+    const moduleMatch = modulesData.find(m => String(m.id) === epModuleId);
+    if (moduleMatch) {
+        selectedModuleId = String(moduleMatch.id);
+        document.getElementById('module-search').value = moduleMatch.name;
+        renderModuleList(moduleMatch.name);
+    }
+    if (moduleMatch) {
+        onModuleChange(moduleMatch.id, ep.id);
+    } else {
+        onEndpointSelect(ep.id);
+    }
+}
+
+function endpointLabel(ep) {
+    return `[${ep.http_method}] ${ep.name} — ${ep.endpoint_path}`;
+}
+
+function renderEndpointOptions(filterText) {
+    const options = document.getElementById('endpoint-search-options');
+    if (!options) return;
+    const query = (filterText || '').toLowerCase();
+    options.innerHTML = '';
+    const endpointSource = selectedModuleId ? moduleEndpoints : allEndpoints;
+
+    const filtered = endpointSource.filter(ep => endpointLabel(ep).toLowerCase().includes(query));
+    filtered.slice(0, 100).forEach(ep => {
+        const opt = document.createElement('option');
+        opt.value = endpointLabel(ep);
+        options.appendChild(opt);
+    });
+}
+
+function preloadAllEndpoints() {
+    const requests = (modulesData || []).map(m => {
+        const moduleEndpointsUrlTemplate = "{% url 'api:api_module_endpoints' 0 %}";
+        const endpointsUrl = moduleEndpointsUrlTemplate.replace('/0/endpoints/', `/${m.id}/endpoints/`);
+        return fetch(endpointsUrl)
+            .then(r => r.json())
+            .then(data => {
+                const endpoints = Array.isArray(data.endpoints) ? data.endpoints : [];
+                endpoints.forEach(ep => {
+                    allEndpoints.push({ ...ep, module_id: m.id, module_name: m.name });
+                });
+            })
+            .catch(() => {});
+    });
+
+    Promise.all(requests).finally(() => {
+        renderEndpointList(document.getElementById('endpoint-search')?.value || '');
+        renderEndpointOptions(document.getElementById('endpoint-search')?.value || '');
+    });
+}
+
+function onModuleChange(moduleId, preselectEndpointId) {
+    const moduleInput = document.getElementById('id_module');
+    const authTypeField = document.getElementById('id_auth_type');
+    const authCredsField = document.getElementById('id_auth_credentials');
+    moduleEndpoints = [];
+    renderEndpointList('');
+    renderEndpointOptions('');
+    hideList(document.getElementById('endpoint-list'));
+
+    if (!moduleId) return;
+
+    // Set module name in hidden input
+    const selected = modulesData.find(m => String(m.id) === String(moduleId));
+    if (moduleInput) moduleInput.value = selected ? selected.name : '';
+
+    const moduleEndpointsUrlTemplate = "{% url 'api:api_module_endpoints' 0 %}";
+    const moduleAuthUrlTemplate = "{% url 'api:api_module_auth' 0 %}";
+    const endpointsUrl = moduleEndpointsUrlTemplate.replace('/0/endpoints/', `/${moduleId}/endpoints/`);
+    const authUrl = moduleAuthUrlTemplate.replace('/0/auth/', `/${moduleId}/auth/`);
+
+    fetch(endpointsUrl)
+        .then(r => r.json())
+        .then(data => {
+            moduleEndpoints = data.endpoints;
+            renderEndpointList('');
+            renderEndpointOptions('');
+
+            if (preselectEndpointId) {
+                const picked = moduleEndpoints.find(e => String(e.id) === String(preselectEndpointId));
+                if (picked) {
+                    const pickedLabel = endpointLabel(picked);
+                    document.getElementById('endpoint-search').value = pickedLabel;
+                    onEndpointSelect(picked.id);
+                }
+            }
+        });
+
+    fetch(authUrl)
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.auth_type !== 'oauth2' || !data.oauth2_current_token) return;
+
+            if (authTypeField) authTypeField.value = 'bearer';
+            if (authCredsField) {
+                authCredsField.value = JSON.stringify({
+                    token: data.oauth2_current_token,
+                    add_to: data.oauth2_add_to || 'request_headers',
+                    header_prefix: data.oauth2_header_prefix || 'Bearer'
+                }, null, 2);
+            }
+        });
+}
+
+{% if tc_id %}
+const TC_ID = {{ tc_id }};
+const DEFAULT_ENV_ID = {% if environments %}{{ environments.0.id }}{% else %}null{% endif %};
+function runTest() {
+    if (!DEFAULT_ENV_ID) { alert('No active environment found.'); return; }
+
+    const btn = document.getElementById('runTestBtn');
+    const spinner = document.getElementById('runSpinner');
+    const panel = document.getElementById('testResultsPanel');
+    const badge = document.getElementById('testResultBadge');
+    btn.disabled = true;
+    spinner.classList.remove('d-none');
+    panel.classList.add('d-none');
+    badge.className = 'd-none';
+
+    const csrf = document.cookie.split(';')
+        .map(c => c.trim())
+        .filter(c => c.startsWith('csrftoken='))
+        .map(c => c.split('=')[1])[0]
+        || (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+
+    fetch('{% url "api:execute_test" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+        body: JSON.stringify({ test_case_id: TC_ID, environment_id: parseInt(DEFAULT_ENV_ID) })
+    })
+    .then(r => r.json())
+    .then(d => {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        panel.classList.remove('d-none');
+
+        // Badge
+        const statusMap = { passed: ['bg-success','Pass'], failed: ['bg-danger','Failed'], error: ['bg-warning text-dark','Error'] };
+        const [cls, label] = statusMap[d.result_status] || ['bg-secondary','Unknown'];
+        badge.className = `badge ${cls}`;
+        badge.textContent = label;
+
+        // Inline stats
+        document.getElementById('resStatus').innerHTML = `<span class="badge ${cls}">${label}</span>`;
+        const httpCode = d.response_status_code;
+        document.getElementById('resHttpCode').textContent = httpCode || '—';
+        document.getElementById('resTime').textContent = d.response_time_ms != null ? `${d.response_time_ms} ms` : '—';
+
+        // Checks
+        const checks = [];
+        if (d.status_code_match !== null) checks.push(`<span class="badge ${d.status_code_match ? 'bg-success' : 'bg-danger'}">Status ${d.status_code_match ? '✓' : '✗'}</span>`);
+        if (d.content_match !== null) checks.push(`<span class="badge ${d.content_match ? 'bg-success' : 'bg-danger'}">Content ${d.content_match ? '✓' : '✗'}</span>`);
+        if (d.time_within_threshold !== null) checks.push(`<span class="badge ${d.time_within_threshold ? 'bg-success' : 'bg-danger'}">Time ${d.time_within_threshold ? '✓' : '✗'}</span>`);
+        document.getElementById('resChecks').innerHTML = checks.length ? checks.join(' ') : '<span class="text-muted">No validation defined</span>';
+
+        // Error box
+        const errBox = document.getElementById('resErrorBox');
+        if (d.error_message) { errBox.textContent = d.error_message; errBox.classList.remove('d-none'); }
+        else { errBox.classList.add('d-none'); }
+
+        // Body
+        let body = d.response_body || '';
+        try { body = JSON.stringify(JSON.parse(body), null, 2); } catch {}
+        document.getElementById('resBodyPre').textContent = body || '(empty)';
+
+        // Headers
+        let hdrs = d.response_headers || '';
+        try { hdrs = JSON.stringify(JSON.parse(hdrs), null, 2); } catch {}
+        document.getElementById('resHeadersPre').textContent = hdrs || '(none)';
+
+        // Request
+        document.getElementById('resReqPre').textContent = `${d.request_url || ''}`;
+        
+        // Auto-download response files
+        if (d.execution_id) {
+            setTimeout(() => {
+                downloadResponseFile(d.execution_id, 'json');
+                setTimeout(() => downloadResponseFile(d.execution_id, 'csv'), 300);
+            }, 500);
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        alert('Error running test: ' + err);
+    });
+}
+{% endif %}
+
+function onEndpointSelect(endpointId) {
+    if (!endpointId) return;
+    const ep = moduleEndpoints.find(e => String(e.id) === String(endpointId));
+    if (!ep) return;
+
+    // Fill form fields
+    const nameField = document.getElementById('id_name');
+    const endpointField = document.getElementById('id_endpoint');
+    const methodField = document.getElementById('id_http_method');
+    const headersField = document.getElementById('id_headers');
+    const bodyField = document.getElementById('id_request_body');
+    const descField = document.getElementById('id_description');
+
+    if (nameField && !nameField.value) nameField.value = ep.name;
+    if (endpointField) endpointField.value = ep.endpoint_path;
+    if (methodField) methodField.value = ep.http_method;
+    if (headersField && ep.headers && ep.headers !== '{}') {
+        try {
+            headersField.value = JSON.stringify(JSON.parse(ep.headers), null, 2);
+        } catch { headersField.value = ep.headers; }
+    }
+    // Use default_payload first, fall back to request_body from collection
+    const payloadSource = ep.default_payload || ep.request_body;
+    if (bodyField && payloadSource) {
+        try {
+            bodyField.value = JSON.stringify(JSON.parse(payloadSource), null, 2);
+        } catch { bodyField.value = payloadSource; }
+    }
+    if (descField && ep.description && !descField.value) descField.value = ep.description;
+
+    // Auto-fill expected response content from expected_responses (use 2xx if available)
+    const expectedField = document.getElementById('id_expected_response_content');
+    if (expectedField && ep.expected_responses && ep.expected_responses !== '{}') {
+        try {
+            const responses = JSON.parse(ep.expected_responses);
+            // Find first success code (2xx)
+            const successKey = Object.keys(responses).find(k => k.startsWith('2'));
+            if (successKey) {
+                expectedField.value = JSON.stringify(responses[successKey], null, 2);
+            }
+        } catch {}
+    }
+}
+</script>
+{% endblock %}
+
+
