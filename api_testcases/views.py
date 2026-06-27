@@ -16,6 +16,11 @@ from urllib.parse import urlparse
 import csv
 import os
 from pathlib import Path
+from pprint import pformat
+import re
+import subprocess
+import sys
+import tempfile
 
 try:
     from requests_oauthlib import OAuth1
@@ -308,6 +313,433 @@ def _apply_auth_to_request(auth_type, auth_creds, headers, params):
         return auth, None
 
     return None, f'Unsupported auth type: {auth_type}'
+
+
+def _safe_json_loads(raw_value, default):
+    try:
+        return json.loads(raw_value) if raw_value else default
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return default
+
+
+def _safe_python_name(raw_name, fallback):
+    slug = re.sub(r'[^0-9a-zA-Z_]+', '_', (raw_name or '').strip().lower()).strip('_')
+    if not slug:
+        slug = fallback
+    if slug[0].isdigit():
+        slug = f'test_{slug}'
+    return slug
+
+
+def _safe_download_name(raw_name, fallback):
+    cleaned = re.sub(r'[^0-9A-Za-z._-]+', '_', (raw_name or '').strip()).strip('_')
+    return cleaned or fallback
+
+
+def _resolve_testcase_runtime_context(tc):
+    env = Environment.objects.filter(is_active=True).order_by('id').first()
+    if not env:
+        env = Environment.objects.order_by('id').first()
+
+    module = None
+    module_name = (tc.module or '').strip()
+    if module_name:
+        module = ApiModule.objects.filter(name__iexact=module_name).first()
+
+    endpoint_template = (tc.endpoint or '').strip()
+    url = endpoint_template
+    if env:
+        env_base_path = urlparse(env.base_url or '').path.strip('/')
+        module_base_path = urlparse((module.base_path if module else '') or '').path.strip('/')
+
+        context_root_replacement = ''
+        if module_base_path and module_base_path != env_base_path:
+            context_root_replacement = '/' + module_base_path
+
+        endpoint_path = endpoint_template.replace('{{context-root}}', context_root_replacement).replace('{{ context-root }}', context_root_replacement)
+        endpoint_path = endpoint_path.replace('//', '/')
+        endpoint_relative = endpoint_path.lstrip('/')
+
+        if env_base_path and (endpoint_relative == env_base_path or endpoint_relative.startswith(env_base_path + '/')):
+            endpoint_relative = endpoint_relative[len(env_base_path):].lstrip('/')
+
+        url = env.base_url.rstrip('/')
+        if endpoint_relative:
+            url += '/' + endpoint_relative
+
+    path_params = _safe_json_loads(tc.path_params, {})
+    for key, value in path_params.items():
+        url = url.replace(f'{{{key}}}', str(value))
+
+    headers = _safe_json_loads(tc.headers, {})
+    params = _safe_json_loads(tc.query_params, {})
+    form_data_rows = _safe_json_loads(tc.form_data, [])
+
+    if module and module.module_auth_type == 'oauth2':
+        auth_source = 'module'
+        auth_type = 'oauth2'
+        auth_creds = {
+            'add_to': module.oauth2_add_to or 'request_headers',
+            'client_id': module.oauth2_client_id or '',
+            'client_secret': module.oauth2_client_secret or '',
+            'token_url': module.oauth2_token_url or '',
+            'header_prefix': module.oauth2_header_prefix or 'Bearer',
+            'token': module.oauth2_current_token or '',
+        }
+    elif tc.auth_type == 'bearer' and env and env.auth_type == 'oauth2':
+        env_oauth_creds = _safe_json_loads(env.auth_credentials, {})
+        if env_oauth_creds.get('token_url') and env_oauth_creds.get('client_id') and env_oauth_creds.get('client_secret'):
+            auth_source = 'environment'
+            auth_type = 'oauth2'
+            auth_creds = env_oauth_creds
+        else:
+            auth_source = 'testcase'
+            auth_type = tc.auth_type
+            auth_creds = _safe_json_loads(tc.auth_credentials, {})
+    elif tc.auth_type != 'inherit':
+        auth_source = 'testcase'
+        auth_type = tc.auth_type
+        auth_creds = _safe_json_loads(tc.auth_credentials, {})
+    else:
+        auth_source = 'environment'
+        auth_type = env.auth_type if env else 'none'
+        auth_creds = _safe_json_loads(env.auth_credentials if env else '', {})
+
+    headers_for_request = dict(headers)
+    params_for_request = dict(params)
+    auth, auth_error = _apply_auth_to_request(auth_type, auth_creds, headers_for_request, params_for_request)
+
+    return {
+        'environment': env,
+        'module': module,
+        'url': url,
+        'headers': headers_for_request,
+        'params': params_for_request,
+        'path_params': path_params,
+        'form_data_rows': form_data_rows,
+        'auth': auth,
+        'auth_type': auth_type,
+        'auth_source': auth_source,
+        'auth_creds': auth_creds,
+        'auth_error': auth_error,
+    }
+
+
+def _request_body_snippet_parts(tc):
+    form_data_rows = _safe_json_loads(tc.form_data, [])
+    file_rows = [row for row in form_data_rows if row.get('type') == 'file' and row.get('key')]
+    text_rows = [row for row in form_data_rows if row.get('type') != 'file' and row.get('key')]
+    body_lines = []
+    request_parts = []
+    notes = []
+    extra_imports = []
+    body_mode = ''
+
+    if text_rows:
+        form_payload = {row.get('key'): row.get('value', '') for row in text_rows}
+        body_lines.append(f"    form_data = {pformat(form_payload, width=88)}")
+        request_parts.append('data=form_data')
+        body_mode = 'form'
+    if file_rows:
+        files_payload = {row.get('key'): "open('path/to/file', 'rb')" for row in file_rows}
+        body_lines.append("    files = {")
+        for key, value in files_payload.items():
+            body_lines.append(f"        {key!r}: {value},")
+        body_lines.append("    }")
+        request_parts.append('files=files')
+        notes.append('Replace file placeholders with real file paths before running.')
+        if not body_mode:
+            body_mode = 'files'
+    if body_lines:
+        return body_lines, request_parts, notes, extra_imports, body_mode
+
+    body_text = (tc.request_body or '').strip()
+    if not body_text:
+        return body_lines, request_parts, notes, extra_imports, body_mode
+
+    parsed_body = _safe_json_loads(body_text, None)
+    if isinstance(parsed_body, (dict, list)):
+        extra_imports.append('import json')
+        body_lines.append("    payload = json.loads(r'''" + body_text + "''')")
+        request_parts.append('json=payload')
+        body_mode = 'json'
+    else:
+        body_lines.append(f"    payload = {body_text!r}")
+        request_parts.append('data=payload')
+        body_mode = 'raw'
+    return body_lines, request_parts, notes, extra_imports, body_mode
+
+
+def _requests_auth_lines(runtime):
+    auth_type = (runtime.get('auth_type') or 'none').strip().lower()
+    auth_creds = runtime.get('auth_creds') or {}
+    imports = []
+    lines = []
+    request_parts = []
+    notes = []
+
+    if auth_type == 'basic':
+        lines.append(f"    auth = ({auth_creds.get('username', '')!r}, {auth_creds.get('password', '')!r})")
+        request_parts.append('auth=auth')
+    elif auth_type == 'digest':
+        imports.append('from requests.auth import HTTPDigestAuth')
+        lines.append(f"    auth = HTTPDigestAuth({auth_creds.get('username', '')!r}, {auth_creds.get('password', '')!r})")
+        request_parts.append('auth=auth')
+    elif auth_type == 'oauth1':
+        imports.append('from requests_oauthlib import OAuth1')
+        lines.append("    auth = OAuth1(")
+        lines.append(f"        {auth_creds.get('client_key', '')!r},")
+        lines.append(f"        client_secret={auth_creds.get('client_secret', '')!r},")
+        lines.append(f"        resource_owner_key={auth_creds.get('resource_owner_key', '')!r},")
+        lines.append(f"        resource_owner_secret={auth_creds.get('resource_owner_secret', '')!r},")
+        lines.append("    )")
+        request_parts.append('auth=auth')
+    elif auth_type == 'awsv4':
+        imports.append('from requests_aws4auth import AWS4Auth')
+        lines.append("    auth = AWS4Auth(")
+        lines.append(f"        {auth_creds.get('access_key', '')!r},")
+        lines.append(f"        {auth_creds.get('secret_key', '')!r},")
+        lines.append(f"        {auth_creds.get('region', '')!r},")
+        lines.append(f"        {auth_creds.get('service', '')!r},")
+        lines.append(f"        session_token={auth_creds.get('session_token', '')!r},")
+        lines.append("    )")
+        request_parts.append('auth=auth')
+    elif auth_type == 'ntlm':
+        imports.append('from requests_ntlm import HttpNtlmAuth')
+        lines.append(f"    auth = HttpNtlmAuth({auth_creds.get('username', '')!r}, {auth_creds.get('password', '')!r})")
+        request_parts.append('auth=auth')
+    elif auth_type in ('oauth2', 'bearer') and not (runtime.get('headers') or {}).get('Authorization') and not (runtime.get('params') or {}).get('access_token'):
+        notes.append('Authentication token is not populated yet. Add a token before running.')
+
+    if runtime.get('auth_error'):
+        notes.append(runtime['auth_error'])
+
+    return imports, lines, request_parts, notes
+
+
+def _generated_response_output_helper_lines(base_name):
+    return [
+        '',
+        '',
+        'def _save_response_outputs(data):',
+        "    output_dir = Path.cwd() / 'Response'",
+        '    output_dir.mkdir(exist_ok=True)',
+        f"    file_base = output_dir / '{base_name}_response'",
+        "    json_path = file_base.with_suffix('.json')",
+        "    csv_path = file_base.with_suffix('.csv')",
+        '',
+        "    with open(json_path, 'w', encoding='utf-8') as handle:",
+        '        json.dump(data, handle, indent=2, ensure_ascii=False)',
+        '',
+        "    with open(csv_path, 'w', newline='', encoding='utf-8') as handle:",
+        '        writer = csv.writer(handle)',
+        '        if isinstance(data, list):',
+        '            if data and isinstance(data[0], dict):',
+        '                fieldnames = sorted({key for item in data if isinstance(item, dict) for key in item.keys()})',
+        '                writer.writerow(fieldnames)',
+        '                for item in data:',
+        "                    writer.writerow([json.dumps(item.get(field, ''), ensure_ascii=False) if isinstance(item.get(field, ''), (dict, list)) else item.get(field, '') for field in fieldnames])",
+        '            else:',
+        "                writer.writerow(['Value'])",
+        '                for item in data:',
+        '                    writer.writerow([item])',
+        '        elif isinstance(data, dict):',
+        "            writer.writerow(['Key', 'Value'])",
+        '            for key, value in data.items():',
+        '                if isinstance(value, (dict, list)):',
+        '                    value = json.dumps(value, ensure_ascii=False)',
+        '                writer.writerow([key, value])',
+        '        else:',
+        "            writer.writerow(['Response'])",
+        '            writer.writerow([data])',
+        '',
+        "    print(f'JSON saved to: {json_path}')",
+        "    print(f'CSV saved to: {csv_path}')",
+    ]
+
+
+def _build_requests_snippet(tc):
+    runtime = _resolve_testcase_runtime_context(tc)
+    imports = ['import csv', 'import json', 'from datetime import datetime', 'from pathlib import Path', 'import requests', 'import urllib3']
+    auth_imports, auth_lines, auth_request_parts, auth_notes = _requests_auth_lines(runtime)
+    imports.extend(auth_imports)
+    body_lines, body_request_parts, body_notes, body_imports, _body_mode = _request_body_snippet_parts(tc)
+    imports.extend(body_imports)
+    imports = list(dict.fromkeys(imports))
+
+    function_name = _safe_python_name(tc.name, f'testcase_{tc.pk}')
+    safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
+    lines = imports
+    lines.extend(_generated_response_output_helper_lines(safe_name))
+    lines.extend(['', '', 'urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)', '', '', f'def {function_name}():', f"    url = {runtime['url']!r}"])
+
+    if runtime.get('headers'):
+        lines.append(f"    headers = {pformat(runtime['headers'], width=88)}")
+    if runtime.get('params'):
+        lines.append(f"    params = {pformat(runtime['params'], width=88)}")
+
+    lines.extend(auth_lines)
+    lines.extend(body_lines)
+
+    request_parts = [f"method={tc.http_method!r}", 'url=url']
+    if runtime.get('headers'):
+        request_parts.append('headers=headers')
+    if runtime.get('params'):
+        request_parts.append('params=params')
+    request_parts.extend(auth_request_parts)
+    request_parts.extend(body_request_parts)
+    request_parts.append('timeout=30')
+    request_parts.append('verify=False')
+
+    lines.append(f"    response = requests.request({', '.join(request_parts)})")
+    lines.append('')
+    lines.append('    try:')
+    lines.append('        data = response.json()')
+    lines.append('    except ValueError:')
+    lines.append('        data = response.text')
+    lines.append("    print(f'Status: {response.status_code}')")
+    lines.append("    print('Response:')")
+    lines.append('    print(data)')
+    lines.append('    _save_response_outputs(data)')
+    if tc.expected_status_code:
+        lines.append(f"    if response.status_code != {tc.expected_status_code}:")
+        lines.append(f"        raise AssertionError(f'Expected status {tc.expected_status_code}, got {{response.status_code}}')")
+    else:
+        lines.append('    if not response.ok:')
+        lines.append("        raise AssertionError(f'Request failed with status {response.status_code}')")
+    if tc.expected_response_content:
+        lines.append(f"    if {tc.expected_response_content!r} not in response.text:")
+        lines.append("        raise AssertionError('Expected response content was not found in response body')")
+
+    notes = []
+    if not runtime.get('environment'):
+        notes.append('No active environment was found; the snippet uses the testcase endpoint as-is.')
+    notes.extend(auth_notes)
+    notes.extend(body_notes)
+    if notes:
+        note_block = ['# Notes:'] + [f'# - {note}' for note in notes] + ['']
+        lines = note_block + lines
+    lines.extend([
+        '',
+        '',
+        "if __name__ == '__main__':",
+        f'    {function_name}()',
+    ])
+    return '\n'.join(lines).rstrip() + '\n'
+
+
+def _build_playwright_snippet(tc):
+    runtime = _resolve_testcase_runtime_context(tc)
+    function_name = _safe_python_name(tc.name, f'testcase_{tc.pk}')
+    safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
+    body_lines, body_request_parts, body_notes, body_imports, body_mode = _request_body_snippet_parts(tc)
+    lines = [
+        'import csv',
+        'import json',
+        'import sys',
+        'from datetime import datetime',
+        'from pathlib import Path',
+        'try:',
+        '    from playwright.sync_api import sync_playwright',
+        'except ModuleNotFoundError as exc:',
+        "    if exc.name == 'playwright':",
+        "        raise SystemExit('Playwright is not installed. Run: python -m pip install playwright && python -m playwright install chromium')",
+        '    raise',
+    ]
+    for extra_import in body_imports:
+        if extra_import not in lines:
+            lines.append(extra_import)
+    lines.extend(_generated_response_output_helper_lines(safe_name))
+    lines.extend([
+        '',
+        '',
+        f'def {function_name}():',
+        f"    url = {runtime['url']!r}",
+    ])
+
+    if runtime.get('headers'):
+        lines.append(f"    headers = {pformat(runtime['headers'], width=88)}")
+    else:
+        lines.append('    headers = {}')
+    if runtime.get('params'):
+        lines.append(f"    params = {pformat(runtime['params'], width=88)}")
+
+    lines.extend(body_lines)
+    lines.append('')
+    lines.append('    with sync_playwright() as p:')
+    lines.append('        browser = p.chromium.launch(headless=True)')
+    lines.append('        browser_context = browser.new_context(ignore_https_errors=True)')
+    lines.append('        page = browser_context.new_page()')
+    lines.append('        request_context = p.request.new_context(extra_http_headers=headers, ignore_https_errors=True)')
+    fetch_parts = [f"url", f"method={tc.http_method!r}"]
+    if runtime.get('params'):
+        fetch_parts.append('params=params')
+    for part in body_request_parts:
+        if part.startswith('json='):
+            if body_mode == 'json':
+                fetch_parts.append('data=json.dumps(payload)')
+            else:
+                fetch_parts.append('data=payload')
+        else:
+            fetch_parts.append(part)
+    lines.append(f"        response = request_context.fetch({', '.join(fetch_parts)})")
+    lines.append('')
+    lines.append('        try:')
+    lines.append('            data = response.json()')
+    lines.append('        except Exception:')
+    lines.append('            data = response.text()')
+    lines.append("        print(f'Status: {response.status}')")
+    lines.append("        print('Response:')")
+    lines.append('        print(data)')
+    lines.append('        _save_response_outputs(data)')
+    if tc.expected_status_code:
+        lines.append(f"        if response.status != {tc.expected_status_code}:")
+        lines.append(f"            raise AssertionError(f'Expected status {tc.expected_status_code}, got {{response.status}}')")
+    else:
+        lines.append('        if not response.ok:')
+        lines.append("            raise AssertionError(f'Request failed with status {response.status}')")
+    if tc.expected_response_content:
+        lines.append(f"        if {tc.expected_response_content!r} not in response.text():")
+        lines.append("            raise AssertionError('Expected response content was not found in response body')")
+    lines.append('')
+    base_ui_url = ''
+    if runtime.get('environment') and runtime['environment'].base_url:
+        parsed = urlparse(runtime['environment'].base_url)
+        base_ui_url = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else runtime['environment'].base_url
+    lines.append(f"        page.goto({(base_ui_url or runtime['url'])!r})")
+    lines.append('        # Add UI assertions or navigation steps here if this API call prepares UI state.')
+    lines.append('')
+    lines.append('        request_context.dispose()')
+    lines.append('        browser_context.close()')
+    lines.append('        browser.close()')
+
+    notes = []
+    if not runtime.get('environment'):
+        notes.append('No active environment was found; the snippet uses the testcase endpoint as-is.')
+    if runtime.get('auth_error'):
+        notes.append(runtime['auth_error'])
+    notes.extend(body_notes)
+    if (runtime.get('auth_type') or '').strip().lower() in ('basic', 'digest', 'oauth1', 'awsv4', 'ntlm'):
+        notes.append('This Playwright snippet forwards resolved headers. If your auth flow requires browser/session-specific setup, extend the snippet before use.')
+    if notes:
+        note_block = ['# Notes:'] + [f'# - {note}' for note in notes] + ['']
+        lines = note_block + lines
+    lines.extend([
+        '',
+        '',
+        "if __name__ == '__main__':",
+        f'    {function_name}()',
+    ])
+    return '\n'.join(lines).rstrip() + '\n'
+
+
+def _build_generated_snippet(tc, snippet_type):
+    snippet_type = (snippet_type or '').strip().lower()
+    if snippet_type == 'requests':
+        return _build_requests_snippet(tc)
+    if snippet_type == 'playwright':
+        return _build_playwright_snippet(tc)
+    raise ValueError(f'Unsupported snippet type: {snippet_type}')
 
 
 # ========== Authentication ==========
@@ -1290,12 +1722,101 @@ def testcase_detail(request, pk):
     tc = get_object_or_404(TestCase, pk=pk)
     executions = tc.executions.all()[:20]
     environments = Environment.objects.filter(is_active=True)
+    snippet_runtime = _resolve_testcase_runtime_context(tc)
+    selected_tab = (request.GET.get('tab') or 'details').strip().lower()
+    if selected_tab not in {'details', 'executions', 'requests', 'playwright'}:
+        selected_tab = 'details'
+    code_view_mode = selected_tab if selected_tab in {'requests', 'playwright'} else ''
     context = {
         'test_case': tc,
         'executions': executions,
         'environments': environments,
+        'snippet_environment': snippet_runtime.get('environment'),
+        'requests_snippet': _build_requests_snippet(tc),
+        'playwright_snippet': _build_playwright_snippet(tc),
+        'selected_tab': selected_tab,
+        'code_view_mode': code_view_mode,
     }
     return render(request, 'api/testcases/detail.html', context)
+
+
+@login_required
+def testcase_download_requests_py(request, pk):
+    tc = get_object_or_404(TestCase, pk=pk)
+    response = HttpResponse(_build_requests_snippet(tc), content_type='text/x-python; charset=utf-8')
+    safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_requests.py"'
+    return response
+
+
+@login_required
+def testcase_download_playwright_py(request, pk):
+    tc = get_object_or_404(TestCase, pk=pk)
+    response = HttpResponse(_build_playwright_snippet(tc), content_type='text/x-python; charset=utf-8')
+    safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_playwright.py"'
+    return response
+
+
+@login_required
+@role_required(['admin', 'tester'])
+def testcase_run_generated_py(request, pk, snippet_type):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    tc = get_object_or_404(TestCase, pk=pk)
+    try:
+        script_text = _build_generated_snippet(tc, snippet_type)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+
+    safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
+    file_suffix = '_playwright.py' if snippet_type == 'playwright' else '_requests.py'
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile('w', suffix=file_suffix, prefix=f'{safe_name}_', delete=False, encoding='utf-8') as handle:
+            handle.write(script_text)
+            temp_path = handle.name
+
+        result = subprocess.run(
+            [sys.executable, temp_path],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).resolve().parent.parent),
+            timeout=180,
+        )
+        return JsonResponse({
+            'ok': result.returncode == 0,
+            'returncode': result.returncode,
+            'stdout': result.stdout,
+            'stderr': result.stderr,
+            'script_path': temp_path,
+            'snippet_type': snippet_type,
+        })
+    except subprocess.TimeoutExpired as exc:
+        return JsonResponse({
+            'ok': False,
+            'returncode': None,
+            'stdout': exc.stdout or '',
+            'stderr': exc.stderr or '',
+            'error': 'Snippet execution timed out after 180 seconds.',
+            'snippet_type': snippet_type,
+        }, status=500)
+    except Exception as exc:
+        return JsonResponse({
+            'ok': False,
+            'returncode': None,
+            'stdout': '',
+            'stderr': '',
+            'error': str(exc),
+            'snippet_type': snippet_type,
+        }, status=500)
+    finally:
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 @login_required
