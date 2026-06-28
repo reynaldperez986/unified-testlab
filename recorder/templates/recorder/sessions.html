@@ -3767,6 +3767,7 @@
   // ── Bulk delete wiring ────────────────────────────────────────
   (function() {
     const bulkDeleteBtn    = document.getElementById('bulkDeleteBtn');
+    const bulkDeleteForm   = document.getElementById('bulkDeleteForm');
     const bulkDeleteInputs = document.getElementById('bulkDeleteHiddenInputs');
     const bulkDeleteModal  = new bootstrap.Modal(document.getElementById('bulkDeleteModal'));
 
@@ -3783,13 +3784,6 @@
         const inp = document.createElement('input');
         inp.type = 'hidden';
         inp.name = 'record_ids';
-        inp.value = id;
-        bulkDeleteInputs.appendChild(inp);
-      });
-      apiIds.forEach(function(id) {
-        const inp = document.createElement('input');
-        inp.type = 'hidden';
-        inp.name = 'api_testcase_ids';
         inp.value = id;
         bulkDeleteInputs.appendChild(inp);
       });
@@ -3848,6 +3842,40 @@
           document.getElementById('bulkDeleteStatsTable').classList.remove('d-none');
         });
     });
+
+    if (bulkDeleteForm) {
+      bulkDeleteForm.addEventListener('submit', function(e) {
+        const selectedApiRows = Array.from(document.querySelectorAll('tr.selected-api-testcase-row .api-testcase-cb:checked'));
+        if (!selectedApiRows.length) return;
+
+        const byFolder = loadSelectedByFolder();
+        selectedApiRows.forEach(function(cb) {
+          const row = cb.closest('tr.selected-api-testcase-row');
+          if (!row) return;
+          const folderName = String(row.dataset.folderName || '').trim();
+          const apiId = String(cb.value || '').trim();
+          if (!folderName || !apiId) return;
+
+          const existing = Array.isArray(byFolder[folderName]) ? byFolder[folderName] : [];
+          byFolder[folderName] = existing.filter(function(item) {
+            return String((item && item.id) || '').trim() !== apiId;
+          });
+          if (!byFolder[folderName].length) {
+            delete byFolder[folderName];
+          }
+        });
+        saveSelectedByFolder(byFolder);
+
+        // If only API rows are selected, handle it client-side only.
+        const selectedSessionCount = document.querySelectorAll('.session-cb:checked').length;
+        if (selectedSessionCount === 0) {
+          e.preventDefault();
+          bulkDeleteModal.hide();
+          renderSelectedTestcasesInFolders();
+          updateBulkBar();
+        }
+      });
+    }
   })();
 
   // ── Serial / Parallel toggle ───────────────────────────────────

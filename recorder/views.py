@@ -13220,12 +13220,11 @@ def bulk_delete_stats(request):
 
 @login_required
 def bulk_delete(request):
-    """POST: delete submitted session record_ids and/or API testcase IDs."""
+    """POST: delete every submitted record_id across all related tables."""
     if request.method != "POST":
         return redirect("sessions_list")
 
     raw_ids = request.POST.getlist("record_ids")
-    raw_api_ids = request.POST.getlist("api_testcase_ids")
 
     valid_ids = []
     for rid in raw_ids:
@@ -13236,21 +13235,11 @@ def bulk_delete(request):
         except (ValueError, AttributeError):
             pass
 
-    valid_api_ids: list[int] = []
-    for api_id in raw_api_ids:
-        try:
-            _api_id = int(str(api_id).strip())
-            if _api_id > 0 and _api_id not in valid_api_ids:
-                valid_api_ids.append(_api_id)
-        except (TypeError, ValueError):
-            pass
-
-    if not valid_ids and not valid_api_ids:
-        messages.warning(request, "No sessions or API test cases selected.")
+    if not valid_ids:
+        messages.warning(request, "No sessions selected.")
         return redirect("sessions_list")
 
     deleted = 0
-    api_deleted = 0
     affected_folders = set()
     with transaction.atomic():
         with connection.cursor() as cur:
@@ -13287,30 +13276,10 @@ def bulk_delete(request):
                 cur.execute("DELETE FROM session_meta      WHERE record_id = %s", [sid])
                 deleted += 1
 
-            if valid_api_ids:
-                from api_testcases.models import TestCase as ApiTestCase
-
-                _api_qs = ApiTestCase.objects.filter(pk__in=valid_api_ids)
-                _api_map = {tc.id: tc for tc in _api_qs}
-                _ordered_api_tcs = [_api_map[_id] for _id in valid_api_ids if _id in _api_map]
-                for _tc in _ordered_api_tcs:
-                    _tc.delete()
-                    api_deleted += 1
-
             for folder_name in affected_folders:
                 _resequence_file_order_for_folder(folder_name)
 
-    if deleted and api_deleted:
-        messages.success(
-            request,
-            f'{deleted} recording{"s" if deleted != 1 else ""} and {api_deleted} API test case{"s" if api_deleted != 1 else ""} deleted.'
-        )
-    elif valid_api_ids and not api_deleted and not deleted:
-        messages.info(request, "Selected API test cases were not found (they may have been deleted already).")
-    elif api_deleted:
-        messages.success(request, f'{api_deleted} API test case{"s" if api_deleted != 1 else ""} deleted.')
-    else:
-        messages.success(request, f'{deleted} recording{"s" if deleted != 1 else ""} deleted.')
+    messages.success(request, f'{deleted} recording{"s" if deleted != 1 else ""} deleted.')
     return redirect("sessions_list")
 
 

@@ -290,10 +290,6 @@ def _flatten_response_json(value, prefix=''):
 
 def _store_response_in_project_data(test_case, response_body, target_folder_name=None):
     """Persist flattened response JSON as global entries in recorder project data."""
-    folder_name = (target_folder_name or getattr(test_case, 'project', '') or '').strip()
-    if not folder_name:
-        return
-
     try:
         parsed = json.loads(response_body) if response_body else None
     except (json.JSONDecodeError, TypeError, ValueError):
@@ -304,6 +300,36 @@ def _store_response_in_project_data(test_case, response_body, target_folder_name
 
     testcase_prefix = _safe_data_prefix(test_case.name)
     field_prefix = f"api.{testcase_prefix}"
+
+    explicit_folder_name = (target_folder_name or '').strip()
+    default_folder_name = (getattr(test_case, 'project', '') or '').strip()
+
+    folder_names = set()
+    if explicit_folder_name:
+        folder_names.add(explicit_folder_name)
+    elif default_folder_name:
+        folder_names.add(default_folder_name)
+
+    # Keep existing folder mappings in sync: if this testcase already has stored
+    # keys in other folders (e.g. Project001), overwrite those as well.
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT TRIM(COALESCE(folder_name, '')) AS folder
+              FROM data
+             WHERE field_name LIKE %s
+               AND TRIM(COALESCE(folder_name, '')) <> ''
+            """,
+            [field_prefix + '%'],
+        )
+        for row in cur.fetchall():
+            folder = (row[0] or '').strip()
+            if folder:
+                folder_names.add(folder)
+
+    if not folder_names:
+        return
+
     flattened = _flatten_response_json(parsed, field_prefix)
     if not flattened:
         return
@@ -312,34 +338,34 @@ def _store_response_in_project_data(test_case, response_body, target_folder_name
     flattened = flattened[:2000]
 
     with connection.cursor() as cur:
-        cur.execute(
-            """
-            DELETE FROM data
-             WHERE record_id = %s
-               AND step_no = 0
-               AND TRIM(COALESCE(folder_name, '')) = %s
-               AND field_name LIKE %s
-            """,
-            [
-                '00000000-0000-0000-0000-000000000000',
-                folder_name,
-                field_prefix + '%',
-            ],
-        )
-
-        for field_name, value in flattened:
+        for folder_name in folder_names:
+            # Overwrite semantics: remove prior generated keys for this API testcase
+            # in each synced folder, regardless of originating record/step.
             cur.execute(
                 """
-                INSERT INTO data (record_id, step_no, field_name, value, folder_name, is_global, created_at)
-                VALUES (%s, 0, %s, %s, %s, TRUE, NOW())
+                DELETE FROM data
+                 WHERE TRIM(COALESCE(folder_name, '')) = %s
+                   AND field_name LIKE %s
                 """,
                 [
-                    '00000000-0000-0000-0000-000000000000',
-                    field_name,
-                    value,
                     folder_name,
+                    field_prefix + '%',
                 ],
             )
+
+            for field_name, value in flattened:
+                cur.execute(
+                    """
+                    INSERT INTO data (record_id, step_no, field_name, value, folder_name, is_global, created_at)
+                    VALUES (%s, 0, %s, %s, %s, TRUE, NOW())
+                    """,
+                    [
+                        '00000000-0000-0000-0000-000000000000',
+                        field_name,
+                        value,
+                        folder_name,
+                    ],
+                )
 
 
 def _apply_auth_to_request(auth_type, auth_creds, headers, params):
@@ -1815,7 +1841,9 @@ def _execute_tc(tc, env, user, request, target_project_folder_name=None):
     # Save response files to Response folder
     save_response_files(tc.name, response_body)
 
-    if result_status == 'passed':
+    # Always refresh shared project data when we received a response payload,
+    # even if validation checks failed (latest response should overwrite prior data).
+    if not error_message and response_body:
         try:
             _store_response_in_project_data(tc, response_body, target_project_folder_name)
         except Exception:
