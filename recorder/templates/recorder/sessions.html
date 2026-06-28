@@ -1919,7 +1919,7 @@
     <div id="bulkHiddenInputs"></div>
     <div id="bulkApiHiddenInputs"></div>
     <div class="form-check form-switch">
-      <input class="form-check-input" type="checkbox" name="headless" id="bulkHeadlessCheck" role="switch" {% if headless_default %}checked{% endif %}>
+      <input class="form-check-input" type="checkbox" name="headless" id="bulkHeadlessCheck" role="switch" checked>
       <label class="form-check-label text-white" for="bulkHeadlessCheck">
         Run headless <span class="text-secondary small">(no visible browser)</span>
       </label>
@@ -2775,21 +2775,18 @@
             <input type="text" id="module-search" list="module-search-options" class="form-control" placeholder="Search module...">
             <datalist id="module-search-options"></datalist>
           </div>
-          <div class="col-md-6">
-            <input type="text" id="endpoint-search" class="form-control" placeholder="Search endpoint from module...">
-          </div>
         </div>
-        <div class="small text-muted mb-2" id="testcaseSearchHint">Select a module first, then search endpoints.</div>
+        <div class="small text-muted mb-2" id="testcaseSearchHint">Select/search a module to list API test cases.</div>
 
         <div class="list-group" id="testcaseSearchList" style="max-height:50vh;overflow:auto;">
           {% for ep in api_endpoints %}
           <div class="list-group-item testcase-search-item" data-testcase-lab="api" data-module-name="{{ ep.module_name|lower }}" data-module-display="{{ ep.module_name }}" data-testcase-search="{{ ep.name|lower }} {{ ep.method|lower }} {{ ep.module_name|lower }} {{ ep.endpoint|lower }}" data-testcase-id="{{ ep.id }}">
             <div class="d-flex justify-content-between align-items-start gap-2">
-              <div>
-                <div class="fw-semibold">{{ ep.name }}</div>
-              </div>
-              <div class="form-check m-0">
+              <div class="form-check m-0 mt-1">
                 <input class="form-check-input testcase-select-checkbox" type="checkbox" value="{{ ep.id }}" data-testcase-name="{{ ep.name|escape }}" data-module-name="{{ ep.module_name|escape }}">
+              </div>
+              <div class="flex-grow-1">
+                <div class="fw-semibold">{{ ep.name }}</div>
               </div>
             </div>
           </div>
@@ -2832,7 +2829,6 @@
   (function() {
     const STORAGE_KEY = 'projects_selected_api_testcases_by_folder';
     const modalEl = document.getElementById('testcaseSearchModal');
-    const endpointInputEl = document.getElementById('endpoint-search');
     const moduleInputEl = document.getElementById('module-search');
     const moduleSearchWrapEl = document.getElementById('moduleSearchWrap');
     const moduleOptionsEl = document.getElementById('module-search-options');
@@ -2840,7 +2836,7 @@
     const listEl = document.getElementById('testcaseSearchList');
     const noMatchEl = document.getElementById('testcaseSearchNoMatches');
     const hintEl = document.getElementById('testcaseSearchHint');
-    if (!modalEl || !endpointInputEl || !moduleInputEl || !listEl) return;
+    if (!modalEl || !moduleInputEl || !listEl) return;
 
     const allApiModules = JSON.parse(document.getElementById('allApiModulesData')?.textContent || '[]');
     const modal = new bootstrap.Modal(modalEl);
@@ -2902,6 +2898,30 @@
       if (rows && rows.length) byFolder[key] = rows;
       else delete byFolder[key];
       saveSelectedByFolder(byFolder);
+    }
+
+    function pruneSelectedToExistingApiTestcases() {
+      const validIds = new Set(
+        Array.from(listEl.querySelectorAll('.testcase-search-item[data-testcase-lab="api"]'))
+          .map(function(item) { return String(item.getAttribute('data-testcase-id') || '').trim(); })
+          .filter(Boolean)
+      );
+      const byFolder = loadSelectedByFolder();
+      let changed = false;
+
+      Object.keys(byFolder).forEach(function(folderName) {
+        const rows = Array.isArray(byFolder[folderName]) ? byFolder[folderName] : [];
+        const filtered = rows.filter(function(row) {
+          return validIds.has(String((row && row.id) || '').trim());
+        });
+        if (filtered.length !== rows.length) {
+          changed = true;
+          if (filtered.length) byFolder[folderName] = filtered;
+          else delete byFolder[folderName];
+        }
+      });
+
+      if (changed) saveSelectedByFolder(byFolder);
     }
 
     function statusBadgeHtml(testcaseId) {
@@ -3188,7 +3208,6 @@
     }
 
     function applyTestcaseSearchFilter() {
-      const endpointQuery = (endpointInputEl.value || '').toLowerCase().trim();
       const moduleQuery = (moduleInputEl.value || '').toLowerCase().trim();
       const items = Array.from(listEl.querySelectorAll('.testcase-search-item'));
       let visibleCount = 0;
@@ -3204,15 +3223,15 @@
             visible = false;
           } else {
             const moduleMatch = !moduleQuery || itemModule.indexOf(moduleQuery) !== -1;
-            const endpointMatch = !endpointQuery || itemText.indexOf(endpointQuery) !== -1;
+            const endpointMatch = !moduleQuery || itemText.indexOf(moduleQuery) !== -1;
             // Module must be selected/searched before showing API testcases.
             visible = moduleQuery ? (moduleMatch && endpointMatch) : false;
           }
         } else if (activeLab === 'db') {
-          if (endpointQuery.length < 2) {
+          if (moduleQuery.length < 2) {
             visible = false;
           } else {
-            visible = itemLab === 'db' && itemText.indexOf(endpointQuery) !== -1;
+            visible = itemLab === 'db' && itemText.indexOf(moduleQuery) !== -1;
           }
         } else {
           visible = false;
@@ -3226,7 +3245,7 @@
         if (activeLab === 'api' && !moduleQuery) {
           hintEl.textContent = 'Select/search a module first to list API test cases.';
           hintEl.classList.remove('d-none');
-        } else if (activeLab === 'db' && endpointQuery.length < 2) {
+        } else if (activeLab === 'db' && moduleQuery.length < 2) {
           hintEl.textContent = 'Type at least 2 characters to search DB test cases.';
           hintEl.classList.remove('d-none');
         } else {
@@ -3240,6 +3259,7 @@
     }
 
     populateModuleOptions();
+    pruneSelectedToExistingApiTestcases();
     renderSelectedTestcasesInFolders();
     syncModalCheckboxes();
     refreshLatestStatusesFromServer();
@@ -3274,22 +3294,16 @@
           moduleSearchWrapEl.classList.remove('d-none');
         }
         moduleInputEl.value = '';
-        endpointInputEl.value = '';
         applyTestcaseSearchFilter();
         syncModalCheckboxes();
         modal.show();
         setTimeout(function() {
-          if (activeLab === 'api') {
-            moduleInputEl.focus();
-          } else {
-            endpointInputEl.focus();
-          }
+          moduleInputEl.focus();
         }, 120);
         return;
       }
     });
 
-    endpointInputEl.addEventListener('input', applyTestcaseSearchFilter);
     moduleInputEl.addEventListener('input', applyTestcaseSearchFilter);
 
     if (addSelectedBtnEl) {
@@ -3511,7 +3525,6 @@
       bulkBar.classList.add('d-none');
     }
     // >=2 selected → headless ON + set all selected rows headless state ON
-    // exactly 1 selected → headless OFF (row state unchanged)
     const bulkHeadless = document.getElementById('bulkHeadlessCheck');
     if (checked.length >= 2) {
       bulkHeadless.checked = true;
@@ -3519,8 +3532,6 @@
         const tr = cb.closest('tr');
         if (tr) _setRowHeadlessState(tr, true);
       });
-    } else if (checked.length === 1) {
-      bulkHeadless.checked = false;
     }
     // n === 0: leave as-is (retains headless_default from page load)
     bulkInputs.innerHTML = '';
@@ -3761,15 +3772,37 @@
 
     if (!bulkDeleteBtn) return;
     bulkDeleteBtn.addEventListener('click', function() {
-      // Copy IDs already collected by updateBulkBar into the delete form
-      bulkDeleteInputs.innerHTML = bulkInputs.innerHTML;
-      const ids = Array.from(bulkInputs.querySelectorAll('input')).map(function(i) { return i.value; });
+      // Build IDs directly from checked rows to avoid stale hidden-input state.
+      const selectedSessionCbs = Array.from(document.querySelectorAll('.session-cb:checked'));
+      const selectedApiCbs = Array.from(document.querySelectorAll('.api-testcase-cb:checked'));
+      const ids = selectedSessionCbs.map(function(cb) { return String(cb.value || '').trim(); }).filter(Boolean);
+      const apiIds = selectedApiCbs.map(function(cb) { return String(cb.value || '').trim(); }).filter(Boolean);
+
+      bulkDeleteInputs.innerHTML = '';
+      ids.forEach(function(id) {
+        const inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'record_ids';
+        inp.value = id;
+        bulkDeleteInputs.appendChild(inp);
+      });
+      apiIds.forEach(function(id) {
+        const inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'api_testcase_ids';
+        inp.value = id;
+        bulkDeleteInputs.appendChild(inp);
+      });
 
       // Determine folder path from first checked row
-      const firstCb   = document.querySelector('.session-cb:checked');
-      const folderPath = firstCb
-        ? (firstCb.closest('[data-folder-name]') || {getAttribute: function(){return '';}}).getAttribute('data-folder-name') || ''
-        : '';
+      const firstCb   = selectedSessionCbs[0] || null;
+      const firstApiCb = selectedApiCbs[0] || null;
+      let folderPath = '';
+      if (firstCb) {
+        folderPath = (firstCb.closest('[data-folder-name]') || {getAttribute: function(){return '';}}).getAttribute('data-folder-name') || '';
+      } else if (firstApiCb) {
+        folderPath = (firstApiCb.closest('tbody[data-folder-name]') || {getAttribute: function(){return '';}}).getAttribute('data-folder-name') || '';
+      }
       document.getElementById('bulkDeleteFolderDisplay').textContent = folderPath || '—';
       document.getElementById('bulkDeleteFolderInput').value          = folderPath;
 
@@ -3785,10 +3818,22 @@
       ids.forEach(function(id) { fd.append('record_ids', id); });
       fd.append('folder_name', folderPath);
 
+      if (!ids.length) {
+        // API-only selection: show immediate counts without requesting session stats.
+        document.getElementById('bdStatFiles').textContent    = apiIds.length;
+        document.getElementById('bdStatRuns').textContent     = 0;
+        document.getElementById('bdStatSteps').textContent    = 0;
+        document.getElementById('bdStatLocators').textContent = 0;
+        document.getElementById('bdStatData').textContent     = 0;
+        document.getElementById('bulkDeleteStatsLoading').classList.add('d-none');
+        document.getElementById('bulkDeleteStatsTable').classList.remove('d-none');
+        return;
+      }
+
       fetch('{% url "bulk_delete_stats" %}', { method: 'POST', body: fd })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          document.getElementById('bdStatFiles').textContent    = data.file_count   != null ? data.file_count   : ids.length;
+          document.getElementById('bdStatFiles').textContent    = data.file_count   != null ? (Number(data.file_count || 0) + apiIds.length) : (ids.length + apiIds.length);
           document.getElementById('bdStatRuns').textContent     = data.runs         != null ? data.runs         : '—';
           document.getElementById('bdStatSteps').textContent    = data.steps        != null ? data.steps        : '—';
           document.getElementById('bdStatLocators').textContent = data.locators     != null ? data.locators     : '—';
@@ -3798,7 +3843,7 @@
         })
         .catch(function() {
           // On error just show file count with no table
-          document.getElementById('bdStatFiles').textContent = ids.length;
+          document.getElementById('bdStatFiles').textContent = ids.length + apiIds.length;
           document.getElementById('bulkDeleteStatsLoading').classList.add('d-none');
           document.getElementById('bulkDeleteStatsTable').classList.remove('d-none');
         });
