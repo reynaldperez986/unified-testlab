@@ -294,14 +294,14 @@
                                             <a href="{% url 'api:testcase_edit' tc.pk %}" class="btn btn-sm btn-outline-primary" title="Edit">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
-                                            <form method="post" action="{% url 'api:testcase_delete' tc.pk %}" class="d-inline">
+                                            <form method="post" action="{% url 'api:testcase_duplicate' tc.pk %}" class="d-inline">
                                                 {% csrf_token %}
                                                 <button type="submit" class="btn btn-sm btn-outline-info duplicate-square-btn" title="Duplicate">
                                                     <i class="bi bi-files"></i>
                                                 </button>
                                             </form>
                                             {% endif %}
-                                            {% if user.api_profile.role == 'admin' %}
+                                            {% if user.api_profile.role != 'viewer' %}
                                             <form id="deleteTestCaseForm_{{ tc.pk }}" method="post" action="{% url 'api:testcase_delete' tc.pk %}" class="d-inline">
                                                 {% csrf_token %}
                                                 <button type="button" class="btn btn-sm btn-outline-danger" title="Delete"
@@ -534,6 +534,14 @@ function getListTestCaseIds() {
         .filter(Number.isFinite);
 }
 
+function getSelectedProjectFolderName() {
+    const projectParam = new URLSearchParams(window.location.search).get('project');
+    if (projectParam && projectParam.trim()) return projectParam.trim();
+    const projectSelect = document.querySelector('select[name="project"]');
+    if (projectSelect && projectSelect.value && projectSelect.value.trim()) return projectSelect.value.trim();
+    return '';
+}
+
 function refreshListLatestResults() {
     const ids = getListTestCaseIds();
     if (!ids.length) return;
@@ -579,7 +587,10 @@ function runTestFromList(testCaseId, btn) {
     fetch('{% url "api:execute_test" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify({ test_case_id: testCaseId })
+        body: JSON.stringify({
+            test_case_id: testCaseId,
+            project_folder_name: getSelectedProjectFolderName()
+        })
     })
     .then(r => r.json())
     .then(data => {
@@ -859,7 +870,10 @@ async function executeBulkTests() {
                 const res = await fetch('{% url "api:execute_test" %}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-                    body: JSON.stringify({ test_case_id: test.id })
+                    body: JSON.stringify({
+                        test_case_id: test.id,
+                        project_folder_name: getSelectedProjectFolderName()
+                    })
                 }).then(r => r.json());
 
                 const status = res.result_status || 'error';
@@ -922,7 +936,10 @@ async function executeBulkTests() {
             const res = await fetch('{% url "api:execute_test" %}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-                body: JSON.stringify({ test_case_id: tests[i].id })
+                body: JSON.stringify({
+                    test_case_id: tests[i].id,
+                    project_folder_name: getSelectedProjectFolderName()
+                })
             }).then(r => r.json());
 
             const status = res.result_status || 'error';

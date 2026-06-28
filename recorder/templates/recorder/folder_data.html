@@ -48,6 +48,17 @@
     word-break: break-word;
     white-space: pre-wrap;
   }
+  .fd-filter-grid {
+    display: grid;
+    grid-template-columns: 1.6fr repeat(4, minmax(130px, 1fr)) auto;
+    gap: .5rem;
+    align-items: end;
+  }
+  @media (max-width: 992px) {
+    .fd-filter-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -167,7 +178,48 @@
 
 {% if entries %}
 <div class="mb-2">
-  <input type="text" id="fdTableSearch" class="form-control form-control-sm" placeholder="Search Test Case, Name, Value..." style="max-width:350px;">
+  <div class="fd-filter-grid">
+    <div>
+      <label class="form-label small mb-1">Search</label>
+      <input type="text" id="fdTableSearch" class="form-control form-control-sm" placeholder="Search Test Case, Name, Value...">
+    </div>
+    <div>
+      <label class="form-label small mb-1">Data Type</label>
+      <select id="fdTypeFilter" class="form-select form-select-sm">
+        <option value="all">All</option>
+        <option value="api">API only</option>
+        <option value="non_api">Non-API</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label small mb-1">Global</label>
+      <select id="fdGlobalFilter" class="form-select form-select-sm">
+        <option value="all">All</option>
+        <option value="global">Global only</option>
+        <option value="local">Local only</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label small mb-1">Formula</label>
+      <select id="fdFormulaFilter" class="form-select form-select-sm">
+        <option value="all">All</option>
+        <option value="with_formula">With formula</option>
+        <option value="without_formula">Without formula</option>
+      </select>
+    </div>
+    <div>
+      <label class="form-label small mb-1">Row Scope</label>
+      <select id="fdScopeFilter" class="form-select form-select-sm">
+        <option value="all">All</option>
+        <option value="global_rows">Global rows</option>
+        <option value="testcase_rows">Test case rows</option>
+      </select>
+    </div>
+    <div class="d-flex align-items-end gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="fdClearFiltersBtn">Clear</button>
+      <span class="badge bg-light text-dark border" id="fdVisibleCount">{{ total }} shown</span>
+    </div>
+  </div>
 </div>
 <div class="card fd-page-card">
   <div class="card-body p-0">
@@ -478,20 +530,87 @@
 
   document.querySelectorAll('.fd-editable').forEach(_bindEdit);
 
-  // ── Table search filter ──
+  // ── Table filters ──
   (function() {
     var searchInput = document.getElementById('fdTableSearch');
-    if (!searchInput) return;
-    searchInput.addEventListener('input', function() {
+    var typeFilter = document.getElementById('fdTypeFilter');
+    var globalFilter = document.getElementById('fdGlobalFilter');
+    var formulaFilter = document.getElementById('fdFormulaFilter');
+    var scopeFilter = document.getElementById('fdScopeFilter');
+    var clearBtn = document.getElementById('fdClearFiltersBtn');
+    var visibleCountEl = document.getElementById('fdVisibleCount');
+    if (!searchInput || !typeFilter || !globalFilter || !formulaFilter || !scopeFilter) return;
+
+    function applyFilters() {
       var q = (searchInput.value || '').toLowerCase();
+      var typeVal = (typeFilter.value || 'all');
+      var globalVal = (globalFilter.value || 'all');
+      var formulaVal = (formulaFilter.value || 'all');
+      var scopeVal = (scopeFilter.value || 'all');
+      var visible = 0;
+      var ZERO_ID = '00000000-0000-0000-0000-000000000000';
       document.querySelectorAll('table tbody tr').forEach(function(row) {
-        var testCase = (row.children[1] && row.children[1].textContent || '').toLowerCase();
-        var name = (row.querySelector('.fd-name-cell') && row.querySelector('.fd-name-cell').dataset.curVal || '').toLowerCase();
-        var value = (row.querySelector('.fd-value-cell') && row.querySelector('.fd-value-cell').dataset.curVal || '').toLowerCase();
-        var match = !q || testCase.indexOf(q) !== -1 || name.indexOf(q) !== -1 || value.indexOf(q) !== -1;
+        var testCase = (row.children[2] && row.children[2].textContent || '').toLowerCase();
+        var nameCell = row.querySelector('.fd-name-cell');
+        var valueCell = row.querySelector('.fd-value-cell');
+        var formulaCell = row.querySelector('.fd-formula-cell');
+        var nameRaw = (nameCell && nameCell.dataset.curVal) || '';
+        var valueRaw = (valueCell && valueCell.dataset.curVal) || '';
+        var formulaRaw = (formulaCell && formulaCell.dataset.curVal) || '';
+        var name = nameRaw.toLowerCase();
+        var value = valueRaw.toLowerCase();
+
+        var textMatch = !q || testCase.indexOf(q) !== -1 || name.indexOf(q) !== -1 || value.indexOf(q) !== -1;
+
+        var isApi = name.indexOf('api.') === 0;
+        var typeMatch = (typeVal === 'all') ||
+          (typeVal === 'api' && isApi) ||
+          (typeVal === 'non_api' && !isApi);
+
+        var globalToggle = row.querySelector('.fd-global-toggle input[type="checkbox"]');
+        var isGlobal = !!(globalToggle && globalToggle.checked);
+        var globalMatch = (globalVal === 'all') ||
+          (globalVal === 'global' && isGlobal) ||
+          (globalVal === 'local' && !isGlobal);
+
+        var hasFormula = !!(formulaRaw && String(formulaRaw).trim());
+        var formulaMatch = (formulaVal === 'all') ||
+          (formulaVal === 'with_formula' && hasFormula) ||
+          (formulaVal === 'without_formula' && !hasFormula);
+
+        var recordId = (row.dataset.recordId || '').toLowerCase();
+        var isGlobalRow = recordId === ZERO_ID;
+        var scopeMatch = (scopeVal === 'all') ||
+          (scopeVal === 'global_rows' && isGlobalRow) ||
+          (scopeVal === 'testcase_rows' && !isGlobalRow);
+
+        var match = textMatch && typeMatch && globalMatch && formulaMatch && scopeMatch;
         row.style.display = match ? '' : 'none';
+        if (match) visible += 1;
       });
-    });
+
+      if (visibleCountEl) {
+        visibleCountEl.textContent = visible + ' shown';
+      }
+    }
+
+    searchInput.addEventListener('input', applyFilters);
+    typeFilter.addEventListener('change', applyFilters);
+    globalFilter.addEventListener('change', applyFilters);
+    formulaFilter.addEventListener('change', applyFilters);
+    scopeFilter.addEventListener('change', applyFilters);
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function() {
+        searchInput.value = '';
+        typeFilter.value = 'all';
+        globalFilter.value = 'all';
+        formulaFilter.value = 'all';
+        scopeFilter.value = 'all';
+        applyFilters();
+      });
+    }
+
+    applyFilters();
   })();
 
   // ── Global toggle ──

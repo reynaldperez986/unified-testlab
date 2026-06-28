@@ -9731,6 +9731,34 @@ def update_data_entry(request, record_id, step_no):
                     [resolved_name or None, resolved_value, data_row_id],
                 )
 
+            # Any name picked in Steps should be available as project-global test data.
+            if has_field_name and resolved_name:
+                cur.execute(
+                    "SELECT folder_name FROM steps WHERE record_id = %s AND step_no = %s LIMIT 1",
+                    [sid, step_no],
+                )
+                _step_folder_row = cur.fetchone()
+                _step_folder = ((_step_folder_row[0] if _step_folder_row else None) or "").strip()
+                if _step_folder:
+                    _like = _step_folder + "/%"
+                    cur.execute(
+                        """
+                        UPDATE data
+                           SET is_global = TRUE
+                         WHERE field_name = %s
+                           AND (
+                               TRIM(COALESCE(folder_name, '')) = %s
+                               OR TRIM(COALESCE(folder_name, '')) LIKE %s
+                           )
+                        """,
+                        [resolved_name, _step_folder, _like],
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE data SET is_global = TRUE WHERE field_name = %s",
+                        [resolved_name],
+                    )
+
             cur.execute(
                 """UPDATE steps
                       SET field_name      = %s,

@@ -635,7 +635,11 @@ function runTest() {
     fetch('{% url "api:execute_test" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-        body: JSON.stringify({ test_case_id: TC_ID, environment_id: parseInt(DEFAULT_ENV_ID) })
+        body: JSON.stringify({
+            test_case_id: TC_ID,
+            environment_id: parseInt(DEFAULT_ENV_ID),
+            project_folder_name: "{{ test_case.project|default:''|escapejs }}"
+        })
     })
     .then(r => r.json())
     .then(d => {

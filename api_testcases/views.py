@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
+from django.db import connection
 from django.db.models import Count, Q, OuterRef, Subquery
 from django.urls import reverse
 from django.utils import timezone
@@ -198,6 +199,26 @@ def _json_field_match(expected, actual):
     return expected == actual
 
 
+def _json_dict_match_anywhere(expected_dict, actual):
+    """Return True when expected_dict matches at root or any nested object in actual."""
+    if _json_field_match(expected_dict, actual):
+        return True
+
+    if isinstance(actual, dict):
+        for value in actual.values():
+            if _json_dict_match_anywhere(expected_dict, value):
+                return True
+        return False
+
+    if isinstance(actual, list):
+        for value in actual:
+            if _json_dict_match_anywhere(expected_dict, value):
+                return True
+        return False
+
+    return False
+
+
 def _match_expected_content(expected_content, response_body):
     """Match expected content against response body using strict JSON field matching when possible."""
     expected_text = (expected_content or '').strip()
@@ -221,7 +242,104 @@ def _match_expected_content(expected_content, response_body):
         if isinstance(wrapped, (dict, list)):
             expected_json = wrapped
 
-    return _json_field_match(expected_json, body_json)
+    if _json_field_match(expected_json, body_json):
+        return True
+
+    # Allow flat expected JSON objects to match nested objects in response payloads.
+    if isinstance(expected_json, dict):
+        return _json_dict_match_anywhere(expected_json, body_json)
+
+    return False
+
+
+def _safe_data_prefix(raw_name):
+    """Create a stable prefix used for generated project data keys."""
+    cleaned = re.sub(r'[^0-9A-Za-z]+', '_', (raw_name or '').strip()).strip('_').lower()
+    return cleaned or 'api_response'
+
+
+def _flatten_response_json(value, prefix=''):
+    """Flatten nested JSON into (field_name, value) tuples for the shared data table."""
+    rows = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_str = str(key)
+            child_prefix = f"{prefix}.{key_str}" if prefix else key_str
+            rows.extend(_flatten_response_json(child, child_prefix))
+        return rows
+
+    if isinstance(value, list):
+        if not value:
+            rows.append((prefix or 'value', '[]'))
+            return rows
+        for idx, child in enumerate(value):
+            child_prefix = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+            rows.extend(_flatten_response_json(child, child_prefix))
+        return rows
+
+    if value is None:
+        value_text = ''
+    elif isinstance(value, bool):
+        value_text = 'true' if value else 'false'
+    else:
+        value_text = str(value)
+
+    rows.append((prefix or 'value', value_text))
+    return rows
+
+
+def _store_response_in_project_data(test_case, response_body, target_folder_name=None):
+    """Persist flattened response JSON as global entries in recorder project data."""
+    folder_name = (target_folder_name or getattr(test_case, 'project', '') or '').strip()
+    if not folder_name:
+        return
+
+    try:
+        parsed = json.loads(response_body) if response_body else None
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return
+
+    if parsed is None:
+        return
+
+    testcase_prefix = _safe_data_prefix(test_case.name)
+    field_prefix = f"api.{testcase_prefix}"
+    flattened = _flatten_response_json(parsed, field_prefix)
+    if not flattened:
+        return
+
+    # Keep a practical cap so very large responses do not flood project data rows.
+    flattened = flattened[:2000]
+
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM data
+             WHERE record_id = %s
+               AND step_no = 0
+               AND TRIM(COALESCE(folder_name, '')) = %s
+               AND field_name LIKE %s
+            """,
+            [
+                '00000000-0000-0000-0000-000000000000',
+                folder_name,
+                field_prefix + '%',
+            ],
+        )
+
+        for field_name, value in flattened:
+            cur.execute(
+                """
+                INSERT INTO data (record_id, step_no, field_name, value, folder_name, is_global, created_at)
+                VALUES (%s, 0, %s, %s, %s, TRUE, NOW())
+                """,
+                [
+                    '00000000-0000-0000-0000-000000000000',
+                    field_name,
+                    value,
+                    folder_name,
+                ],
+            )
 
 
 def _apply_auth_to_request(auth_type, auth_creds, headers, params):
@@ -1373,7 +1491,7 @@ def testcase_duplicate(request, pk):
 
 
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'tester'])
 def testcase_delete(request, pk):
     tc = get_object_or_404(TestCase, pk=pk)
     if request.method == 'POST':
@@ -1429,6 +1547,7 @@ def bulk_execute(request):
 
     test_case_ids = data.get('test_case_ids', [])
     execution_mode = data.get('mode', 'serial')
+    project_folder_name = (data.get('project_folder_name') or data.get('folder_name') or '').strip()
 
     if not test_case_ids:
         return JsonResponse({'error': 'No test cases selected'}, status=400)
@@ -1444,7 +1563,7 @@ def bulk_execute(request):
 
     execution_results = []
     for tc in ordered_cases:
-        result = _execute_tc(tc, environment, request.user, request)
+        result = _execute_tc(tc, environment, request.user, request, project_folder_name or None)
         execution_results.append({
             'test_case_id': tc.id,
             'test_case_name': tc.name,
@@ -1470,7 +1589,7 @@ def bulk_execute(request):
     })
 
 
-def _execute_tc(tc, env, user, request):
+def _execute_tc(tc, env, user, request, target_project_folder_name=None):
     """Full execution of a single TestCase with auth, URL normalisation, and retry logic.
     Returns a result dict (not a JsonResponse) so both execute_test and bulk_execute can use it."""
 
@@ -1696,6 +1815,13 @@ def _execute_tc(tc, env, user, request):
     # Save response files to Response folder
     save_response_files(tc.name, response_body)
 
+    if result_status == 'passed':
+        try:
+            _store_response_in_project_data(tc, response_body, target_project_folder_name)
+        except Exception:
+            # Keep execution flow resilient if shared data persistence fails.
+            pass
+
     log_action(user, 'testcase_execute', 'TestCase', tc.id,
                f'Executed test case: {tc.name} - Result: {result_status}', request)
 
@@ -1714,6 +1840,7 @@ def _execute_tc(tc, env, user, request):
         'content_match': content_match,
         'time_within_threshold': time_within_threshold,
         'error_message': error_message,
+        'project_data_folder': (target_project_folder_name or tc.project or ''),
     }
 
 
@@ -1857,6 +1984,7 @@ def execute_test(request):
 
     test_case_id = data.get('test_case_id')
     environment_id = data.get('environment_id')
+    project_folder_name = (data.get('project_folder_name') or data.get('folder_name') or '').strip()
 
     if not test_case_id:
         return JsonResponse({'error': 'test_case_id is required'}, status=400)
@@ -1879,7 +2007,7 @@ def execute_test(request):
     if module_name:
         module = ApiModule.objects.filter(name__iexact=module_name).first()
 
-    result = _execute_tc(tc, env, request.user, request)
+    result = _execute_tc(tc, env, request.user, request, project_folder_name or None)
     return JsonResponse(result)
 
 

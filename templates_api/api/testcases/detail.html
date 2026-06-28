@@ -394,6 +394,7 @@ function renderRecentExecutions(rows) {
 
     if (!rows || rows.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No executions yet.</td></tr>';
+        bindExecutionReportButtons(null);
         return;
     }
 
@@ -429,6 +430,9 @@ function renderRecentExecutions(rows) {
             </tr>
         `;
     }).join('');
+
+    const latestExecutionId = rows[0] && rows[0].id ? rows[0].id : null;
+    bindExecutionReportButtons(latestExecutionId);
 }
 
 function refreshRecentExecutions() {
@@ -440,6 +444,14 @@ function refreshRecentExecutions() {
         .catch(() => {
             // Silent fail; polling will retry.
         });
+}
+
+function startRecentExecutionsAutoRefresh() {
+    refreshRecentExecutions();
+    if (recentExecutionsPoller) {
+        clearInterval(recentExecutionsPoller);
+    }
+    recentExecutionsPoller = setInterval(refreshRecentExecutions, 5000);
 }
 
 function prependExecutionFromRunResult(data) {
@@ -552,7 +564,8 @@ function executeTest() {
             'X-CSRFToken': '{{ csrf_token }}'
         },
         body: JSON.stringify({
-            test_case_id: {{ test_case.pk }}
+            test_case_id: {{ test_case.pk }},
+            project_folder_name: "{{ test_case.project|default:''|escapejs }}"
         })
     })
     .then(response => response.json())
@@ -627,7 +640,7 @@ function executeTest() {
 
 document.addEventListener('DOMContentLoaded', function() {
     startRecentExecutionsAutoRefresh();
-    bindExecutionReportButtons(null);
+    bindExecutionReportButtons({% if executions %}{{ executions.0.id }}{% else %}null{% endif %});
 });
 </script>
 {% endblock %}

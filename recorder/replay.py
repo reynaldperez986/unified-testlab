@@ -1871,6 +1871,61 @@ def replay_session(
         _data_map = {}
         _data_id_map = {}
 
+    # Resolve by field name from project test data (folder-scoped), so replay
+    # always uses the latest value before execution.
+    _latest_name_cache: dict[str, tuple[int | None, str | None]] = {}
+
+    def _latest_folder_value_for_name(name: str) -> tuple[int | None, str | None]:
+        key = (name or "").strip()
+        if not key:
+            return (None, None)
+        if key in _latest_name_cache:
+            return _latest_name_cache[key]
+
+        result: tuple[int | None, str | None] = (None, None)
+        try:
+            with _db_connection.cursor() as _cur:
+                _folder = (folder_name or "").strip()
+                if _folder:
+                    _like = _folder + "/%"
+                    _cur.execute(
+                        """
+                        SELECT id, value
+                          FROM data
+                         WHERE field_name = %s
+                           AND (
+                               TRIM(COALESCE(folder_name, '')) = %s
+                               OR TRIM(COALESCE(folder_name, '')) LIKE %s
+                           )
+                         ORDER BY COALESCE(is_global, FALSE) DESC,
+                                  COALESCE(created_at, NOW()) DESC,
+                                  id DESC
+                         LIMIT 1
+                        """,
+                        [key, _folder, _like],
+                    )
+                else:
+                    _cur.execute(
+                        """
+                        SELECT id, value
+                          FROM data
+                         WHERE field_name = %s
+                         ORDER BY COALESCE(is_global, FALSE) DESC,
+                                  COALESCE(created_at, NOW()) DESC,
+                                  id DESC
+                         LIMIT 1
+                        """,
+                        [key],
+                    )
+                _row = _cur.fetchone()
+                if _row:
+                    result = (_row[0], _row[1])
+        except Exception:
+            pass
+
+        _latest_name_cache[key] = result
+        return result
+
     driver, browser_name = _create_driver(headless=headless, rdp_port=rdp_port if keep_open else None)
     _wait_key = {
         "chrome": "chrome.implicit_wait",
@@ -1956,10 +2011,14 @@ def replay_session(
             if _pri_strat and _pri_loc:
                 _locs[_pri_strat] = _pri_loc
             _re = step.raw_event
-            _field_name  = _re.get("name") or _re.get("id") or ""
+            _field_name = (getattr(step, "field_name", None) or _re.get("name") or _re.get("id") or "").strip()
+            _latest_data_id = None
+            _latest_value = None
+            if _field_name:
+                _latest_data_id, _latest_value = _latest_folder_value_for_name(_field_name)
             # Use DB data value (editable via UI) if available; fall back to raw_event
-            _db_value    = _data_map.get(step.step_no)
-            _db_data_id  = _data_id_map.get(step.step_no)
+            _db_value    = _latest_value if _latest_value is not None else _data_map.get(step.step_no)
+            _db_data_id  = _latest_data_id if _latest_data_id is not None else _data_id_map.get(step.step_no)
             _field_value = _db_value if _db_value is not None else (_re.get("value") or "")
             entry: dict = {
                 "step_no":          step.step_no,

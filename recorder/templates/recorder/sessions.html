@@ -3101,6 +3101,7 @@
             <td class="small text-muted text-truncate" data-label="Recorder" style="padding:2px 6px;">API</td>
             <td class="text-end text-nowrap mobile-actions-cell" data-label="Actions" style="white-space:nowrap;padding:2px 4px;text-align:right;">
               <div class="mobile-actions-wrap d-inline-flex align-items-center gap-1">
+                <a href="/api-lab/testcases/${encodeURIComponent(row.id)}/?tab=details" class="btn btn-sm btn-outline-info" title="View API Test Case" aria-label="View API Test Case" target="_blank" rel="noopener"><i class="bi bi-eye"></i></a>
                 <button type="button" class="btn btn-sm btn-outline-primary" title="Run API Test Case" aria-label="Run API Test Case" data-run-api-testcase-id="${row.id}" data-run-target="${collapseId}"><i class="bi bi-play-circle"></i></button>
                 <button type="button" class="btn btn-sm btn-outline-danger" title="Delete" aria-label="Delete" data-remove-selected-testcase-folder="${folderName}" data-remove-selected-testcase-id="${row.id}"><i class="bi bi-trash"></i></button>
               </div>

@@ -1444,6 +1444,7 @@ window._hotkeyIsRecording = {{ is_recording_this|yesno:'true,false' }};
       }
       showEditStatus('saved');
       syncDataDisplays(stepNo, data.field_name, data.field_value);
+      if (kind === 'field_name') _globalNamesCache = null;
       if (data.playwright_code !== undefined) {
         var pwCell = document.querySelector('.pw-code-cell[data-step-no="' + stepNo + '"]');
         if (pwCell) pwCell.textContent = data.playwright_code || '\u2014';
