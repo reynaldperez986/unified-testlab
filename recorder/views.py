@@ -10812,8 +10812,8 @@ def steps_since_api(request, record_id, since):
         cur.execute("""
             SELECT DISTINCT ON (s.step_no)
                    s.step_no, s.action, s.page_url, s.element_tag,
-                   COALESCE(s.field_name,  d.field_name) AS field_name,
-                   COALESCE(s.field_value, d.value)      AS field_value,
+                     COALESCE(d.field_name,  s.field_name) AS field_name,
+                     COALESCE(d.value, s.field_value)      AS field_value,
                    s.recorder, s.runner,
                    COALESCE(s.strategy, l.strategy)      AS strategy,
                    COALESCE(s.locator,  l.locator)       AS locator,
@@ -11471,6 +11471,32 @@ def session_steps(request, record_id):
     if not steps:
         steps = list(Recording.objects.filter(record_id=record_id).order_by("step_no"))
 
+    # Persist latest per-step data value into steps for input/change actions,
+    # so historical stale text does not linger in the Steps column.
+    if steps:
+        _sid_sync = str(record_id)
+        with connection.cursor() as _sync_cur:
+            _sync_cur.execute(
+                """
+                UPDATE steps s
+                   SET field_value = COALESCE(d.value, ''),
+                       steps_description = 'User input recorded: ''' || COALESCE(d.value, '') || ''''
+                  FROM data d
+                 WHERE s.record_id = %s
+                   AND s.record_id = d.record_id
+                   AND s.step_no = d.step_no
+                   AND LOWER(TRIM(COALESCE(s.action, ''))) IN ('input', 'change')
+                   AND (
+                        COALESCE(s.field_value, '') IS DISTINCT FROM COALESCE(d.value, '')
+                        OR COALESCE(s.steps_description, '') IS DISTINCT FROM ('User input recorded: ''' || COALESCE(d.value, '') || '''')
+                   )
+                """,
+                [_sid_sync],
+            )
+        steps = list(Step.objects.filter(record_id=record_id).order_by("step_no"))
+        if not steps:
+            steps = list(Recording.objects.filter(record_id=record_id).order_by("step_no"))
+
     # Auto-populate playwright_code if missing
     if steps and not getattr(steps[0], "playwright_code", None):
         try:
@@ -11495,6 +11521,7 @@ def session_steps(request, record_id):
         for de in DataEntry.objects.filter(id__in=data_ids)
     }
     dataset_rows = []
+    dataset_rows_by_step = {}
     try:
         _sid_str_ds = str(record_id)
         with connection.cursor() as _ds_cur:
@@ -11502,8 +11529,8 @@ def session_steps(request, record_id):
                     SELECT s.step_no,
                            sd.id AS session_data_id,
                            s.data_id AS linked_data_id,
-                           COALESCE(d.field_name, sd.field_name, s.field_name, '') AS display_field_name,
-                           COALESCE(d.value, sd.value, s.field_value, '') AS display_value
+                           COALESCE(sd.field_name, d.field_name, s.field_name, '') AS display_field_name,
+                           COALESCE(sd.value, d.value, s.field_value, '') AS display_value
                   FROM steps s
                   LEFT JOIN data d ON d.id = s.data_id
                   LEFT JOIN data sd ON sd.record_id = s.record_id AND sd.step_no = s.step_no
@@ -11523,8 +11550,67 @@ def session_steps(request, record_id):
                     "field_name": (_fname or "").strip(),
                     "value": _dval or "",
                 })
+                dataset_rows_by_step[_sno] = dataset_rows[-1]
     except Exception:
         dataset_rows = []
+        dataset_rows_by_step = {}
+
+    # Resolve latest value per data name within this session's project folder.
+    latest_value_by_name = {}
+    _names_in_use = {
+        (row.get("field_name") or "").strip()
+        for row in dataset_rows
+        if (row.get("field_name") or "").strip()
+    }
+    for _st in steps:
+        _nm = (getattr(_st, "field_name", "") or "").strip()
+        if _nm:
+            _names_in_use.add(_nm)
+
+    _session_folder = (getattr(steps[0], "folder_name", "") or "").strip() if steps else ""
+    if _names_in_use:
+        with connection.cursor() as _lv_cur:
+            _names = sorted(_names_in_use)
+            _name_ph = ",".join(["%s"] * len(_names))
+            if _session_folder:
+                _folder_like = _session_folder + "/%"
+                _lv_cur.execute(f"""
+                    SELECT DISTINCT ON (field_name) field_name, COALESCE(value, '') AS value
+                    FROM data
+                    WHERE field_name IN ({_name_ph})
+                      AND (
+                            TRIM(COALESCE(folder_name, '')) = %s
+                         OR TRIM(COALESCE(folder_name, '')) LIKE %s
+                         OR COALESCE(is_global, FALSE) = TRUE
+                      )
+                    ORDER BY field_name,
+                             CASE
+                               WHEN TRIM(COALESCE(folder_name, '')) = %s THEN 0
+                               WHEN TRIM(COALESCE(folder_name, '')) LIKE %s THEN 1
+                               WHEN COALESCE(is_global, FALSE) = TRUE THEN 2
+                               ELSE 3
+                             END,
+                             id DESC
+                """, _names + [_session_folder, _folder_like, _session_folder, _folder_like])
+            else:
+                _lv_cur.execute(f"""
+                    SELECT DISTINCT ON (field_name) field_name, COALESCE(value, '') AS value
+                    FROM data
+                    WHERE field_name IN ({_name_ph})
+                    ORDER BY field_name, id DESC
+                """, _names)
+            latest_value_by_name = {
+                (r[0] or "").strip(): (r[1] or "")
+                for r in _lv_cur.fetchall()
+                if (r[0] or "").strip()
+            }
+
+    # Keep dataset tab aligned with latest value resolution so users see current test data.
+    if latest_value_by_name:
+        for _row in dataset_rows:
+            _row_name = (_row.get("field_name") or "").strip()
+            if _row_name and _row_name in latest_value_by_name:
+                _row["value"] = latest_value_by_name[_row_name]
 
     # Load all locators per step with values and rank (for dropdown + Element Identity table)
     _sid_str = str(record_id)
@@ -11561,13 +11647,41 @@ def session_steps(request, record_id):
     for step in steps:
         _rendered_locators = _step_identity_locators(step, _all_locators_by_step.get(step.step_no, []))
         _rendered_strategies = _step_strategy_options(step, _rendered_locators)
+        _step_data = dataset_rows_by_step.get(step.step_no)
+        _base_data = data_map.get(step.data_id)
+        _resolved_name = (
+            ((_step_data or {}).get("field_name") or "").strip()
+            or (getattr(_base_data, "field_name", "") or "").strip()
+            or (getattr(step, "field_name", "") or "").strip()
+        )
+        _resolved_value = (
+            ((_step_data or {}).get("value") if _step_data else None)
+            if _step_data is not None
+            else (getattr(_base_data, "value", None) if _base_data is not None else None)
+        )
+        if _resolved_name and _resolved_name in latest_value_by_name:
+            _resolved_value = latest_value_by_name[_resolved_name]
+        _display_data = {
+            "id": ((
+                (_step_data or {}).get("data_id")
+                if _step_data is not None
+                else None
+            ) or getattr(_base_data, "id", None) or getattr(step, "data_id", None)),
+            "field_name": _resolved_name,
+            "value": "" if _resolved_value is None else str(_resolved_value),
+        }
+        _action_name = str(getattr(step, "action", "") or "").strip().lower()
+        if _action_name in {"input", "change"}:
+            _resolved_description = f"User input recorded: '{_display_data['value']}'"
+        else:
+            _resolved_description = step.steps_description or _auto_step_description(step)
         enriched.append({
             "step": step,
             "locator": locators_map.get(step.locator_id),
-            "data": data_map.get(step.data_id),
+            "data": _display_data,
             "strategies": _rendered_strategies,
             "all_locators": _rendered_locators,
-            "display_description": step.steps_description or _auto_step_description(step),
+            "display_description": _resolved_description,
         })
 
     try:
