@@ -272,7 +272,7 @@
                                     <td width="100">{{ tc.expected_status_code|default:"-" }}</td>
                                     <td width="180" class="text-nowrap">
                                         <div class="testcase-actions">
-                                                          <a href="{% url 'api:testcase_detail' tc.pk %}?tab=details"
+                                                          <a href="{% url 'api:testcase_detail' tc.pk %}?tab=details&code_mode=requests"
                                                               class="btn btn-sm btn-outline-secondary testcase-view-link"
                                                               title="View Details"
                                                               data-base-url="{% url 'api:testcase_detail' tc.pk %}">
@@ -1051,6 +1051,8 @@ function openDeleteTestCaseModal(testCaseId, testCaseName) {
 function applyCodeToggleMode(btn, mode) {
     const icon = btn.querySelector('i');
     const resolvedMode = mode === 'playwright' ? 'playwright' : 'requests';
+    const actionsWrap = btn.closest('.testcase-actions');
+    const viewLink = actionsWrap ? actionsWrap.querySelector('.testcase-view-link') : null;
     btn.dataset.mode = resolvedMode;
     btn.href = resolvedMode === 'playwright' ? btn.dataset.playwrightUrl : btn.dataset.requestsUrl;
     btn.title = resolvedMode === 'playwright' ? 'Selected: Playwright API + UI' : 'Selected: Python Requests';
@@ -1058,6 +1060,11 @@ function applyCodeToggleMode(btn, mode) {
     btn.classList.toggle('btn-outline-dark', resolvedMode !== 'playwright');
     if (icon) {
         icon.className = resolvedMode === 'playwright' ? 'bi bi-browser-chrome' : 'bi bi-filetype-py';
+    }
+    if (viewLink) {
+        const baseUrl = viewLink.dataset.baseUrl || '';
+        viewLink.href = baseUrl + '?tab=details&code_mode=' + resolvedMode;
+        viewLink.title = resolvedMode === 'playwright' ? 'View Details (Playwright mode selected)' : 'View Details (Python Requests mode selected)';
     }
 }
 

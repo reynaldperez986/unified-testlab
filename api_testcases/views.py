@@ -1879,9 +1879,15 @@ def testcase_detail(request, pk):
     environments = Environment.objects.filter(is_active=True)
     snippet_runtime = _resolve_testcase_runtime_context(tc)
     selected_tab = (request.GET.get('tab') or 'details').strip().lower()
+    selected_code_mode = (request.GET.get('code_mode') or '').strip().lower()
     if selected_tab not in {'details', 'executions', 'requests', 'playwright'}:
         selected_tab = 'details'
-    code_view_mode = selected_tab if selected_tab in {'requests', 'playwright'} else ''
+    if selected_tab in {'requests', 'playwright'}:
+        code_view_mode = selected_tab
+    elif selected_tab == 'details' and selected_code_mode in {'requests', 'playwright'}:
+        code_view_mode = selected_code_mode
+    else:
+        code_view_mode = ''
     context = {
         'test_case': tc,
         'executions': executions,

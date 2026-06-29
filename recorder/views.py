@@ -9999,6 +9999,8 @@ def update_data_formula(request, data_id):
     if not expression:
         return JsonResponse({"ok": False, "error": "Formula expression is empty"})
 
+    import re as _re
+
     # Find the folder_name and current value for this data entry
     try:
         with connection.cursor() as cur:
@@ -10014,8 +10016,73 @@ def update_data_formula(request, data_id):
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
 
+    # Special formula: APPEND_RANDOM(base, n)
+    # base can be SELF, a field name, or a quoted literal.
+    append_match = _re.match(r'^APPEND_RANDOM\(\s*(.+?)\s*,\s*(\d+)\s*\)$', expression, flags=_re.IGNORECASE)
+    if append_match:
+        base_token = (append_match.group(1) or '').strip()
+        length_raw = append_match.group(2)
+        try:
+            random_len = max(1, min(64, int(length_raw)))
+        except (TypeError, ValueError):
+            return JsonResponse({"ok": False, "error": "APPEND_RANDOM length must be a number"})
+
+        base_value = ''
+        if (len(base_token) >= 2) and ((base_token[0] == '"' and base_token[-1] == '"') or (base_token[0] == "'" and base_token[-1] == "'")):
+            base_value = base_token[1:-1]
+        elif base_token.upper() == 'SELF' or (entry_own_name and base_token == entry_own_name):
+            base_value = '' if entry_own_value is None else str(entry_own_value)
+        else:
+            try:
+                with connection.cursor() as cur:
+                    if entry_folder:
+                        cur.execute(
+                            """
+                            SELECT value FROM data
+                             WHERE field_name = %s
+                               AND (TRIM(COALESCE(folder_name, '')) = %s
+                                    OR TRIM(COALESCE(folder_name, '')) LIKE %s)
+                             ORDER BY id DESC
+                             LIMIT 1
+                            """,
+                            [base_token, entry_folder, entry_folder + '/%'],
+                        )
+                    else:
+                        cur.execute(
+                            "SELECT value FROM data WHERE field_name = %s ORDER BY id DESC LIMIT 1",
+                            [base_token],
+                        )
+                    found = cur.fetchone()
+                if not found:
+                    return JsonResponse({"ok": False, "error": f"'{base_token}' not found in data"})
+                base_value = '' if found[0] is None else str(found[0])
+            except Exception as exc:
+                return JsonResponse({"error": str(exc)}, status=500)
+
+        import random as _random
+        import string as _string
+        suffix = ''.join(_random.choice(_string.ascii_letters + _string.digits) for _ in range(random_len))
+        computed_value = f"{base_value}{suffix}"
+
+        try:
+            with connection.cursor() as cur:
+                cur.execute(
+                    """UPDATE data SET formula = %s, value = %s,
+                       increment_value = %s, increment_frequency = %s,
+                       decrement_value = %s, decrement_frequency = %s,
+                       calculate_on = %s, calculate_mode = %s
+                     WHERE id = %s RETURNING id""",
+                    [formula, computed_value,
+                     increment_value, increment_frequency, decrement_value,
+                     decrement_frequency, calculate_on, calculate_mode, data_id],
+                )
+                if not cur.fetchone():
+                    return JsonResponse({"error": "Not found"}, status=404)
+            return JsonResponse({"ok": True, "formula": formula, "computed_value": computed_value})
+        except Exception as exc:
+            return JsonResponse({"error": str(exc)}, status=500)
+
     # Extract referenced names from expression (identifiers not part of operators/numbers)
-    import re as _re
     # Tokenize: find all word sequences that could be variable names
     tokens = _re.findall(r'[A-Za-z_]\w*', expression)
     referenced_names = list(set(tokens))
@@ -10125,6 +10192,8 @@ def compute_folder_formulas(folder_name):
     """
     import re as _re
     from datetime import date, timedelta
+    import random as _random
+    import string as _string
 
     if not folder_name:
         return []
@@ -10257,54 +10326,82 @@ def compute_folder_formulas(folder_name):
         if e["formula"] and e["formula"].startswith("=") and not error:
             expression = e["formula"][1:].strip()
             if expression:
-                # Update name_values with latest computed value from this pass
-                if e["field_name"] and changed:
-                    name_values[e["field_name"]] = new_value
+                append_match = _re.match(r'^APPEND_RANDOM\(\s*(.+?)\s*,\s*(\d+)\s*\)$', expression, flags=_re.IGNORECASE)
+                if append_match:
+                    base_token = (append_match.group(1) or '').strip()
+                    try:
+                        random_len = max(1, min(64, int(append_match.group(2))))
+                    except (TypeError, ValueError):
+                        error = "APPEND_RANDOM length must be a number"
+                        random_len = 0
 
-                tokens = _re.findall(r'[A-Za-z_]\w*', expression)
-                referenced_names = list(set(tokens))
-
-                # Pre-seed with self value
-                local_values = {}
-                if e["field_name"] and e["field_name"] in referenced_names:
-                    local_values[e["field_name"]] = new_value
-
-                for name in referenced_names:
-                    if name not in local_values and name in name_values:
-                        local_values[name] = name_values[name]
-
-                # Check all references resolved
-                missing = [n for n in referenced_names if n not in local_values]
-                if missing:
-                    error = f"Unresolved: {', '.join(missing)}"
-                else:
-                    # Substitute and evaluate
-                    resolved = {}
-                    bad = False
-                    for name in referenced_names:
-                        try:
-                            resolved[name] = float(local_values[name])
-                        except (TypeError, ValueError):
-                            error = f"'{name}' value '{local_values[name]}' is not numeric"
-                            bad = True
-                            break
-                    if not bad:
-                        safe_expr = expression
-                        for name in sorted(resolved.keys(), key=len, reverse=True):
-                            safe_expr = safe_expr.replace(name, str(resolved[name]))
-                        safe_expr = safe_expr.replace("^", "**")
-                        safe_expr = _re.sub(r'([\d\.]+)\s*%', r'(\1/100)', safe_expr)
-                        if _re.match(r'^[\d\s\+\-\*\/\(\)\.]+$', safe_expr):
-                            try:
-                                computed = eval(safe_expr)  # noqa: S307
-                                new_value = str(round(computed, 10) if isinstance(computed, float) else computed).rstrip('0').rstrip('.')
-                                changed = True
-                            except ZeroDivisionError:
-                                error = "Division by zero"
-                            except Exception as exc:
-                                error = f"Eval error: {exc}"
+                    if not error:
+                        if (len(base_token) >= 2) and ((base_token[0] == '"' and base_token[-1] == '"') or (base_token[0] == "'" and base_token[-1] == "'")):
+                            base_value = base_token[1:-1]
+                        elif base_token.upper() == 'SELF' or (e["field_name"] and base_token == e["field_name"]):
+                            base_value = new_value
+                        elif base_token in name_values:
+                            base_value = name_values[base_token]
                         else:
-                            error = f"Invalid expression: {safe_expr}"
+                            error = f"Unresolved: {base_token}"
+                            base_value = ''
+
+                        if not error:
+                            suffix = ''.join(_random.choice(_string.ascii_letters + _string.digits) for _ in range(random_len))
+                            new_value = f"{base_value}{suffix}"
+                            changed = True
+
+                if append_match:
+                    pass
+                else:
+                # Update name_values with latest computed value from this pass
+                    if e["field_name"] and changed:
+                        name_values[e["field_name"]] = new_value
+
+                    tokens = _re.findall(r'[A-Za-z_]\w*', expression)
+                    referenced_names = list(set(tokens))
+
+                    # Pre-seed with self value
+                    local_values = {}
+                    if e["field_name"] and e["field_name"] in referenced_names:
+                        local_values[e["field_name"]] = new_value
+
+                    for name in referenced_names:
+                        if name not in local_values and name in name_values:
+                            local_values[name] = name_values[name]
+
+                    # Check all references resolved
+                    missing = [n for n in referenced_names if n not in local_values]
+                    if missing:
+                        error = f"Unresolved: {', '.join(missing)}"
+                    else:
+                        # Substitute and evaluate
+                        resolved = {}
+                        bad = False
+                        for name in referenced_names:
+                            try:
+                                resolved[name] = float(local_values[name])
+                            except (TypeError, ValueError):
+                                error = f"'{name}' value '{local_values[name]}' is not numeric"
+                                bad = True
+                                break
+                        if not bad:
+                            safe_expr = expression
+                            for name in sorted(resolved.keys(), key=len, reverse=True):
+                                safe_expr = safe_expr.replace(name, str(resolved[name]))
+                            safe_expr = safe_expr.replace("^", "**")
+                            safe_expr = _re.sub(r'([\d\.]+)\s*%', r'(\1/100)', safe_expr)
+                            if _re.match(r'^[\d\s\+\-\*\/\(\)\.]+$', safe_expr):
+                                try:
+                                    computed = eval(safe_expr)  # noqa: S307
+                                    new_value = str(round(computed, 10) if isinstance(computed, float) else computed).rstrip('0').rstrip('.')
+                                    changed = True
+                                except ZeroDivisionError:
+                                    error = "Division by zero"
+                                except Exception as exc:
+                                    error = f"Eval error: {exc}"
+                            else:
+                                error = f"Invalid expression: {safe_expr}"
 
         # Update DB if value changed
         if changed and not error and new_value != e["value"]:

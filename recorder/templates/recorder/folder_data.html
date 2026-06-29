@@ -48,6 +48,78 @@
     word-break: break-word;
     white-space: pre-wrap;
   }
+  .fd-random-btn {
+    font-size: .72rem;
+    line-height: 1.1;
+    padding: .3rem .62rem;
+    border-radius: 999px;
+    border: 1px solid rgba(111,66,193,.35);
+    color: #5b3ea8;
+    background: linear-gradient(180deg, #ffffff 0%, #f7f2ff 100%);
+    box-shadow: 0 1px 4px rgba(91,62,168,.12);
+    white-space: nowrap;
+    width: auto;
+  }
+  .fd-random-btn:hover,
+  .fd-random-btn:focus {
+    color: #4a3390;
+    border-color: rgba(111,66,193,.55);
+    background: linear-gradient(180deg, #ffffff 0%, #efe5ff 100%);
+  }
+  .fd-formula-modal .modal-content {
+    border: 0;
+    border-radius: 1rem;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(16,24,40,.22);
+    background: linear-gradient(180deg, #ffffff 0%, #fcfcfe 100%);
+  }
+  .fd-formula-modal .modal-header {
+    background: linear-gradient(135deg, #1f3f60 0%, #2d5379 60%, #376a95 100%);
+    border-bottom: 0;
+    padding: .7rem 1rem;
+  }
+  .fd-formula-modal .modal-title {
+    letter-spacing: .2px;
+    font-weight: 700;
+    font-size: .92rem;
+  }
+  .fd-formula-modal .modal-body {
+    padding: .95rem 1rem .7rem;
+    background:
+      radial-gradient(circle at top right, rgba(111,66,193,.08), transparent 35%),
+      radial-gradient(circle at top left, rgba(13,110,253,.08), transparent 40%),
+      #fff;
+  }
+  .fd-formula-block {
+    border: 1px solid rgba(31,63,96,.14);
+    border-radius: .75rem;
+    padding: .65rem;
+    background: rgba(255,255,255,.94);
+    box-shadow: 0 1px 4px rgba(15,23,42,.06);
+  }
+  .fd-formula-input {
+    border: 1px solid rgba(31,63,96,.22);
+    border-radius: .6rem;
+    background: #fbfdff;
+  }
+  .fd-formula-input:focus {
+    border-color: rgba(13,110,253,.5);
+    box-shadow: 0 0 0 .18rem rgba(13,110,253,.16);
+    background: #fff;
+  }
+  .fd-chip-scroll {
+    max-height: 132px;
+    overflow-y: auto;
+    border: 1px dashed rgba(31,63,96,.2);
+    border-radius: .6rem;
+    padding: .35rem;
+    background: #f9fbff;
+  }
+  .fd-formula-modal .modal-footer {
+    border-top: 1px solid rgba(31,63,96,.12);
+    background: #f7f9fc;
+    padding: .55rem .85rem;
+  }
   .fd-filter-grid {
     display: grid;
     grid-template-columns: 1.6fr repeat(4, minmax(130px, 1fr)) auto;
@@ -314,51 +386,72 @@
 
 <!-- Formula Builder Modal -->
 <div class="modal fade" id="formulaModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content" style="border-radius:.75rem;">
-      <div class="modal-header py-2" style="background:#1f3f60;border-radius:.75rem .75rem 0 0;">
+  <div class="modal-dialog modal-dialog-centered modal-lg fd-formula-modal">
+    <div class="modal-content">
+      <div class="modal-header">
         <h6 class="modal-title text-white mb-0"><i class="bi bi-calculator me-2"></i>Formula Builder</h6>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div class="mb-2">
+        <div class="fd-formula-block mb-2">
+          <label class="form-label small text-muted mb-1">Available Data Names <span class="text-muted">(click to select)</span></label>
+          <input type="text" id="formulaNamesSearch" class="form-control form-control-sm mb-1 fd-formula-input" placeholder="Search names..." autocomplete="off">
+          <div id="formulaNamesList" class="d-flex flex-wrap gap-1 fd-chip-scroll"></div>
+          <div class="small mt-1">Selected for append: <code id="formulaSelectedName">(none)</code></div>
+        </div>
+        <div class="fd-formula-block mb-2" style="background:linear-gradient(180deg, rgba(111,66,193,.08) 0%, rgba(111,66,193,.03) 100%);">
+          <label class="form-label small fw-bold mb-2" style="color:#6f42c1;">Quick Action: Append Random Characters</label>
+          <div class="row g-2 align-items-end">
+            <div class="col-6">
+              <label class="form-label small mb-1">Length</label>
+              <input type="number" id="formulaRandomLength" class="form-control form-control-sm fd-formula-input" value="4" min="1" max="64" step="1">
+            </div>
+            <div class="col-auto">
+              <button type="button" id="formulaAppendRandomBtn" class="btn fd-random-btn">
+                <i class="bi bi-shuffle me-1"></i>Use APPEND_RANDOM
+              </button>
+            </div>
+          </div>
+          <div class="form-text mt-1">Builds: <code>=APPEND_RANDOM(SELECTED_NAME, n)</code></div>
+        </div>
+        <div class="fd-formula-block mb-2">
           <label class="form-label fw-semibold small mb-1">Formula <span class="text-muted fw-normal">(must start with <code>=</code>)</span></label>
-          <input type="text" id="formulaInput" class="form-control font-monospace" placeholder="=name * 3.5" autocomplete="off">
+          <input type="text" id="formulaInput" class="form-control font-monospace fd-formula-input" placeholder="=name * 3.5" autocomplete="off">
           <div id="formulaError" class="text-danger small mt-1 d-none"></div>
           <div id="formulaPreview" class="text-success small mt-1 d-none"></div>
         </div>
-        <div class="mb-2">
-          <label class="form-label small text-muted mb-1">Available Data Names <span class="text-muted">(click to insert)</span></label>
-          <input type="text" id="formulaNamesSearch" class="form-control form-control-sm mb-1" placeholder="Search names..." autocomplete="off">
-          <div id="formulaNamesList" class="d-flex flex-wrap gap-1" style="max-height:120px;overflow-y:auto;"></div>
+        <div class="fd-formula-block mb-2">
+          <label class="form-label small text-muted mb-1">Functions <span class="text-muted">(click to insert)</span></label>
+          <div id="formulaFunctionsList" class="d-flex flex-wrap gap-1">
+            <span class="badge bg-light text-dark border fd-fn-chip" data-template="APPEND_RANDOM(SELF, 4)" style="cursor:pointer;font-size:.72rem;">APPEND_RANDOM(SELF, 4)</span>
+          </div>
         </div>
-        <hr class="my-2">
-        <div class="row g-2">
+        <div class="row g-2 mt-1">
           <!-- Category column -->
           <div class="col-6">
-            <div class="border rounded p-2" style="background:rgba(13,110,253,.03);">
+            <div class="fd-formula-block" style="background:rgba(13,110,253,.03);">
               <label class="form-label small fw-bold mb-2 text-primary">Category</label>
               <div class="mb-2">
                 <label class="form-label small fw-semibold mb-1">Increment by</label>
-                <input type="number" id="formulaIncrementValue" class="form-control form-control-sm" placeholder="0" step="any">
+                <input type="number" id="formulaIncrementValue" class="form-control form-control-sm fd-formula-input" placeholder="0" step="any">
               </div>
               <div class="mb-2">
                 <label class="form-label small fw-semibold mb-1">Decrement by</label>
-                <input type="number" id="formulaDecrementValue" class="form-control form-control-sm" placeholder="0" step="any">
+                <input type="number" id="formulaDecrementValue" class="form-control form-control-sm fd-formula-input" placeholder="0" step="any">
               </div>
               <div>
                 <label class="form-label small fw-semibold mb-1">Calculate on</label>
-                <input type="date" id="formulaCalculateOn" class="form-control form-control-sm">
+                <input type="date" id="formulaCalculateOn" class="form-control form-control-sm fd-formula-input">
               </div>
             </div>
           </div>
           <!-- Sub Category column -->
           <div class="col-6">
-            <div class="border rounded p-2" style="background:rgba(25,135,84,.03);">
+            <div class="fd-formula-block" style="background:rgba(25,135,84,.03);">
               <label class="form-label small fw-bold mb-2 text-success">Sub Category</label>
               <div class="mb-2">
                 <label class="form-label small fw-semibold mb-1">Frequency</label>
-                <select id="formulaIncrementFreq" class="form-select form-select-sm">
+                <select id="formulaIncrementFreq" class="form-select form-select-sm fd-formula-input">
                   <option value="">— None —</option>
                   <option value="every_run">Every run</option>
                   <option value="every_2_runs">Every 2 runs</option>
@@ -368,7 +461,7 @@
               </div>
               <div class="mb-2">
                 <label class="form-label small fw-semibold mb-1">Frequency</label>
-                <select id="formulaDecrementFreq" class="form-select form-select-sm">
+                <select id="formulaDecrementFreq" class="form-select form-select-sm fd-formula-input">
                   <option value="">— None —</option>
                   <option value="every_run">Every run</option>
                   <option value="every_2_runs">Every 2 runs</option>
@@ -378,7 +471,7 @@
               </div>
               <div>
                 <label class="form-label small fw-semibold mb-1">Calculate mode</label>
-                <select id="formulaCalculateMode" class="form-select form-select-sm">
+                <select id="formulaCalculateMode" class="form-select form-select-sm fd-formula-input">
                   <option value="">— None —</option>
                   <option value="On">On</option>
                   <option value="Not on">Not on</option>
@@ -399,11 +492,12 @@
           </div>
         </div>
         <div class="small text-muted border-top pt-2 mt-2">
-          <strong>Examples:</strong> <code>=price * 1.1</code> &nbsp; <code>=qty + 10</code> &nbsp; <code>=total / count</code> &nbsp; <code>=2^3</code> &nbsp; <code>=price*5%</code>
+          <strong>Examples:</strong> <code>=price * 1.1</code> &nbsp; <code>=qty + 10</code> &nbsp; <code>=total / count</code> &nbsp; <code>=2^3</code> &nbsp; <code>=price*5%</code> &nbsp; <code>=APPEND_RANDOM(SELF, 4)</code>
         </div>
       </div>
-      <div class="modal-footer py-2">
+      <div class="modal-footer">
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="formulaClearBtn" class="btn btn-sm btn-outline-danger"><i class="bi bi-eraser me-1"></i>Clear Formula</button>
         <button type="button" id="formulaSaveBtn" class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save &amp; Compute</button>
       </div>
     </div>
@@ -641,6 +735,7 @@
   // ── Formula inline edit ──
   var _formulaModal = null;
   var _formulaCell = null;
+  var _formulaSelectedName = '';
 
   // Collect all data names from the table for suggestions
   function _getAllDataNames() {
@@ -661,8 +756,12 @@
     var previewEl = document.getElementById('formulaPreview');
     var namesEl = document.getElementById('formulaNamesList');
     var namesSearch = document.getElementById('formulaNamesSearch');
+    var selectedNameEl = document.getElementById('formulaSelectedName');
 
     inp.value = cur || '=';
+    document.getElementById('formulaRandomLength').value = '4';
+    _formulaSelectedName = '';
+    if (selectedNameEl) selectedNameEl.textContent = '(none)';
     errEl.classList.add('d-none'); errEl.textContent = '';
     previewEl.classList.add('d-none'); previewEl.textContent = '';
     namesSearch.value = '';
@@ -686,11 +785,28 @@
         chip.className = 'badge bg-light text-dark border';
         chip.style.cssText = 'cursor:pointer;font-size:.72rem;';
         chip.textContent = name;
+        if (_formulaSelectedName && _formulaSelectedName === name) {
+          chip.className = 'badge bg-primary text-white border';
+        }
         chip.addEventListener('click', function() {
-          var pos = inp.selectionStart || inp.value.length;
-          inp.value = inp.value.slice(0, pos) + name + inp.value.slice(pos);
-          inp.focus();
-          inp.selectionStart = inp.selectionEnd = pos + name.length;
+          _formulaSelectedName = name;
+          if (selectedNameEl) selectedNameEl.textContent = name;
+          if (inp) {
+            var current = (inp.value || '').trim();
+            if (!current) {
+              inp.value = '=' + name;
+            } else if (current === '=') {
+              inp.value = '=' + name;
+            } else {
+              var pos = inp.selectionStart != null ? inp.selectionStart : inp.value.length;
+              var before = inp.value.slice(0, pos);
+              var after = inp.value.slice(pos);
+              inp.value = before + name + after;
+              inp.selectionStart = inp.selectionEnd = pos + name.length;
+            }
+            inp.focus();
+          }
+          _renderNameChips(namesSearch.value);
         });
         namesEl.appendChild(chip);
       });
@@ -705,9 +821,34 @@
     setTimeout(function() { inp.focus(); inp.selectionStart = inp.selectionEnd = inp.value.length; }, 300);
   }
 
+  var _appendRandomBtn = document.getElementById('formulaAppendRandomBtn');
+  if (_appendRandomBtn) {
+    _appendRandomBtn.addEventListener('click', function() {
+      var inp = document.getElementById('formulaInput');
+      var lenEl = document.getElementById('formulaRandomLength');
+      var errEl = document.getElementById('formulaError');
+      var n = parseInt((lenEl && lenEl.value) || '4', 10);
+      if (!Number.isFinite(n) || n < 1) n = 4;
+      if (n > 64) n = 64;
+
+      if (!_formulaSelectedName) {
+        errEl.textContent = 'Select a data name first, then click append.';
+        errEl.classList.remove('d-none');
+        return;
+      }
+      errEl.classList.add('d-none');
+      errEl.textContent = '';
+
+      inp.value = '=APPEND_RANDOM(' + _formulaSelectedName + ', ' + n + ')';
+      inp.focus();
+      inp.selectionStart = inp.selectionEnd = inp.value.length;
+    });
+  }
+
   // Save button handler
   document.getElementById('formulaSaveBtn').addEventListener('click', function() {
     var inp = document.getElementById('formulaInput');
+    var lenEl = document.getElementById('formulaRandomLength');
     var errEl = document.getElementById('formulaError');
     var previewEl = document.getElementById('formulaPreview');
     var formula = (inp.value || '').trim();
@@ -715,10 +856,19 @@
     errEl.classList.add('d-none'); errEl.textContent = '';
     previewEl.classList.add('d-none'); previewEl.textContent = '';
 
-    // Allow clearing formula
+    // If name is selected and formula is empty, auto-build APPEND_RANDOM.
     if (!formula) {
-      _saveFormula('');
-      return;
+      if (_formulaSelectedName) {
+        var n = parseInt((lenEl && lenEl.value) || '4', 10);
+        if (!Number.isFinite(n) || n < 1) n = 4;
+        if (n > 64) n = 64;
+        formula = '=APPEND_RANDOM(' + _formulaSelectedName + ', ' + n + ')';
+        inp.value = formula;
+      } else {
+        // Allow clearing formula when no selected name was chosen.
+        _saveFormula('');
+        return;
+      }
     }
 
     // Must start with =
@@ -730,6 +880,20 @@
 
     _saveFormula(formula);
   });
+
+  // Clear formula and save immediately
+  var _formulaClearBtn = document.getElementById('formulaClearBtn');
+  if (_formulaClearBtn) {
+    _formulaClearBtn.addEventListener('click', function() {
+      var inp = document.getElementById('formulaInput');
+      var errEl = document.getElementById('formulaError');
+      var previewEl = document.getElementById('formulaPreview');
+      if (inp) inp.value = '';
+      if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+      if (previewEl) { previewEl.classList.add('d-none'); previewEl.textContent = ''; }
+      _saveFormula('');
+    });
+  }
 
   function _saveFormula(formula) {
     var dataId = _formulaCell.dataset.dataId;
@@ -805,6 +969,25 @@
   // Bind formula cells to open the modal
   document.querySelectorAll('.fd-formula-cell').forEach(function(cell) {
     cell.addEventListener('click', function() { _openFormulaModal(cell); });
+  });
+
+  // Function chips (insert at cursor position)
+  document.querySelectorAll('.fd-fn-chip').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+      var inp = document.getElementById('formulaInput');
+      if (!inp) return;
+      var token = (chip.dataset.template || chip.textContent || '').trim();
+      if (!token) return;
+
+      var start = inp.selectionStart != null ? inp.selectionStart : inp.value.length;
+      var end = inp.selectionEnd != null ? inp.selectionEnd : inp.value.length;
+      var before = inp.value.slice(0, start);
+      var after = inp.value.slice(end);
+      inp.value = before + token + after;
+      var nextPos = before.length + token.length;
+      inp.focus();
+      inp.selectionStart = inp.selectionEnd = nextPos;
+    });
   });
 
   // ── Checkbox select / Delete logic ──
