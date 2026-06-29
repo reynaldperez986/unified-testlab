@@ -84,8 +84,16 @@
 
     <div class="col-md-6">
         <div class="card mb-4">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h6 class="mb-0">Request Headers</h6>
+                <div class="d-flex gap-1">
+                    <a href="{% url 'api:execution_download_request_headers_json' execution.pk %}" class="btn btn-sm btn-outline-secondary" title="Download Request Headers as JSON">
+                        <i class="bi bi-download"></i> JSON
+                    </a>
+                    <a href="{% url 'api:execution_download_request_headers_csv' execution.pk %}" class="btn btn-sm btn-outline-secondary" title="Download Request Headers as CSV">
+                        <i class="bi bi-download"></i> CSV
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 <pre class="bg-light p-3 rounded" style="max-height:200px;overflow:auto;font-size:0.8rem;">{{ execution.request_headers }}</pre>
@@ -94,8 +102,16 @@
 
         {% if execution.request_body %}
         <div class="card mb-4">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h6 class="mb-0">Request Body</h6>
+                <div class="d-flex gap-1">
+                    <a href="{% url 'api:execution_download_request_body_json' execution.pk %}" class="btn btn-sm btn-outline-secondary" title="Download Request Body as JSON">
+                        <i class="bi bi-download"></i> JSON
+                    </a>
+                    <a href="{% url 'api:execution_download_request_body_csv' execution.pk %}" class="btn btn-sm btn-outline-secondary" title="Download Request Body as CSV">
+                        <i class="bi bi-download"></i> CSV
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 <pre class="bg-light p-3 rounded" style="max-height:200px;overflow:auto;font-size:0.8rem;">{{ execution.request_body }}</pre>

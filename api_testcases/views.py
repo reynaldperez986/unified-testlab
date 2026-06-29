@@ -2403,6 +2403,110 @@ def execution_download_response_csv(request, pk):
     return response
 
 
+def _parse_execution_text_json(raw_text):
+    """Parse stored execution text as JSON when possible, else return plain string."""
+    text = (raw_text or '').strip()
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return text
+
+
+def _write_jsonish_csv(writer, parsed, fallback_label='Value'):
+    """Write dict/list/scalar payload to CSV in a predictable shape."""
+    if isinstance(parsed, list):
+        if parsed and isinstance(parsed[0], dict):
+            fieldnames = set()
+            for item in parsed:
+                if isinstance(item, dict):
+                    fieldnames.update(item.keys())
+            fieldnames = sorted(list(fieldnames))
+            writer.writerow(fieldnames)
+            for item in parsed:
+                row = [str(item.get(field, '')) if isinstance(item, dict) else '' for field in fieldnames]
+                writer.writerow(row)
+            return
+
+        writer.writerow([fallback_label])
+        for item in parsed:
+            writer.writerow([str(item)])
+        return
+
+    if isinstance(parsed, dict):
+        writer.writerow(['Key', 'Value'])
+        for key, value in parsed.items():
+            if isinstance(value, (dict, list)):
+                writer.writerow([key, json.dumps(value, ensure_ascii=False)])
+            else:
+                writer.writerow([key, str(value)])
+        return
+
+    writer.writerow([fallback_label])
+    writer.writerow([str(parsed)])
+
+
+@login_required
+def execution_download_request_headers_json(request, pk):
+    """Download request headers payload in JSON format."""
+    execution = get_object_or_404(TestExecution, pk=pk)
+    parsed = _parse_execution_text_json(execution.request_headers)
+
+    safe_name = execution.test_case.name.replace(' ', '_').replace('/', '_')
+    response = HttpResponse(
+        json.dumps(parsed, indent=2, ensure_ascii=False),
+        content_type='application/json'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_request_headers.json"'
+    return response
+
+
+@login_required
+def execution_download_request_headers_csv(request, pk):
+    """Download request headers payload in CSV format."""
+    execution = get_object_or_404(TestExecution, pk=pk)
+    parsed = _parse_execution_text_json(execution.request_headers)
+
+    safe_name = execution.test_case.name.replace(' ', '_').replace('/', '_')
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_request_headers.csv"'
+    writer = csv.writer(response)
+    _write_jsonish_csv(writer, parsed, fallback_label='Header')
+    return response
+
+
+@login_required
+def execution_download_request_body_json(request, pk):
+    """Download request body payload in JSON format."""
+    execution = get_object_or_404(TestExecution, pk=pk)
+    parsed = _parse_execution_text_json(execution.request_body)
+    if isinstance(parsed, str):
+        parsed = {'request_body': parsed}
+
+    safe_name = execution.test_case.name.replace(' ', '_').replace('/', '_')
+    response = HttpResponse(
+        json.dumps(parsed, indent=2, ensure_ascii=False),
+        content_type='application/json'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_request_body.json"'
+    return response
+
+
+@login_required
+def execution_download_request_body_csv(request, pk):
+    """Download request body payload in CSV format."""
+    execution = get_object_or_404(TestExecution, pk=pk)
+    parsed = _parse_execution_text_json(execution.request_body)
+
+    safe_name = execution.test_case.name.replace(' ', '_').replace('/', '_')
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_request_body.csv"'
+    writer = csv.writer(response)
+    _write_jsonish_csv(writer, parsed, fallback_label='Request Body')
+    return response
+
+
 # ========== User Management ==========
 
 @login_required

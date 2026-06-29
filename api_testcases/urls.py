@@ -54,6 +54,10 @@ urlpatterns = [
     path('executions/<int:pk>/download/pdf/', views.execution_download_pdf, name='execution_download_pdf'),
     path('executions/<int:pk>/response/download/json/', views.execution_download_response_json, name='execution_download_response_json'),
     path('executions/<int:pk>/response/download/csv/', views.execution_download_response_csv, name='execution_download_response_csv'),
+    path('executions/<int:pk>/request-headers/download/json/', views.execution_download_request_headers_json, name='execution_download_request_headers_json'),
+    path('executions/<int:pk>/request-headers/download/csv/', views.execution_download_request_headers_csv, name='execution_download_request_headers_csv'),
+    path('executions/<int:pk>/request-body/download/json/', views.execution_download_request_body_json, name='execution_download_request_body_json'),
+    path('executions/<int:pk>/request-body/download/csv/', views.execution_download_request_body_csv, name='execution_download_request_body_csv'),
     path('executions/export/csv/', views.export_executions_csv, name='export_executions_csv'),
 
     # User Management
