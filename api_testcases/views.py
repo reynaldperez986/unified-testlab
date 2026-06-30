@@ -226,9 +226,29 @@ def _match_expected_content(expected_content, response_body):
     if not expected_text:
         return None
 
+    # Accept common fragment inputs like '"chargeDetails": {...}' by coercing to a JSON object.
+    expected_json_text = expected_text
+    if not expected_json_text.startswith('{') and not expected_json_text.startswith('[') and ':' in expected_json_text:
+        fragment_text = expected_json_text
+        # Some saved fragments already include a dangling closing brace at the end
+        # (for example: '"foo": 1 }'). Normalize before wrapping into an object.
+        if fragment_text.endswith('}') and fragment_text.count('{') < fragment_text.count('}'):
+            fragment_text = fragment_text[:-1].rstrip()
+        expected_json_text = '{' + fragment_text + '}'
+
+    expected_json = None
     try:
-        expected_json = json.loads(expected_text)
+        expected_json = json.loads(expected_json_text)
     except (json.JSONDecodeError, TypeError, ValueError):
+        # Accept multiple JSON object fragments pasted as: {...}, {...}
+        # by coercing them into a JSON array.
+        if expected_text.startswith('{') and '},' in expected_text:
+            try:
+                expected_json = json.loads(f'[{expected_text}]')
+            except (json.JSONDecodeError, TypeError, ValueError):
+                expected_json = None
+
+    if expected_json is None:
         return expected_text in (response_body or '')
 
     try:
@@ -245,11 +265,277 @@ def _match_expected_content(expected_content, response_body):
     if _json_field_match(expected_json, body_json):
         return True
 
+    # For list fragments, require each expected object to match somewhere in payload.
+    if isinstance(expected_json, list):
+        all_matched = True
+        for expected_item in expected_json:
+            if isinstance(expected_item, dict):
+                if not _json_dict_match_anywhere(expected_item, body_json):
+                    all_matched = False
+                    break
+            else:
+                if not _json_dict_match_anywhere({'value': expected_item}, {'value': body_json}):
+                    all_matched = False
+                    break
+        if all_matched:
+            return True
+
     # Allow flat expected JSON objects to match nested objects in response payloads.
     if isinstance(expected_json, dict):
         return _json_dict_match_anywhere(expected_json, body_json)
 
     return False
+
+
+def _json_contains_key_value_pair(payload, key, expected_value):
+    """Return True when payload contains key and matching value anywhere in nested JSON."""
+    if isinstance(payload, dict):
+        if key in payload:
+            actual = payload.get(key)
+            if expected_value == '':
+                return True
+            if actual is None:
+                return expected_value == ''
+            if isinstance(actual, bool):
+                actual_text = 'true' if actual else 'false'
+            else:
+                actual_text = str(actual)
+            if actual_text == expected_value or expected_value in actual_text:
+                return True
+        return any(_json_contains_key_value_pair(v, key, expected_value) for v in payload.values())
+
+    if isinstance(payload, list):
+        return any(_json_contains_key_value_pair(item, key, expected_value) for item in payload)
+
+    return False
+
+
+def _json_path_lookup(payload, path_parts):
+    """Resolve dotted JSON path parts against payload and return (found, value)."""
+    current = payload
+    for part in path_parts:
+        if isinstance(current, dict) and part in current:
+            current = current.get(part)
+            continue
+        return False, None
+    return True, current
+
+
+def _json_value_matches(actual, expected_value):
+    """Compare a JSON value against expected text value with light coercion."""
+    if expected_value == '':
+        return True
+    if actual is None:
+        return expected_value == ''
+    if isinstance(actual, bool):
+        actual_text = 'true' if actual else 'false'
+    else:
+        actual_text = str(actual)
+    return actual_text == expected_value or expected_value in actual_text
+
+
+def _json_contains_key_value_pair_flexible(payload, key, expected_value):
+    """Match key/value in JSON supporting exact key, dotted paths, and global-key suffixes."""
+    key_text = (key or '').strip()
+    if not key_text:
+        return False
+
+    # 1) Exact key search anywhere in payload.
+    if _json_contains_key_value_pair(payload, key_text, expected_value):
+        return True
+
+    # 2) Dotted path lookup (example: foo.bar.baz).
+    if '.' in key_text:
+        path_parts = [p.strip() for p in key_text.split('.') if p.strip()]
+        if path_parts:
+            found, value = _json_path_lookup(payload, path_parts)
+            if found and _json_value_matches(value, expected_value):
+                return True
+
+        # 3) Global data keys may include prefixes (example: api.test001.fieldName).
+        #    Fall back to matching by terminal key segment anywhere in response.
+        terminal_key = path_parts[-1] if path_parts else ''
+        if terminal_key and _json_contains_key_value_pair(payload, terminal_key, expected_value):
+            return True
+
+    return False
+
+
+def _expected_content_mismatch_summary(expected_content, response_body, max_items=8):
+    """Return a concise mismatch summary for expected-response validation failures."""
+    expected_text = (expected_content or '').strip()
+    body_text = (response_body or '').strip()
+    if not expected_text:
+        return ''
+
+    if _match_expected_content(expected_text, body_text):
+        return ''
+
+    expected_json = None
+    expected_json_text = expected_text
+    if not expected_json_text.startswith('{') and not expected_json_text.startswith('[') and ':' in expected_json_text:
+        fragment_text = expected_json_text
+        if fragment_text.endswith('}') and fragment_text.count('{') < fragment_text.count('}'):
+            fragment_text = fragment_text[:-1].rstrip()
+        expected_json_text = '{' + fragment_text + '}'
+
+    try:
+        expected_json = json.loads(expected_json_text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        if expected_text.startswith('{') and '},' in expected_text:
+            try:
+                expected_json = json.loads(f'[{expected_text}]')
+            except (json.JSONDecodeError, TypeError, ValueError):
+                expected_json = None
+
+    try:
+        body_json = json.loads(body_text) if body_text else None
+    except (json.JSONDecodeError, TypeError, ValueError):
+        body_json = None
+
+    if expected_json is None:
+        return 'Expected text was not found in response body.'
+    if body_json is None:
+        return 'Expected JSON could not be matched because response body is not valid JSON.'
+
+    pairs = []
+
+    def collect(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(value, (dict, list)):
+                    collect(value)
+                else:
+                    pairs.append((str(key), '' if value is None else str(value)))
+            return
+        if isinstance(node, list):
+            for item in node:
+                collect(item)
+
+    collect(expected_json)
+    if not pairs:
+        return 'Expected response content mismatch.'
+
+    mismatched = []
+    for key, value in pairs:
+        if not _json_contains_key_value_pair_flexible(body_json, key, value):
+            if value:
+                mismatched.append(f'{key}={value}')
+            else:
+                mismatched.append(f'{key}')
+
+    if not mismatched:
+        return 'Expected response content mismatch.'
+
+    visible = mismatched[:max_items]
+    suffix = '' if len(mismatched) <= max_items else f' (+{len(mismatched) - max_items} more)'
+    return 'Missing/mismatched fields: ' + ', '.join(visible) + suffix
+
+
+def _parse_form_data_rows(raw_form_data):
+    """Parse stored form-data JSON rows into a normalized key/value list."""
+    if not raw_form_data:
+        return []
+    try:
+        rows = json.loads(raw_form_data)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+    normalized = []
+    for row in rows or []:
+        key = str((row or {}).get('key', '')).strip()
+        if not key:
+            continue
+        value = str((row or {}).get('value', '')).strip()
+        normalized.append({'key': key, 'value': value})
+    return normalized
+
+
+def _format_expected_key_pairs(rows):
+    """Render expected key/value rows as a readable multiline string."""
+    if not rows:
+        return '-'
+    lines = []
+    for row in rows:
+        key = row.get('key', '')
+        value = row.get('value', '')
+        if value:
+            lines.append(f'{key}={value}')
+        else:
+            lines.append(key)
+    return '\n'.join(lines)
+
+
+def _form_data_mismatch_summary(form_data_rows, response_body, max_items=8):
+    """Return mismatch details for expected key-pair values from Form Data."""
+    if not form_data_rows:
+        return ''
+
+    match_result = _match_form_data_contains(form_data_rows, response_body)
+    if match_result in (True, None):
+        return ''
+
+    body_text = response_body or ''
+    try:
+        body_json = json.loads(body_text) if body_text else None
+    except (json.JSONDecodeError, TypeError, ValueError):
+        body_json = None
+
+    missing = []
+    for row in form_data_rows:
+        key = str((row or {}).get('key', '')).strip()
+        value = str((row or {}).get('value', '')).strip()
+        if not key:
+            continue
+
+        if body_json is not None:
+            if not _json_contains_key_value_pair_flexible(body_json, key, value):
+                missing.append(f'{key}={value}' if value else key)
+        else:
+            terminal_key = key.split('.')[-1].strip() if key else key
+            has_key = (key in body_text) or (terminal_key in body_text)
+            has_value = (not value) or (value in body_text)
+            if not (has_key and has_value):
+                missing.append(f'{key}={value}' if value else key)
+
+    if not missing:
+        return 'Expected key-pair values were not matched in response.'
+
+    visible = missing[:max_items]
+    suffix = '' if len(missing) <= max_items else f' (+{len(missing) - max_items} more)'
+    return 'Missing key-pair values: ' + ', '.join(visible) + suffix
+
+
+def _match_form_data_contains(form_data_rows, response_body):
+    """Validate that response contains populated form-data key/value pairs."""
+    pairs = []
+    for row in form_data_rows or []:
+        key = str((row or {}).get('key', '')).strip()
+        value = str((row or {}).get('value', '')).strip()
+        if key:
+            pairs.append((key, value))
+
+    if not pairs:
+        return None
+
+    body_text = response_body or ''
+    try:
+        body_json = json.loads(body_text) if body_text else None
+    except (json.JSONDecodeError, TypeError, ValueError):
+        body_json = None
+
+    for key, value in pairs:
+        if body_json is not None:
+            if not _json_contains_key_value_pair_flexible(body_json, key, value):
+                return False
+        else:
+            terminal_key = key.split('.')[-1].strip() if key else key
+            if key not in body_text and terminal_key not in body_text:
+                return False
+            if value and value not in body_text:
+                return False
+
+    return True
 
 
 def _safe_data_prefix(raw_name):
@@ -1311,8 +1597,17 @@ def global_test_data_page(request):
                        TRIM(COALESCE(folder_name, '')) AS folder_name,
                        COALESCE(field_name, '') AS field_name,
                        COALESCE(value, '') AS value,
-                      COALESCE(record_id::text, '') AS record_id,
-                       COALESCE(step_no, 0) AS step_no,
+                       COALESCE(formula, '') AS formula,
+                       COALESCE(is_global, FALSE) AS is_global,
+                      category,
+                      sub_category,
+                      increment_value,
+                      COALESCE(increment_frequency, '') AS increment_frequency,
+                      decrement_value,
+                      COALESCE(decrement_frequency, '') AS decrement_frequency,
+                      COALESCE(calculate_on::text, '') AS calculate_on,
+                      COALESCE(calculate_mode, '') AS calculate_mode,
+                       COALESCE(record_id::text, '') AS record_id,
                        created_at
                   FROM data
                  WHERE {' AND '.join(where_clauses)}
@@ -1326,9 +1621,18 @@ def global_test_data_page(request):
                     'folder_name': row[1] or '',
                     'field_name': row[2] or '',
                     'value': row[3] or '',
-                    'record_id': str(row[4]) if row[4] is not None else '',
-                    'step_no': row[5],
-                    'created_at': row[6],
+                    'formula': row[4] or '',
+                    'is_global': bool(row[5]),
+                    'category': row[6] or '',
+                    'sub_category': row[7] or '',
+                    'increment_value': row[8],
+                    'increment_frequency': row[9] or '',
+                    'decrement_value': row[10],
+                    'decrement_frequency': row[11] or '',
+                    'calculate_on': row[12] or '',
+                    'calculate_mode': row[13] or '',
+                    'record_id': str(row[14]) if row[14] is not None else '',
+                    'created_at': row[15],
                 })
     except Exception as exc:
         messages.error(request, f'Unable to load global test data: {exc}')
@@ -1586,6 +1890,44 @@ def testcase_edit(request, pk):
 
 
 @login_required
+def api_global_field_values(request):
+    """Return global data field names and their latest values for Form Data autocomplete."""
+    project = (request.GET.get('project') or '').strip()
+    rows = []
+
+    try:
+        with connection.cursor() as cur:
+            where = ["COALESCE(is_global, FALSE) = TRUE", "field_name IS NOT NULL", "field_name <> ''"]
+            params = []
+
+            if project:
+                where.append("(TRIM(COALESCE(folder_name, '')) = %s OR TRIM(COALESCE(folder_name, '')) LIKE %s)")
+                params.extend([project, f"{project}/%"])
+
+            cur.execute(
+                f"""
+                SELECT field_name, COALESCE(value, '') AS value
+                  FROM data
+                 WHERE {' AND '.join(where)}
+                 ORDER BY id DESC
+                """,
+                params,
+            )
+
+            seen = set()
+            for field_name, value in cur.fetchall():
+                key = (field_name or '').strip()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                rows.append({'field_name': key, 'value': value or ''})
+    except Exception:
+        return JsonResponse({'ok': False, 'rows': []}, status=500)
+
+    return JsonResponse({'ok': True, 'rows': rows})
+
+
+@login_required
 @role_required(['admin', 'tester'])
 def testcase_duplicate(request, pk):
     tc = get_object_or_404(TestCase, pk=pk)
@@ -1827,10 +2169,9 @@ def _execute_tc(tc, env, user, request, target_project_folder_name=None):
             pass
 
     req_kwargs = dict(method=tc.http_method, url=url, headers=headers, params=params, auth=auth, timeout=30, verify=False)
-    if form_data_rows:
-        req_kwargs['data'] = {r['key']: r['value'] for r in form_data_rows if r.get('type') != 'file' and r.get('key')}
-    else:
-        req_kwargs['data'] = body
+    # Form Data rows in API TestLab are used for response contains validation only.
+    # Keep sending the configured request body so JSON endpoints are not broken by multipart uploads.
+    req_kwargs['data'] = body
 
     # Execute (with 401-retry token refresh)
     error_message = ''
@@ -1894,8 +2235,21 @@ def _execute_tc(tc, env, user, request, target_project_folder_name=None):
     if not error_message:
         if tc.expected_status_code:
             status_code_match = (response_status == tc.expected_status_code)
+        expected_content_match = None
+        form_data_contains_match = None
+
         if tc.expected_response_content:
-            content_match = _match_expected_content(tc.expected_response_content, response_body)
+            expected_content_match = _match_expected_content(tc.expected_response_content, response_body)
+
+        form_data_contains_match = _match_form_data_contains(form_data_rows, response_body)
+
+        if expected_content_match is None:
+            content_match = form_data_contains_match
+        elif form_data_contains_match is None:
+            content_match = expected_content_match
+        else:
+            content_match = bool(expected_content_match and form_data_contains_match)
+
         if tc.expected_response_time_ms and response_time is not None:
             time_within_threshold = (response_time <= tc.expected_response_time_ms)
         checks = [v for v in [status_code_match, content_match, time_within_threshold] if v is not None]
@@ -1961,6 +2315,7 @@ def testcase_detail(request, pk):
     executions = tc.executions.all()[:20]
     environments = Environment.objects.filter(is_active=True)
     snippet_runtime = _resolve_testcase_runtime_context(tc)
+    expected_key_pairs = _parse_form_data_rows(tc.form_data)
     selected_tab = (request.GET.get('tab') or 'details').strip().lower()
     selected_code_mode = (request.GET.get('code_mode') or '').strip().lower()
     if selected_tab not in {'details', 'executions', 'requests', 'playwright'}:
@@ -1975,6 +2330,7 @@ def testcase_detail(request, pk):
         'test_case': tc,
         'executions': executions,
         'environments': environments,
+        'expected_key_pairs': expected_key_pairs,
         'snippet_environment': snippet_runtime.get('environment'),
         'requests_snippet': _build_requests_snippet(tc),
         'playwright_snippet': _build_playwright_snippet(tc),
@@ -2297,8 +2653,19 @@ def execution_download_csv(request, pk):
         TestExecution.objects.select_related('test_case', 'environment', 'executed_by'),
         pk=pk
     )
+    safe_name = _safe_download_name(execution.test_case.name, f'testcase_{execution.test_case_id}')
+    mismatch_summary = _expected_content_mismatch_summary(
+        execution.test_case.expected_response_content,
+        execution.response_body,
+    )
+    expected_key_pairs_rows = _parse_form_data_rows(execution.test_case.form_data)
+    expected_key_pairs_text = _format_expected_key_pairs(expected_key_pairs_rows)
+    key_pair_mismatch_summary = _form_data_mismatch_summary(
+        expected_key_pairs_rows,
+        execution.response_body,
+    )
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="execution_{pk}.csv"'
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}.csv"'
     writer = csv.writer(response)
 
     writer.writerow(['Field', 'Value'])
@@ -2311,8 +2678,14 @@ def execution_download_csv(request, pk):
     writer.writerow(['Request URL', execution.request_url])
     writer.writerow(['Response Status Code', execution.response_status_code or ''])
     writer.writerow(['Response Time (ms)', execution.response_time_ms or ''])
+    writer.writerow(['Expected Response Content', execution.test_case.expected_response_content or ''])
+    writer.writerow(['Expected key-pair value', expected_key_pairs_text])
     writer.writerow(['Status Code Match', 'Pass' if execution.status_code_match else ('Fail' if execution.status_code_match is False else 'N/A')])
     writer.writerow(['Content Match', 'Pass' if execution.content_match else ('Fail' if execution.content_match is False else 'N/A')])
+    if mismatch_summary:
+        writer.writerow(['Mismatch (Expected Response Content)', mismatch_summary])
+    if key_pair_mismatch_summary:
+        writer.writerow(['Mismatch (Expected key-pair value)', key_pair_mismatch_summary])
     writer.writerow(['Time Threshold', 'Pass' if execution.time_within_threshold else ('Fail' if execution.time_within_threshold is False else 'N/A')])
     writer.writerow(['Error Message', execution.error_message or ''])
     writer.writerow([])
@@ -2334,6 +2707,16 @@ def execution_download_docx(request, pk):
         TestExecution.objects.select_related('test_case', 'environment', 'executed_by'),
         pk=pk
     )
+    mismatch_summary = _expected_content_mismatch_summary(
+        execution.test_case.expected_response_content,
+        execution.response_body,
+    )
+    expected_key_pairs_rows = _parse_form_data_rows(execution.test_case.form_data)
+    expected_key_pairs_text = _format_expected_key_pairs(expected_key_pairs_rows)
+    key_pair_mismatch_summary = _form_data_mismatch_summary(
+        expected_key_pairs_rows,
+        execution.response_body,
+    )
 
     doc = Document()
     doc.core_properties.title = f'Execution Report - {execution.test_case.name}'
@@ -2352,6 +2735,8 @@ def execution_download_docx(request, pk):
         ('Request URL', execution.request_url),
         ('Response Status Code', str(execution.response_status_code or '-')),
         ('Response Time (ms)', str(execution.response_time_ms or '-')),
+        ('Expected Response Content', execution.test_case.expected_response_content or '-'),
+        ('Expected key-pair value', expected_key_pairs_text),
     ]
     table = doc.add_table(rows=len(summary), cols=2)
     table.style = 'Table Grid'
@@ -2371,6 +2756,16 @@ def execution_download_docx(request, pk):
         vtable.cell(i, 0).text = label
         vtable.cell(i, 1).text = 'Pass' if val is True else ('Fail' if val is False else 'N/A')
 
+    if mismatch_summary:
+        doc.add_heading('Mismatch Details (Expected Response Content)', level=1)
+        p = doc.add_paragraph(mismatch_summary)
+        p.runs[0].font.size = Pt(9)
+
+    if key_pair_mismatch_summary:
+        doc.add_heading('Mismatch Details (Expected key-pair value)', level=1)
+        p = doc.add_paragraph(key_pair_mismatch_summary)
+        p.runs[0].font.size = Pt(9)
+
     if execution.error_message:
         doc.add_heading('Error', level=1)
         doc.add_paragraph(execution.error_message)
@@ -2383,7 +2778,7 @@ def execution_download_docx(request, pk):
     ]:
         if content:
             doc.add_heading(section_title, level=1)
-            p = doc.add_paragraph(content[:5000])
+            p = doc.add_paragraph(content)
             p.runs[0].font.name = 'Courier New'
             p.runs[0].font.size = Pt(8)
 
@@ -2395,7 +2790,8 @@ def execution_download_docx(request, pk):
         buffer.getvalue(),
         content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     )
-    response['Content-Disposition'] = f'attachment; filename="execution_{pk}.docx"'
+    safe_name = _safe_download_name(execution.test_case.name, f'testcase_{execution.test_case_id}')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}.docx"'
     return response
 
 
@@ -2412,6 +2808,16 @@ def execution_download_pdf(request, pk):
     execution = get_object_or_404(
         TestExecution.objects.select_related('test_case', 'environment', 'executed_by'),
         pk=pk
+    )
+    mismatch_summary = _expected_content_mismatch_summary(
+        execution.test_case.expected_response_content,
+        execution.response_body,
+    )
+    expected_key_pairs_rows = _parse_form_data_rows(execution.test_case.form_data)
+    expected_key_pairs_text = _format_expected_key_pairs(expected_key_pairs_rows)
+    key_pair_mismatch_summary = _form_data_mismatch_summary(
+        expected_key_pairs_rows,
+        execution.response_body,
     )
 
     buffer = io.BytesIO()
@@ -2444,6 +2850,8 @@ def execution_download_pdf(request, pk):
         ['Request URL', Paragraph(execution.request_url or '-', mono)],
         ['Response Status', str(execution.response_status_code or '-')],
         ['Response Time', f"{execution.response_time_ms or '-'} ms"],
+        ['Expected Response Content', Paragraph((execution.test_case.expected_response_content or '-').replace('\n', '<br/>'), mono)],
+        ['Expected key-pair value', Paragraph(expected_key_pairs_text.replace('\n', '<br/>'), mono)],
         ['Error', execution.error_message or '-'],
     ]
     t = Table(summary_data, colWidths=[4.5*cm, 12*cm])
@@ -2469,6 +2877,10 @@ def execution_download_pdf(request, pk):
         ['Content Match', 'Pass' if execution.content_match is True else ('Fail' if execution.content_match is False else 'N/A')],
         ['Time Threshold', 'Pass' if execution.time_within_threshold is True else ('Fail' if execution.time_within_threshold is False else 'N/A')],
     ]
+    if mismatch_summary:
+        checks_data.append(['Mismatch (Expected Response Content)', Paragraph(mismatch_summary.replace('\n', '<br/>'), mono)])
+    if key_pair_mismatch_summary:
+        checks_data.append(['Mismatch (Expected key-pair value)', Paragraph(key_pair_mismatch_summary.replace('\n', '<br/>'), mono)])
     ct = Table(checks_data, colWidths=[8*cm, 8.5*cm])
     ct.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f766e')),
@@ -2486,12 +2898,13 @@ def execution_download_pdf(request, pk):
                            ('Response Headers', execution.response_headers), ('Response Body', execution.response_body)]:
         if content:
             elements.append(Paragraph(title, h1))
-            elements.append(Paragraph(content[:3000].replace('\n', '<br/>'), mono))
+            elements.append(Paragraph(content.replace('\n', '<br/>'), mono))
 
     doc.build(elements)
     buffer.seek(0)
     response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="execution_{pk}.pdf"'
+    safe_name = _safe_download_name(execution.test_case.name, f'testcase_{execution.test_case_id}')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}.pdf"'
     return response
 
 

@@ -98,12 +98,23 @@ def _status_theme(status):
 def _execution_report_payload(execution):
     conn = execution.test_case.connection
     actual_text = execution.actual_value or "-"
+    expected_text = execution.test_case.expected_value or "-"
+    mismatch_summary = ""
+    if expected_text and expected_text != "-":
+        actual_norm = str(actual_text)
+        expected_norm = str(expected_text)
+        if expected_norm not in actual_norm:
+            preview = actual_norm if len(actual_norm) <= 240 else (actual_norm[:237] + "...")
+            mismatch_summary = f"Expected '{expected_norm}' was not found in actual value '{preview}'."
+
     return {
         "execution_id": str(execution.id),
         "executed_at": execution.executed_at.isoformat(),
         "status": execution.status,
         "test_case": execution.test_case.name,
         "test_type": execution.test_case.get_test_type_display(),
+        "expected_value": expected_text,
+        "mismatch_summary": mismatch_summary,
         "actual_value": actual_text,
         "query_return_results": _actual_value_to_csv_text(actual_text),
         "details": execution.details or "-",
@@ -363,6 +374,7 @@ def _modern_pdf_from_payload(payload):
                 f"Status: {payload['status']}",
                 f"Test Case: {payload['test_case']}",
                 f"Test Type: {payload['test_type']}",
+                f"Expected Value: {payload.get('expected_value', '-')}",
                 f"Actual Value: {actual_preview}",
             ],
         ),
@@ -389,6 +401,9 @@ def _modern_pdf_from_payload(payload):
                 "",
                 "Query Return/Results:",
                 *_preview_lines(payload.get("query_return_results") or payload.get("actual_value"), 84, 6),
+                "",
+                "Mismatch Details:",
+                *_preview_lines(payload.get("mismatch_summary") or "-", 84, 4),
             ],
         ),
     ]
@@ -920,19 +935,16 @@ def global_test_data_page(request):
                 SELECT DISTINCT TRIM(COALESCE(folder_name, '')) AS folder_name
                   FROM data
                  WHERE COALESCE(is_global, FALSE) = TRUE
-                   AND field_name LIKE %s
                    AND TRIM(COALESCE(folder_name, '')) <> ''
                  ORDER BY folder_name
                 """,
-                ["db.%"],
             )
             projects = [row[0] for row in cur.fetchall() if row and row[0]]
 
             where_clauses = [
                 "COALESCE(is_global, FALSE) = TRUE",
-                "field_name LIKE %s",
             ]
-            params = ["db.%"]
+            params = []
 
             if project_filter:
                 where_clauses.append("TRIM(COALESCE(folder_name, '')) = %s")
@@ -950,8 +962,17 @@ def global_test_data_page(request):
                        TRIM(COALESCE(folder_name, '')) AS folder_name,
                        COALESCE(field_name, '') AS field_name,
                        COALESCE(value, '') AS value,
+                       COALESCE(formula, '') AS formula,
+                       COALESCE(is_global, FALSE) AS is_global,
+                      category,
+                      sub_category,
+                      increment_value,
+                      COALESCE(increment_frequency, '') AS increment_frequency,
+                      decrement_value,
+                      COALESCE(decrement_frequency, '') AS decrement_frequency,
+                      COALESCE(calculate_on::text, '') AS calculate_on,
+                      COALESCE(calculate_mode, '') AS calculate_mode,
                        COALESCE(record_id::text, '') AS record_id,
-                       COALESCE(step_no, 0) AS step_no,
                        created_at
                   FROM data
                  WHERE {' AND '.join(where_clauses)}
@@ -966,9 +987,18 @@ def global_test_data_page(request):
                         "folder_name": row[1] or "",
                         "field_name": row[2] or "",
                         "value": row[3] or "",
-                        "record_id": str(row[4]) if row[4] is not None else "",
-                        "step_no": row[5],
-                        "created_at": row[6],
+                        "formula": row[4] or "",
+                        "is_global": bool(row[5]),
+                        "category": row[6] or "",
+                        "sub_category": row[7] or "",
+                        "increment_value": row[8],
+                        "increment_frequency": row[9] or "",
+                        "decrement_value": row[10],
+                        "decrement_frequency": row[11] or "",
+                        "calculate_on": row[12] or "",
+                        "calculate_mode": row[13] or "",
+                        "record_id": str(row[14]) if row[14] is not None else "",
+                        "created_at": row[15],
                     }
                 )
     except Exception as exc:
@@ -1589,6 +1619,7 @@ def execution_report_csv(request, pk):
         pk=pk,
     )
     conn = execution.test_case.connection
+    payload = _execution_report_payload(execution)
 
     response = HttpResponse(content_type="text/csv")
     base_name = _download_base_name(execution.test_case.name)
@@ -1600,7 +1631,10 @@ def execution_report_csv(request, pk):
     writer.writerow(["Status", execution.status])
     writer.writerow(["Test Case", execution.test_case.name])
     writer.writerow(["Test Type", execution.test_case.get_test_type_display()])
+    writer.writerow(["Expected Value", execution.test_case.expected_value or "-"])
     writer.writerow(["Actual Value", execution.actual_value])
+    if payload.get("mismatch_summary"):
+        writer.writerow(["Mismatch Details", payload["mismatch_summary"]])
     writer.writerow(["Details", execution.details])
     writer.writerow([])
     writer.writerow(["Connection Name", conn.name])
@@ -1659,7 +1693,9 @@ def execution_report_doc(request, pk):
         f"<tr><td class='label'>Status</td><td><span class='pill' style='color:{status_theme['fg']}; background:{status_theme['bg']}; border-color:{status_theme['border']};'>{html_escape(payload['status'])}</span></td></tr>",
         f"<tr><td class='label'>Test Case</td><td>{html_escape(payload['test_case'])}</td></tr>",
         f"<tr><td class='label'>Test Type</td><td>{html_escape(payload['test_type'])}</td></tr>",
+        f"<tr><td class='label'>Expected Value</td><td><div class='value-wrap'>{html_escape(payload.get('expected_value', '-'))}</div></td></tr>",
         f"<tr><td class='label'>Actual Value</td><td><div class='value-wrap'>{html_escape(actual_preview)}</div></td></tr>",
+        f"<tr><td class='label'>Mismatch Details</td><td><div class='value-wrap'>{html_escape(payload.get('mismatch_summary') or '-')}</div></td></tr>",
         "</table>",
         "</div>",
         "<div class='card'>",

@@ -4,6 +4,117 @@
 {% block page_title %}Global Test Data{% endblock %}
 
 {% block content %}
+<style>
+    .gtd-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .gtd-field-code {
+        display: block;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        white-space: pre-wrap;
+    }
+    .gtd-value-code {
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    .gtd-formula-cell {
+        min-width: 180px;
+        cursor: pointer;
+    }
+    .gtd-formula-cell:hover {
+        background: rgba(13, 110, 253, 0.06);
+    }
+    .gtd-formula-cell code {
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    .gtd-formula-modal .modal-content {
+        border: 0;
+        border-radius: 1rem;
+        overflow: hidden;
+        box-shadow: 0 20px 50px rgba(16,24,40,.22);
+        background: linear-gradient(180deg, #ffffff 0%, #fcfcfe 100%);
+    }
+    .gtd-formula-modal {
+        max-width: 760px;
+        margin: .75rem auto;
+    }
+    .gtd-formula-modal .modal-header {
+        background: linear-gradient(135deg, #1f3f60 0%, #2d5379 60%, #376a95 100%);
+        border-bottom: 0;
+        padding: .7rem 1rem;
+    }
+    .gtd-formula-modal .modal-title {
+        letter-spacing: .2px;
+        font-weight: 700;
+        font-size: .92rem;
+        color: #fff;
+    }
+    .gtd-formula-modal .modal-body {
+        padding: .95rem 1rem .7rem;
+        max-height: 68vh;
+        overflow-y: auto;
+        background:
+          radial-gradient(circle at top right, rgba(111,66,193,.08), transparent 35%),
+          radial-gradient(circle at top left, rgba(13,110,253,.08), transparent 40%),
+          #fff;
+    }
+    @media (max-width: 768px) {
+        .gtd-formula-modal {
+            max-width: calc(100vw - 1rem);
+            margin: .5rem auto;
+        }
+        .gtd-formula-modal .modal-body {
+            max-height: 72vh;
+            padding: .75rem .8rem .6rem;
+        }
+    }
+    .gtd-formula-block {
+        border: 1px solid rgba(31,63,96,.14);
+        border-radius: .75rem;
+        padding: .65rem;
+        background: rgba(255,255,255,.94);
+        box-shadow: 0 1px 4px rgba(15,23,42,.06);
+    }
+    .gtd-formula-input {
+        border: 1px solid rgba(31,63,96,.22);
+        border-radius: .6rem;
+        background: #fbfdff;
+    }
+    .gtd-formula-input:focus {
+        border-color: rgba(13,110,253,.5);
+        box-shadow: 0 0 0 .18rem rgba(13,110,253,.16);
+        background: #fff;
+    }
+    .gtd-chip-scroll {
+        max-height: 132px;
+        overflow-y: auto;
+        border: 1px dashed rgba(31,63,96,.2);
+        border-radius: .6rem;
+        padding: .35rem;
+        background: #f9fbff;
+    }
+    .gtd-random-btn {
+        font-size: .72rem;
+        line-height: 1.1;
+        padding: .3rem .62rem;
+        border-radius: 999px;
+        border: 1px solid rgba(111,66,193,.35);
+        color: #5b3ea8;
+        background: linear-gradient(180deg, #ffffff 0%, #f7f2ff 100%);
+        box-shadow: 0 1px 4px rgba(91,62,168,.12);
+    }
+    .gtd-random-btn:hover,
+    .gtd-random-btn:focus {
+        color: #4a3390;
+        border-color: rgba(111,66,193,.55);
+        background: linear-gradient(180deg, #ffffff 0%, #efe5ff 100%);
+    }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4 gap-2 flex-wrap">
     <div>
         <p class="text-muted mb-0">Global API response data stored for project test data reuse.</p>
@@ -14,6 +125,8 @@
         </a>
     </div>
 </div>
+
+<div id="globalDataAlert" class="alert d-none" role="alert"></div>
 
 <div class="card mb-4">
     <div class="card-body">
@@ -56,19 +169,27 @@
     <div class="card-body p-0">
         {% if entries %}
         <div class="table-responsive" style="max-height:72vh; overflow:auto;">
-            <table class="table table-sm table-hover mb-0 align-middle">
+            <table class="table table-sm table-hover mb-0 align-middle gtd-table">
                 <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                     <tr>
                         <th style="width: 70px;">ID</th>
                         <th style="width: 180px;">Project</th>
-                        <th style="width: 380px;">Field Name</th>
+                        <th style="width: 260px;">Field Name</th>
                         <th>Value</th>
-                        <th style="width: 90px;">Step</th>
+                        <th style="width: 220px;">Formula</th>
+                        <th style="width: 90px;" class="text-center">Global</th>
+                        <th style="width: 70px;" class="text-center">Delete</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for entry in entries %}
-                    <tr>
+                    <tr data-row-id="{{ entry.id }}"
+                        data-increment-value="{{ entry.increment_value|default_if_none:'' }}"
+                        data-increment-frequency="{{ entry.increment_frequency|default:'' }}"
+                        data-decrement-value="{{ entry.decrement_value|default_if_none:'' }}"
+                        data-decrement-frequency="{{ entry.decrement_frequency|default:'' }}"
+                        data-calculate-on="{{ entry.calculate_on|default:'' }}"
+                        data-calculate-mode="{{ entry.calculate_mode|default:'' }}">
                         <td>{{ entry.id }}</td>
                         <td>
                             {% if entry.folder_name %}
@@ -77,9 +198,25 @@
                             <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td><code>{{ entry.field_name }}</code></td>
-                        <td><code style="white-space: pre-wrap; word-break: break-word;">{{ entry.value }}</code></td>
-                        <td>{{ entry.step_no }}</td>
+                        <td><code class="gtd-field-code">{{ entry.field_name }}</code></td>
+                        <td><code class="gtd-value-code">{{ entry.value }}</code></td>
+                        <td class="gtd-formula-cell" data-data-id="{{ entry.id }}" data-cur-val="{{ entry.formula|default:''|escape }}" title="Click to edit formula">
+                            {% if entry.formula %}
+                            <span class="d-inline-flex align-items-center gap-1"><code>{{ entry.formula }}</code><i class="bi bi-pencil text-muted" style="font-size:.65rem;"></i></span>
+                            {% else %}
+                            <span class="text-muted d-inline-flex align-items-center gap-1">&mdash;<i class="bi bi-pencil" style="font-size:.65rem;opacity:.45;"></i></span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <div class="form-check form-switch d-inline-block mb-0">
+                                <input class="form-check-input gtd-global-toggle" type="checkbox" role="switch" data-data-id="{{ entry.id }}" {% if entry.is_global %}checked{% endif %}>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0 gtd-delete-btn" data-data-id="{{ entry.id }}" title="Delete">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -92,4 +229,438 @@
         {% endif %}
     </div>
 </div>
+
+<div class="modal fade" id="formulaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg gtd-formula-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title mb-0"><i class="bi bi-calculator me-2"></i>Formula Builder</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="gtd-formula-block mb-2">
+                    <label class="form-label small text-muted mb-1">Available Data Names <span class="text-muted">(click to select)</span></label>
+                    <input type="text" id="formulaNamesSearch" class="form-control form-control-sm mb-1 gtd-formula-input" placeholder="Search names..." autocomplete="off">
+                    <div id="formulaNamesList" class="d-flex flex-wrap gap-1 gtd-chip-scroll"></div>
+                    <div class="small mt-1">Selected for append: <code id="formulaSelectedName">(none)</code></div>
+                </div>
+                <div class="gtd-formula-block mb-2" style="background:linear-gradient(180deg, rgba(111,66,193,.08) 0%, rgba(111,66,193,.03) 100%);">
+                    <label class="form-label small fw-bold mb-2" style="color:#6f42c1;">Quick Action: Append Random Characters</label>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Length</label>
+                            <input type="number" id="formulaRandomLength" class="form-control form-control-sm gtd-formula-input" value="4" min="1" max="64" step="1">
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" id="formulaAppendRandomBtn" class="btn gtd-random-btn"><i class="bi bi-shuffle me-1"></i>Use APPEND_RANDOM</button>
+                        </div>
+                    </div>
+                    <div class="form-text mt-1">Builds: <code>=APPEND_RANDOM(SELECTED_NAME, n)</code></div>
+                </div>
+                <div class="gtd-formula-block mb-2">
+                    <label class="form-label fw-semibold small mb-1">Formula <span class="text-muted fw-normal">(must start with <code>=</code>)</span></label>
+                    <input type="text" id="formulaInput" class="form-control font-monospace gtd-formula-input" placeholder="=name * 3.5" autocomplete="off">
+                    <div id="formulaError" class="text-danger small mt-1 d-none"></div>
+                    <div id="formulaPreview" class="text-success small mt-1 d-none"></div>
+                </div>
+                <div class="gtd-formula-block mb-2">
+                    <label class="form-label small text-muted mb-1">Functions <span class="text-muted">(click to insert)</span></label>
+                    <div id="formulaFunctionsList" class="d-flex flex-wrap gap-1">
+                        <span class="badge bg-light text-dark border gtd-fn-chip" data-template="APPEND_RANDOM(SELF, 4)" style="cursor:pointer;font-size:.72rem;">APPEND_RANDOM(SELF, 4)</span>
+                    </div>
+                </div>
+                <div class="row g-2 mt-1">
+                    <div class="col-6">
+                        <div class="gtd-formula-block" style="background:rgba(13,110,253,.03);">
+                            <label class="form-label small fw-bold mb-2 text-primary">Category</label>
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold mb-1">Increment by</label>
+                                <input type="number" id="formulaIncrementValue" class="form-control form-control-sm gtd-formula-input" placeholder="0" step="any">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold mb-1">Decrement by</label>
+                                <input type="number" id="formulaDecrementValue" class="form-control form-control-sm gtd-formula-input" placeholder="0" step="any">
+                            </div>
+                            <div>
+                                <label class="form-label small fw-semibold mb-1">Calculate on</label>
+                                <input type="date" id="formulaCalculateOn" class="form-control form-control-sm gtd-formula-input">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="gtd-formula-block" style="background:rgba(25,135,84,.03);">
+                            <label class="form-label small fw-bold mb-2 text-success">Sub Category</label>
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold mb-1">Frequency</label>
+                                <select id="formulaIncrementFreq" class="form-select form-select-sm gtd-formula-input">
+                                    <option value="">- None -</option>
+                                    <option value="every_run">Every run</option>
+                                    <option value="every_2_runs">Every 2 runs</option>
+                                    <option value="every_3_runs">Every 3 runs</option>
+                                    <option value="every_5_runs">Every 5 runs</option>
+                                </select>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-semibold mb-1">Frequency</label>
+                                <select id="formulaDecrementFreq" class="form-select form-select-sm gtd-formula-input">
+                                    <option value="">- None -</option>
+                                    <option value="every_run">Every run</option>
+                                    <option value="every_2_runs">Every 2 runs</option>
+                                    <option value="every_3_runs">Every 3 runs</option>
+                                    <option value="every_5_runs">Every 5 runs</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label small fw-semibold mb-1">Calculate mode</label>
+                                <select id="formulaCalculateMode" class="form-select form-select-sm gtd-formula-input">
+                                    <option value="">- None -</option>
+                                    <option value="On">On</option>
+                                    <option value="Not on">Not on</option>
+                                    <option value="Before">Before</option>
+                                    <option value="After">After</option>
+                                    <option value="On or before">On or before</option>
+                                    <option value="On or after">On or after</option>
+                                    <option value="Between">Between</option>
+                                    <option value="Today">Today</option>
+                                    <option value="Yesterday">Yesterday</option>
+                                    <option value="Last 7 days">Last 7 days</option>
+                                    <option value="Last 30 days">Last 30 days</option>
+                                    <option value="This month">This month</option>
+                                    <option value="This year">This year</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="formulaClearBtn" class="btn btn-sm btn-outline-danger"><i class="bi bi-eraser me-1"></i>Clear Formula</button>
+                <button type="button" id="formulaSaveBtn" class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save &amp; Compute</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const csrfToken = '{{ csrf_token }}';
+    const alertEl = document.getElementById('globalDataAlert');
+
+    function showAlert(message, level) {
+        alertEl.textContent = message;
+        alertEl.className = `alert alert-${level} fade show`;
+    }
+
+    function hideAlert() {
+        alertEl.className = 'alert d-none';
+        alertEl.textContent = '';
+    }
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(payload || {}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+            throw new Error(data.error || data.message || 'Request failed.');
+        }
+        return data;
+    }
+
+    let formulaModal = null;
+    let formulaCell = null;
+    let formulaSelectedName = '';
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderFormulaCell(cell, formula) {
+        const clean = (formula || '').trim();
+        cell.dataset.curVal = clean;
+        if (clean) {
+            cell.innerHTML = `<span class="d-inline-flex align-items-center gap-1"><code>${escapeHtml(clean)}</code><i class="bi bi-pencil text-muted" style="font-size:.65rem;"></i></span>`;
+        } else {
+            cell.innerHTML = '<span class="text-muted d-inline-flex align-items-center gap-1">&mdash;<i class="bi bi-pencil" style="font-size:.65rem;opacity:.45;"></i></span>';
+        }
+    }
+
+    function getAllDataNames() {
+        const names = [];
+        document.querySelectorAll('.gtd-field-code').forEach((cell) => {
+            const name = (cell.textContent || '').trim();
+            if (name && !names.includes(name)) {
+                names.push(name);
+            }
+        });
+        return names.sort();
+    }
+
+    function openFormulaModal(cell) {
+        formulaCell = cell;
+        const cur = cell.dataset.curVal || '';
+        const row = cell.closest('tr');
+        const input = document.getElementById('formulaInput');
+        const errorEl = document.getElementById('formulaError');
+        const previewEl = document.getElementById('formulaPreview');
+        const namesEl = document.getElementById('formulaNamesList');
+        const namesSearch = document.getElementById('formulaNamesSearch');
+        const selectedNameEl = document.getElementById('formulaSelectedName');
+
+        input.value = cur || '=';
+        document.getElementById('formulaRandomLength').value = '4';
+        formulaSelectedName = '';
+        if (selectedNameEl) selectedNameEl.textContent = '(none)';
+        errorEl.classList.add('d-none');
+        errorEl.textContent = '';
+        previewEl.classList.add('d-none');
+        previewEl.textContent = '';
+        namesSearch.value = '';
+
+        document.getElementById('formulaIncrementValue').value = row?.dataset.incrementValue || '';
+        document.getElementById('formulaIncrementFreq').value = row?.dataset.incrementFrequency || '';
+        document.getElementById('formulaDecrementValue').value = row?.dataset.decrementValue || '';
+        document.getElementById('formulaDecrementFreq').value = row?.dataset.decrementFrequency || '';
+        document.getElementById('formulaCalculateOn').value = row?.dataset.calculateOn || '';
+        document.getElementById('formulaCalculateMode').value = row?.dataset.calculateMode || '';
+
+        const allNames = getAllDataNames();
+        const renderNameChips = (filter) => {
+            namesEl.innerHTML = '';
+            const query = (filter || '').toLowerCase();
+            allNames.forEach((name) => {
+                if (query && !name.toLowerCase().includes(query)) return;
+                const chip = document.createElement('span');
+                chip.className = formulaSelectedName === name
+                    ? 'badge bg-primary text-white border'
+                    : 'badge bg-light text-dark border';
+                chip.style.cssText = 'cursor:pointer;font-size:.72rem;';
+                chip.textContent = name;
+                chip.addEventListener('click', () => {
+                    formulaSelectedName = name;
+                    if (selectedNameEl) selectedNameEl.textContent = name;
+                    const current = (input.value || '').trim();
+                    if (!current || current === '=') {
+                        input.value = '=' + name;
+                    } else {
+                        const pos = input.selectionStart != null ? input.selectionStart : input.value.length;
+                        input.value = input.value.slice(0, pos) + name + input.value.slice(pos);
+                        input.selectionStart = input.selectionEnd = pos + name.length;
+                    }
+                    input.focus();
+                    renderNameChips(namesSearch.value);
+                });
+                namesEl.appendChild(chip);
+            });
+        };
+
+        renderNameChips('');
+        namesSearch.oninput = () => renderNameChips(namesSearch.value);
+
+        if (!formulaModal) {
+            formulaModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('formulaModal'));
+        }
+        formulaModal.show();
+        setTimeout(() => {
+            input.focus();
+            input.selectionStart = input.selectionEnd = input.value.length;
+        }, 250);
+    }
+
+    async function saveFormula(formula) {
+        const dataId = formulaCell.dataset.dataId;
+        const row = formulaCell.closest('tr');
+        const payload = {
+            formula,
+            increment_value: document.getElementById('formulaIncrementValue').value || null,
+            increment_frequency: document.getElementById('formulaIncrementFreq').value || null,
+            decrement_value: document.getElementById('formulaDecrementValue').value || null,
+            decrement_frequency: document.getElementById('formulaDecrementFreq').value || null,
+            calculate_on: document.getElementById('formulaCalculateOn').value || null,
+            calculate_mode: document.getElementById('formulaCalculateMode').value || null,
+        };
+
+        const saveBtn = document.getElementById('formulaSaveBtn');
+        const errEl = document.getElementById('formulaError');
+        const previewEl = document.getElementById('formulaPreview');
+
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Computing...';
+        errEl.classList.add('d-none');
+        errEl.textContent = '';
+
+        try {
+            const result = await postJson(`/api/data/${dataId}/update-formula/`, payload);
+            renderFormulaCell(formulaCell, result.formula || '');
+
+            if (result.computed_value !== undefined && row) {
+                const valueCellCode = row.querySelector('.gtd-value-code');
+                if (valueCellCode) {
+                    valueCellCode.textContent = String(result.computed_value);
+                }
+                previewEl.textContent = `Computed: ${result.computed_value}`;
+                previewEl.classList.remove('d-none');
+            }
+
+            if (row) {
+                row.dataset.incrementValue = payload.increment_value || '';
+                row.dataset.incrementFrequency = payload.increment_frequency || '';
+                row.dataset.decrementValue = payload.decrement_value || '';
+                row.dataset.decrementFrequency = payload.decrement_frequency || '';
+                row.dataset.calculateOn = payload.calculate_on || '';
+                row.dataset.calculateMode = payload.calculate_mode || '';
+            }
+
+            formulaModal.hide();
+        } catch (error) {
+            errEl.textContent = error.message || 'Formula error';
+            errEl.classList.remove('d-none');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Save &amp; Compute';
+        }
+    }
+
+    document.querySelectorAll('.gtd-global-toggle').forEach((toggle) => {
+        toggle.addEventListener('change', async function () {
+            hideAlert();
+            const dataId = this.dataset.dataId;
+            const previous = !this.checked;
+            this.disabled = true;
+            try {
+                const result = await postJson(`/api/data/${dataId}/toggle-global/`, {});
+                this.checked = !!result.is_global;
+                if (!result.is_global) {
+                    const row = this.closest('tr');
+                    if (row) {
+                        row.remove();
+                    }
+                }
+            } catch (error) {
+                this.checked = previous;
+                showAlert(error.message || 'Failed to update global flag.', 'danger');
+            } finally {
+                this.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.gtd-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', async function () {
+            hideAlert();
+            const dataId = this.dataset.dataId;
+            if (!confirm('Delete this data entry?')) {
+                return;
+            }
+            this.disabled = true;
+            try {
+                await postJson('/api/data/delete/', { ids: [parseInt(dataId, 10)] });
+                const row = this.closest('tr');
+                if (row) {
+                    row.remove();
+                }
+            } catch (error) {
+                showAlert(error.message || 'Failed to delete entry.', 'danger');
+            } finally {
+                this.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.gtd-formula-cell').forEach((cell) => {
+        cell.addEventListener('click', function () {
+            hideAlert();
+            openFormulaModal(cell);
+        });
+    });
+
+    document.getElementById('formulaAppendRandomBtn')?.addEventListener('click', () => {
+        const input = document.getElementById('formulaInput');
+        const errorEl = document.getElementById('formulaError');
+        let n = parseInt(document.getElementById('formulaRandomLength').value || '4', 10);
+        if (!Number.isFinite(n) || n < 1) n = 4;
+        if (n > 64) n = 64;
+        if (!formulaSelectedName) {
+            errorEl.textContent = 'Select a data name first, then click append.';
+            errorEl.classList.remove('d-none');
+            return;
+        }
+        errorEl.classList.add('d-none');
+        input.value = `=APPEND_RANDOM(${formulaSelectedName}, ${n})`;
+        input.focus();
+    });
+
+    document.getElementById('formulaSaveBtn')?.addEventListener('click', () => {
+        const input = document.getElementById('formulaInput');
+        const errEl = document.getElementById('formulaError');
+        let formula = (input.value || '').trim();
+
+        errEl.classList.add('d-none');
+        errEl.textContent = '';
+
+        if (!formula) {
+            if (formulaSelectedName) {
+                let n = parseInt(document.getElementById('formulaRandomLength').value || '4', 10);
+                if (!Number.isFinite(n) || n < 1) n = 4;
+                if (n > 64) n = 64;
+                formula = `=APPEND_RANDOM(${formulaSelectedName}, ${n})`;
+                input.value = formula;
+            } else {
+                saveFormula('');
+                return;
+            }
+        }
+
+        if (formula.charAt(0) !== '=') {
+            errEl.textContent = 'Formula must start with =';
+            errEl.classList.remove('d-none');
+            return;
+        }
+
+        saveFormula(formula);
+    });
+
+    document.getElementById('formulaClearBtn')?.addEventListener('click', () => {
+        const input = document.getElementById('formulaInput');
+        const errEl = document.getElementById('formulaError');
+        const previewEl = document.getElementById('formulaPreview');
+        if (input) input.value = '';
+        if (errEl) {
+            errEl.classList.add('d-none');
+            errEl.textContent = '';
+        }
+        if (previewEl) {
+            previewEl.classList.add('d-none');
+            previewEl.textContent = '';
+        }
+        saveFormula('');
+    });
+
+    document.querySelectorAll('.gtd-fn-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+            const input = document.getElementById('formulaInput');
+            if (!input) return;
+            const token = (chip.dataset.template || chip.textContent || '').trim();
+            if (!token) return;
+            const start = input.selectionStart != null ? input.selectionStart : input.value.length;
+            const end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
+            input.value = input.value.slice(0, start) + token + input.value.slice(end);
+            const nextPos = start + token.length;
+            input.focus();
+            input.selectionStart = input.selectionEnd = nextPos;
+        });
+    });
+})();
+</script>
 {% endblock %}

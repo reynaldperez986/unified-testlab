@@ -77,7 +77,7 @@
 <div class="modal fade" id="oauthModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <form method="post" action="{% url 'api:module_delete' module.pk %}">
+            <form method="post" action="{% url 'api:module_update_oauth' module.pk %}">
                 {% csrf_token %}
                 <div class="modal-header">
                     <h5 class="modal-title">Configure New Token</h5>
@@ -258,6 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const tokenUrlInput = document.querySelector('input[name="oauth2_token_url"]');
     const headerPrefixInput = document.querySelector('input[name="oauth2_header_prefix"]');
     const currentTokenInput = document.querySelector('#oauthModal textarea[readonly]');
+    const environmentDetailsUrlTemplate = "{% url 'api:api_environment_details' 0 %}";
     if (!authType) return;
 
     const oauth2Fields = document.querySelectorAll('.oauth2-only');
@@ -309,14 +310,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 authTypeDisplay.textContent = data.auth_type_display || 'Not configured';
                 authTypeDisplay.className = 'badge bg-secondary';
             }
-            if (addToDisplay) addToDisplay.textContent = '-';
+            if (addToDisplay) addToDisplay.textContent = 'Request Headers';
             if (clientIdDisplay) clientIdDisplay.textContent = '-';
             if (tokenUrlDisplay) tokenUrlDisplay.textContent = '-';
-            if (headerPrefixDisplay) headerPrefixDisplay.textContent = '-';
+            if (headerPrefixDisplay) headerPrefixDisplay.textContent = 'Bearer';
             if (currentTokenDisplay) currentTokenDisplay.textContent = 'Not generated';
             if (tokenUpdatedDisplay) tokenUpdatedDisplay.textContent = '';
 
             authType.value = 'none';
+            if (addToInput) addToInput.value = 'request_headers';
+            if (headerPrefixInput) headerPrefixInput.value = 'Bearer';
             if (currentTokenInput) currentTokenInput.value = '';
         }
 
@@ -326,7 +329,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (envSelect) {
         envSelect.addEventListener('change', function() {
             if (!this.value) return;
-            fetch(`/api/environments/${this.value}/`)
+            const detailsUrl = environmentDetailsUrlTemplate.replace('/0/', `/${this.value}/`);
+            fetch(detailsUrl)
                 .then(r => r.json())
                 .then(applyEnvironmentData);
         });

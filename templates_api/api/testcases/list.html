@@ -532,6 +532,15 @@
                 </div>
                 <div id="trMessage" class="alert alert-info d-none"></div>
 
+                <div class="row g-2 align-items-center mb-2">
+                    <div class="col-md-7">
+                        <input type="search" id="trSearchInput" class="form-control form-control-sm" placeholder="Auto filter by field name or value..." autocomplete="off">
+                    </div>
+                    <div class="col-md-5 text-md-end">
+                        <small id="trSearchMeta" class="text-muted"></small>
+                    </div>
+                </div>
+
                 <h6 class="mb-2">Flattened Key / Value (Project Data Style)</h6>
                 <div class="transformed-table-wrap mb-3">
                     <table class="table table-sm table-striped table-hover mb-0" id="trRowsTable">
@@ -635,7 +644,38 @@ function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
     const tcBadge = document.getElementById('trTestcaseBadge');
     const exBadge = document.getElementById('trExecutionBadge');
     const rowsBadge = document.getElementById('trRowsBadge');
+    const searchInput = document.getElementById('trSearchInput');
+    const searchMeta = document.getElementById('trSearchMeta');
     const projectLink = document.getElementById('trProjectDataLink');
+    let allRows = [];
+
+    const applyRowFilter = () => {
+        const query = (searchInput?.value || '').trim().toLowerCase();
+        const visibleRows = !query
+            ? allRows
+            : allRows.filter((row) => {
+                const fieldName = String(row.field_name ?? '').toLowerCase();
+                const value = String(row.value ?? '').toLowerCase();
+                return fieldName.includes(query) || value.includes(query);
+            });
+
+        if (!visibleRows.length) {
+            rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows match the filter.</td></tr>';
+        } else {
+            rowsTbody.innerHTML = visibleRows.map((row, idx) => {
+                const fieldName = escapeHtml(row.field_name);
+                const value = escapeHtml(row.value);
+                return `<tr><td>${idx + 1}</td><td><code>${fieldName}</code></td><td><code>${value}</code></td></tr>`;
+            }).join('');
+        }
+
+        rowsBadge.textContent = query
+            ? `Rows: ${visibleRows.length} / ${allRows.length}`
+            : `Rows: ${allRows.length}`;
+        if (searchMeta) {
+            searchMeta.textContent = query ? `Filtered by: ${query}` : '';
+        }
+    };
 
     tcBadge.textContent = testCaseName || `Test Case #${testCaseId}`;
     exBadge.textContent = 'Execution -';
@@ -644,6 +684,14 @@ function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
     messageEl.classList.remove('alert-danger', 'alert-warning', 'alert-info');
     rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">Loading transformed response...</td></tr>';
     jsonPre.textContent = '{\n  "loading": true\n}';
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.disabled = true;
+        searchInput.oninput = applyRowFilter;
+    }
+    if (searchMeta) {
+        searchMeta.textContent = '';
+    }
     projectLink.classList.add('d-none');
     projectLink.removeAttribute('href');
 
@@ -669,17 +717,19 @@ function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
         })
         .then((data) => {
             exBadge.textContent = `Execution #${data.execution_id}`;
-            rowsBadge.textContent = `Rows: ${data.total_rows || 0}`;
-
             const rows = Array.isArray(data.rows) ? data.rows : [];
+            allRows = rows;
             if (!rows.length) {
                 rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows available.</td></tr>';
+                rowsBadge.textContent = 'Rows: 0';
+                if (searchInput) {
+                    searchInput.disabled = true;
+                }
             } else {
-                rowsTbody.innerHTML = rows.map((row, idx) => {
-                    const fieldName = escapeHtml(row.field_name);
-                    const value = escapeHtml(row.value);
-                    return `<tr><td>${idx + 1}</td><td><code>${fieldName}</code></td><td><code>${value}</code></td></tr>`;
-                }).join('');
+                if (searchInput) {
+                    searchInput.disabled = false;
+                }
+                applyRowFilter();
             }
 
             jsonPre.textContent = data.transformed_json_pretty || '{}';
@@ -697,8 +747,16 @@ function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
             }
         })
         .catch((error) => {
+            allRows = [];
             rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No data</td></tr>';
+            rowsBadge.textContent = 'Rows: 0';
             jsonPre.textContent = '{}';
+            if (searchInput) {
+                searchInput.disabled = true;
+            }
+            if (searchMeta) {
+                searchMeta.textContent = '';
+            }
             messageEl.textContent = error.message || 'Failed to load transformed response.';
             messageEl.classList.remove('d-none');
             messageEl.classList.add('alert-danger');

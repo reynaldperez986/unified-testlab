@@ -304,6 +304,15 @@
                 </div>
                 <div id="trMessage" class="alert alert-info d-none"></div>
 
+                <div class="row g-2 align-items-center mb-2">
+                    <div class="col-md-7">
+                        <input type="search" id="trSearchInput" class="form-control form-control-sm" placeholder="Auto filter by field name or value..." autocomplete="off">
+                    </div>
+                    <div class="col-md-5 text-md-end">
+                        <small id="trSearchMeta" class="text-muted"></small>
+                    </div>
+                </div>
+
                 <h6 class="mb-2">Flattened Key / Value (Project Data Style)</h6>
                 <div class="transformed-table-wrap mb-3">
                     <table class="table table-sm table-striped table-hover mb-0" id="trRowsTable">
@@ -966,7 +975,38 @@ function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
     var tcBadge = document.getElementById('trTestcaseBadge');
     var exBadge = document.getElementById('trExecutionBadge');
     var rowsBadge = document.getElementById('trRowsBadge');
+    var searchInput = document.getElementById('trSearchInput');
+    var searchMeta = document.getElementById('trSearchMeta');
     var projectLink = document.getElementById('trProjectDataLink');
+    var allRows = [];
+
+    var applyRowFilter = function() {
+        var query = (searchInput && searchInput.value ? searchInput.value : '').trim().toLowerCase();
+        var visibleRows = !query
+            ? allRows
+            : allRows.filter(function(row) {
+                var fieldName = String(row.field_name == null ? '' : row.field_name).toLowerCase();
+                var value = String(row.value == null ? '' : row.value).toLowerCase();
+                return fieldName.indexOf(query) !== -1 || value.indexOf(query) !== -1;
+            });
+
+        if (!visibleRows.length) {
+            rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows match the filter.</td></tr>';
+        } else {
+            rowsTbody.innerHTML = visibleRows.map(function(row, idx) {
+                var fieldName = _escapeHtml(row.field_name);
+                var value = _escapeHtml(row.value);
+                return '<tr><td>' + (idx + 1) + '</td><td><code>' + fieldName + '</code></td><td><code>' + value + '</code></td></tr>';
+            }).join('');
+        }
+
+        rowsBadge.textContent = query
+            ? ('Rows: ' + visibleRows.length + ' / ' + allRows.length)
+            : ('Rows: ' + allRows.length);
+        if (searchMeta) {
+            searchMeta.textContent = query ? ('Filtered by: ' + query) : '';
+        }
+    };
 
     tcBadge.textContent = testCaseName || ('Test Case #' + testCaseId);
     exBadge.textContent = 'Execution -';
@@ -975,6 +1015,14 @@ function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
     messageEl.classList.remove('alert-danger', 'alert-warning', 'alert-info');
     rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">Loading transformed response...</td></tr>';
     jsonPre.textContent = '{\n  "loading": true\n}';
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.disabled = true;
+        searchInput.oninput = applyRowFilter;
+    }
+    if (searchMeta) {
+        searchMeta.textContent = '';
+    }
     projectLink.classList.add('d-none');
     projectLink.removeAttribute('href');
 
@@ -1001,17 +1049,19 @@ function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
         })
         .then(function(data) {
             exBadge.textContent = 'Execution #' + data.execution_id;
-            rowsBadge.textContent = 'Rows: ' + (data.total_rows || 0);
-
             var rows = Array.isArray(data.rows) ? data.rows : [];
+            allRows = rows;
             if (!rows.length) {
                 rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows available.</td></tr>';
+                rowsBadge.textContent = 'Rows: 0';
+                if (searchInput) {
+                    searchInput.disabled = true;
+                }
             } else {
-                rowsTbody.innerHTML = rows.map(function(row, idx) {
-                    var fieldName = _escapeHtml(row.field_name);
-                    var value = _escapeHtml(row.value);
-                    return '<tr><td>' + (idx + 1) + '</td><td><code>' + fieldName + '</code></td><td><code>' + value + '</code></td></tr>';
-                }).join('');
+                if (searchInput) {
+                    searchInput.disabled = false;
+                }
+                applyRowFilter();
             }
 
             jsonPre.textContent = data.transformed_json_pretty || '{}';
@@ -1029,8 +1079,16 @@ function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
             }
         })
         .catch(function(error) {
+            allRows = [];
             rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No data</td></tr>';
+            rowsBadge.textContent = 'Rows: 0';
             jsonPre.textContent = '{}';
+            if (searchInput) {
+                searchInput.disabled = true;
+            }
+            if (searchMeta) {
+                searchMeta.textContent = '';
+            }
             messageEl.textContent = (error && error.message) ? error.message : 'Failed to load transformed response.';
             messageEl.classList.remove('d-none');
             messageEl.classList.add('alert-danger');
@@ -1213,7 +1271,38 @@ if (typeof openTransformedResponse !== 'function') {
         var tcBadge = document.getElementById('trTestcaseBadge');
         var exBadge = document.getElementById('trExecutionBadge');
         var rowsBadge = document.getElementById('trRowsBadge');
+        var searchInput = document.getElementById('trSearchInput');
+        var searchMeta = document.getElementById('trSearchMeta');
         var projectLink = document.getElementById('trProjectDataLink');
+        var allRows = [];
+
+        var applyRowFilter = function() {
+            var query = (searchInput && searchInput.value ? searchInput.value : '').trim().toLowerCase();
+            var visibleRows = !query
+                ? allRows
+                : allRows.filter(function(row) {
+                    var fieldName = String(row.field_name == null ? '' : row.field_name).toLowerCase();
+                    var value = String(row.value == null ? '' : row.value).toLowerCase();
+                    return fieldName.indexOf(query) !== -1 || value.indexOf(query) !== -1;
+                });
+
+            if (!visibleRows.length) {
+                rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows match the filter.</td></tr>';
+            } else {
+                rowsTbody.innerHTML = visibleRows.map(function(row, idx) {
+                    var fieldName = _escapeHtml(row.field_name);
+                    var value = _escapeHtml(row.value);
+                    return '<tr><td>' + (idx + 1) + '</td><td><code>' + fieldName + '</code></td><td><code>' + value + '</code></td></tr>';
+                }).join('');
+            }
+
+            rowsBadge.textContent = query
+                ? ('Rows: ' + visibleRows.length + ' / ' + allRows.length)
+                : ('Rows: ' + allRows.length);
+            if (searchMeta) {
+                searchMeta.textContent = query ? ('Filtered by: ' + query) : '';
+            }
+        };
 
         tcBadge.textContent = testCaseName || ('Test Case #' + testCaseId);
         exBadge.textContent = 'Execution -';
@@ -1222,6 +1311,14 @@ if (typeof openTransformedResponse !== 'function') {
         messageEl.classList.remove('alert-danger', 'alert-warning', 'alert-info');
         rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">Loading transformed response...</td></tr>';
         jsonPre.textContent = '{\n  "loading": true\n}';
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.disabled = true;
+            searchInput.oninput = applyRowFilter;
+        }
+        if (searchMeta) {
+            searchMeta.textContent = '';
+        }
         projectLink.classList.add('d-none');
         projectLink.removeAttribute('href');
 
@@ -1248,17 +1345,19 @@ if (typeof openTransformedResponse !== 'function') {
             })
             .then(function(data) {
                 exBadge.textContent = 'Execution #' + data.execution_id;
-                rowsBadge.textContent = 'Rows: ' + (data.total_rows || 0);
-
                 var rows = Array.isArray(data.rows) ? data.rows : [];
+                allRows = rows;
                 if (!rows.length) {
                     rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows available.</td></tr>';
+                    rowsBadge.textContent = 'Rows: 0';
+                    if (searchInput) {
+                        searchInput.disabled = true;
+                    }
                 } else {
-                    rowsTbody.innerHTML = rows.map(function(row, idx) {
-                        var fieldName = _escapeHtml(row.field_name);
-                        var value = _escapeHtml(row.value);
-                        return '<tr><td>' + (idx + 1) + '</td><td><code>' + fieldName + '</code></td><td><code>' + value + '</code></td></tr>';
-                    }).join('');
+                    if (searchInput) {
+                        searchInput.disabled = false;
+                    }
+                    applyRowFilter();
                 }
 
                 jsonPre.textContent = data.transformed_json_pretty || '{}';
@@ -1276,8 +1375,16 @@ if (typeof openTransformedResponse !== 'function') {
                 }
             })
             .catch(function(error) {
+                allRows = [];
                 rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No data</td></tr>';
+                rowsBadge.textContent = 'Rows: 0';
                 jsonPre.textContent = '{}';
+                if (searchInput) {
+                    searchInput.disabled = true;
+                }
+                if (searchMeta) {
+                    searchMeta.textContent = '';
+                }
                 messageEl.textContent = (error && error.message) ? error.message : 'Failed to load transformed response.';
                 messageEl.classList.remove('d-none');
                 messageEl.classList.add('alert-danger');

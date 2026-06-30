@@ -36,6 +36,7 @@ urlpatterns = [
     path('testcases/<int:pk>/run/<str:snippet_type>/', views.testcase_run_generated_py, name='testcase_run_generated_py'),
     path('api/testcases/<int:pk>/recent-executions/', views.testcase_recent_executions, name='testcase_recent_executions'),
     path('api/testcases/<int:pk>/transformed-response/', views.testcase_transformed_response, name='testcase_transformed_response'),
+    path('api/testcases/global-field-values/', views.api_global_field_values, name='api_global_field_values'),
     path('testcases/<int:pk>/edit/', views.testcase_edit, name='testcase_edit'),
     path('testcases/<int:pk>/delete/', views.testcase_delete, name='testcase_delete'),
     path('testcases/<int:pk>/duplicate/', views.testcase_duplicate, name='testcase_duplicate'),
