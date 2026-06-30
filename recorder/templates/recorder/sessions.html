@@ -1107,7 +1107,7 @@
     border: 1px solid rgba(0,41,86,.08);
     border-left: 2px solid #e2e6ea;
     border-radius: 7px;
-    overflow: hidden;
+    overflow: visible;
     transition: box-shadow .15s ease, border-left-color .15s ease;
   }
   .active-run-card + .active-run-card { margin-top: .3rem; }
@@ -1122,11 +1122,16 @@
   .active-run-card-hdr {
     display: flex;
     align-items: center;
-    gap: .3rem;
-    padding: .22rem .46rem .18rem;
+    gap: .2rem;
+    padding: .22rem .35rem .18rem;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
   /* Progress strip only */
-  .active-run-card-body { padding: 0 .46rem .22rem; }
+  .active-run-card-body { 
+    padding: 0 .35rem .22rem;
+    overflow: visible;
+  }
 
   .active-run-name {
     font-size: .74rem;
@@ -1201,20 +1206,22 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.35rem;
-    height: 1.35rem;
+    width: 1.24rem;
+    height: 1.24rem;
     padding: 0;
-    border-radius: .28rem;
+    border-radius: .22rem;
     border: 1px solid;
-    font-size: .66rem;
+    font-size: .62rem;
     cursor: pointer;
     touch-action: manipulation;
-    transition: background .1s, transform .1s;
+    transition: background .1s, transform .1s, opacity .15s;
     user-select: none;
     background: transparent;
     flex-shrink: 0;
     line-height: 1;
+    opacity: .85;
   }
+  .arp-card-btn:hover { opacity: 1; }
   .arp-card-btn:active { transform: scale(.88); }
   .arp-card-btn-secondary { border-color: #cbd5e1; color: #475569; }
   .arp-card-btn-secondary:hover { background: #f1f5f9; border-color: #94a3b8; }
@@ -2793,11 +2800,15 @@
           {% endfor %}
 
           {% for tc in db_testcases %}
-          <div class="list-group-item testcase-search-item" data-testcase-lab="db" data-module-name="" data-testcase-search="{{ tc.name|lower }} {{ tc.test_type|lower }} {{ tc.connection|lower }} {{ tc.folder|lower }}">
+          <div class="list-group-item testcase-search-item" data-testcase-lab="db" data-module-name="" data-testcase-id="{{ tc.id }}" data-testcase-search="{{ tc.name|lower }} {{ tc.test_type|lower }} {{ tc.connection|lower }} {{ tc.connection_host|lower }} {{ tc.folder|lower }}">
             <div class="d-flex justify-content-between align-items-start gap-2">
-              <div>
+              <div class="form-check m-0 mt-1">
+                <input class="form-check-input testcase-select-checkbox" type="checkbox" value="{{ tc.id }}" data-testcase-name="{{ tc.name|escape }}" data-module-name="">
+              </div>
+              <div class="flex-grow-1">
                 <div class="fw-semibold"><span class="badge bg-success me-2">DB</span>{{ tc.name }}</div>
                 <div class="small text-muted">{{ tc.test_type }} | {{ tc.connection }}</div>
+                {% if tc.connection_host %}<div class="small text-muted">Host: {{ tc.connection_host }}</div>{% endif %}
                 {% if tc.folder %}<div class="small text-muted">Folder: {{ tc.folder }}</div>{% endif %}
               </div>
               <a href="/db-lab/testcases/{{ tc.id }}/" target="_blank" class="btn btn-sm btn-outline-success">Open</a>
@@ -2901,8 +2912,14 @@
     }
 
     function pruneSelectedToExistingApiTestcases() {
-      const validIds = new Set(
+      // Validate both API and DB test cases
+      const validApiIds = new Set(
         Array.from(listEl.querySelectorAll('.testcase-search-item[data-testcase-lab="api"]'))
+          .map(function(item) { return String(item.getAttribute('data-testcase-id') || '').trim(); })
+          .filter(Boolean)
+      );
+      const validDbIds = new Set(
+        Array.from(listEl.querySelectorAll('.testcase-search-item[data-testcase-lab="db"]'))
           .map(function(item) { return String(item.getAttribute('data-testcase-id') || '').trim(); })
           .filter(Boolean)
       );
@@ -2912,7 +2929,9 @@
       Object.keys(byFolder).forEach(function(folderName) {
         const rows = Array.isArray(byFolder[folderName]) ? byFolder[folderName] : [];
         const filtered = rows.filter(function(row) {
-          return validIds.has(String((row && row.id) || '').trim());
+          const id = String((row && row.id) || '').trim();
+          // Keep if it's a valid API testcase OR a valid DB testcase
+          return validApiIds.has(id) || validDbIds.has(id);
         });
         if (filtered.length !== rows.length) {
           changed = true;
@@ -2926,8 +2945,8 @@
 
     function statusBadgeHtml(testcaseId) {
       const status = String(latestStatusMap[String(testcaseId)] || '').toLowerCase();
-      if (status === 'passed') return '<span class="badge bg-success me-2">Pass</span>';
-      if (status === 'failed') return '<span class="badge bg-danger me-2">Fail</span>';
+      if (status === 'pass' || status === 'passed') return '<span class="badge bg-success me-2">Pass</span>';
+      if (status === 'fail' || status === 'failed') return '<span class="badge bg-danger me-2">Fail</span>';
       if (status === 'error') return '<span class="badge bg-warning text-dark me-2">Error</span>';
       return '<span class="badge bg-secondary me-2">No Run</span>';
     }
@@ -2948,16 +2967,63 @@
     function apiResultButtonHtml(testcaseId, folderName, collapseId) {
       const status = String(latestStatusMap[String(testcaseId)] || '').toLowerCase();
       const partialUrl = `/api-lab/api/testcases/${encodeURIComponent(testcaseId)}/recent-executions/`;
-      if (status === 'passed') {
+      if (status === 'pass' || status === 'passed') {
         return `<button class="api-expand-btn sess-expand-btn btn btn-sm btn-outline-success" data-bs-toggle="collapse" data-bs-target="#${collapseId}" data-partial-url="${partialUrl}" data-api-testcase-id="${escapeHtml(testcaseId)}" data-folder-name="${escapeHtml(folderName)}" title="View last run details"><i class="bi bi-check-circle-fill me-1"></i>Pass <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i></button>`;
       }
-      if (status === 'failed') {
+      if (status === 'fail' || status === 'failed') {
         return `<button class="api-expand-btn sess-expand-btn btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#${collapseId}" data-partial-url="${partialUrl}" data-api-testcase-id="${escapeHtml(testcaseId)}" data-folder-name="${escapeHtml(folderName)}" title="View last run details"><i class="bi bi-x-circle-fill me-1"></i>Fail <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i></button>`;
       }
       if (status === 'error') {
         return `<button class="api-expand-btn sess-expand-btn btn btn-sm btn-outline-warning" data-bs-toggle="collapse" data-bs-target="#${collapseId}" data-partial-url="${partialUrl}" data-api-testcase-id="${escapeHtml(testcaseId)}" data-folder-name="${escapeHtml(folderName)}" title="View last run details"><i class="bi bi-stop-circle-fill me-1"></i>Error <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i></button>`;
       }
       return '<span class="badge bg-secondary me-2"><i class="bi bi-dash me-1"></i>No Runs</span>';
+    }
+
+    function dbResultButtonHtml(testcaseId, folderName, collapseId) {
+      const status = String(latestStatusMap[String(testcaseId)] || '').toLowerCase();
+      const partialUrl = `/db-lab/testcases/${encodeURIComponent(testcaseId)}/recent-executions/`;
+      if (status === 'pass' || status === 'passed') {
+        return `<button class="db-expand-btn sess-expand-btn btn btn-sm btn-outline-success collapsed" data-bs-toggle="collapse" data-bs-target="#${collapseId}" data-partial-url="${partialUrl}" data-db-testcase-id="${escapeHtml(testcaseId)}" data-folder-name="${escapeHtml(folderName)}" title="View last run details"><i class="bi bi-check-circle-fill me-1"></i>Pass <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i></button>`;
+      }
+      if (status === 'fail' || status === 'failed') {
+        return `<button class="db-expand-btn sess-expand-btn btn btn-sm btn-outline-danger collapsed" data-bs-toggle="collapse" data-bs-target="#${collapseId}" data-partial-url="${partialUrl}" data-db-testcase-id="${escapeHtml(testcaseId)}" data-folder-name="${escapeHtml(folderName)}" title="View last run details"><i class="bi bi-x-circle-fill me-1"></i>Fail <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i></button>`;
+      }
+      if (status === 'error') {
+        return `<button class="db-expand-btn sess-expand-btn btn btn-sm btn-outline-warning collapsed" data-bs-toggle="collapse" data-bs-target="#${collapseId}" data-partial-url="${partialUrl}" data-db-testcase-id="${escapeHtml(testcaseId)}" data-folder-name="${escapeHtml(folderName)}" title="View last run details"><i class="bi bi-stop-circle-fill me-1"></i>Error <i class="bi bi-chevron-down ms-1 sess-chevron" style="font-size:.7rem;transition:transform .2s;"></i></button>`;
+      }
+      return '<span class="badge bg-secondary me-2"><i class="bi bi-dash me-1"></i>No Runs</span>';
+    }
+
+    function renderDbLastRunContent(data) {
+      const rows = (data && Array.isArray(data.rows)) ? data.rows : [];
+      if (!rows.length) {
+        return '<span class="text-muted small"><i class="bi bi-dash-circle me-1"></i>No run details found.</span>';
+      }
+      const row = rows[0] || {};
+      const executionId = row.id;
+      const status = String(row.status || '-').toLowerCase();
+      const statusClass = (status === 'pass' || status === 'passed') ? 'success' : ((status === 'fail' || status === 'failed') ? 'danger' : (status === 'error' ? 'warning text-dark' : 'secondary'));
+      const statusLabel = status ? status.toUpperCase() : '-';
+      const csvUrl = executionId ? `/db-lab/executions/${encodeURIComponent(executionId)}/report/csv/` : '#';
+      const pdfUrl = executionId ? `/db-lab/executions/${encodeURIComponent(executionId)}/report/pdf/` : '#';
+      const docUrl = executionId ? `/db-lab/executions/${encodeURIComponent(executionId)}/report/doc/` : '#';
+      const viewUrl = executionId ? `/db-lab/executions/${encodeURIComponent(executionId)}/` : '#';
+      return `
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div class="small">
+            <span class="badge bg-${statusClass} me-2">${escapeHtml(statusLabel)}</span>
+            <span class="me-2"><strong>Connection:</strong> ${escapeHtml(row.connection || '-')}</span>
+            <span class="me-2"><strong>By:</strong> ${escapeHtml(row.executed_by || '-')}</span>
+            <span><strong>At:</strong> ${escapeHtml(row.executed_at || '-')}</span>
+          </div>
+          <div class="d-flex align-items-center gap-1">
+            <a href="${escapeHtml(csvUrl)}" class="btn btn-sm btn-outline-secondary" title="CSV Report"><i class="bi bi-filetype-csv"></i></a>
+            <a href="${escapeHtml(pdfUrl)}" class="btn btn-sm btn-outline-danger" title="PDF Report"><i class="bi bi-filetype-pdf"></i></a>
+            <a href="${escapeHtml(docUrl)}" class="btn btn-sm btn-outline-primary" title="DOC Report"><i class="bi bi-file-earmark-word"></i></a>
+            <a href="${escapeHtml(viewUrl)}" class="btn btn-sm btn-outline-info" title="View Execution"><i class="bi bi-eye"></i></a>
+          </div>
+        </div>
+      `;
     }
 
     function renderApiLastRunContent(data) {
@@ -3045,39 +3111,140 @@
       });
     }
 
-    function refreshLatestStatusesFromServer() {
-      const byFolder = loadSelectedByFolder();
-      const ids = Array.from(new Set(Object.keys(byFolder).flatMap(function(folderName) {
-        const rows = Array.isArray(byFolder[folderName]) ? byFolder[folderName] : [];
-        return rows.map(function(r) { return String(r.id || '').trim(); }).filter(Boolean);
-      })));
+    function executeDbTestcase(testcaseId, triggerBtn) {
+      const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+      const csrfToken = csrfInput ? csrfInput.value : '';
+      const originalHtml = triggerBtn ? triggerBtn.innerHTML : '';
 
-      if (!ids.length) {
-        latestStatusMap = {};
-        renderSelectedTestcasesInFolders();
-        return;
+      if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
       }
 
+      fetch('/db-lab/testcases/execute-ajax/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ test_case_id: Number(testcaseId) })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data && !data.ok) {
+          throw new Error(data.details || 'Test execution failed');
+        }
+
+        const collapseId = triggerBtn ? triggerBtn.getAttribute('data-run-target') : '';
+        if (collapseId) {
+          const collapseEl = document.getElementById(collapseId);
+          const detailContent = collapseEl ? collapseEl.querySelector('.testcase-detail-content') : null;
+          if (detailContent) {
+            detailContent.dataset.loaded = '0';
+            detailContent.innerHTML = '<i class="bi bi-hourglass-split"></i> Loading&hellip;';
+          }
+        }
+
+        refreshLatestStatusesFromServer();
+        setTimeout(refreshLatestStatusesFromServer, 600);
+        setTimeout(refreshLatestStatusesFromServer, 1500);
+      })
+      .catch(function(err) {
+        alert('Error executing DB testcase: ' + err.message);
+      })
+      .finally(function() {
+        if (triggerBtn) {
+          triggerBtn.disabled = false;
+          triggerBtn.innerHTML = originalHtml;
+        }
+      });
+    }
+
+    function refreshLatestStatusesFromServer() {
+      const byFolder = loadSelectedByFolder();
+      const allRows = [];
+      Object.keys(byFolder).forEach(function(folderName) {
+        const rows = Array.isArray(byFolder[folderName]) ? byFolder[folderName] : [];
+        allRows.push(...rows);
+      });
+
+      // Separate API and DB test cases
+      const apiIds = [];
+      const dbIds = [];
+      allRows.forEach(function(row) {
+        const id = String(row.id || '').trim();
+        if (!id) return;
+        // Check if it's a DB test case (no module_name) or API test case (has module_name)
+        if (row.module_name && String(row.module_name).trim()) {
+          apiIds.push(id);
+        } else {
+          dbIds.push(id);
+        }
+      });
+
       const reqToken = ++latestStatusRequestToken;
-      fetch(`/api-lab/api/testcases/latest-results/?ids=${encodeURIComponent(ids.join(','))}`)
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (reqToken !== latestStatusRequestToken) return;
-          const incoming = (data && data.results) ? data.results : {};
-          const nextMap = {};
-          Object.keys(incoming).forEach(function(key) {
-            nextMap[String(key)] = String(incoming[key] || '').toLowerCase();
-          });
+      const nextMap = {};
+      let pendingRequests = 0;
+
+      function checkDone() {
+        if (pendingRequests === 0 && reqToken === latestStatusRequestToken) {
           latestStatusMap = nextMap;
           renderSelectedTestcasesInFolders();
-        })
-        .catch(function() {});
+        }
+      }
+
+      // Fetch API test case statuses
+      if (apiIds.length > 0) {
+        pendingRequests++;
+        fetch(`/api-lab/api/testcases/latest-results/?ids=${encodeURIComponent(apiIds.join(','))}`)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (reqToken !== latestStatusRequestToken) return;
+            const incoming = (data && data.results) ? data.results : {};
+            Object.keys(incoming).forEach(function(key) {
+              nextMap[String(key)] = String(incoming[key] || '').toLowerCase();
+            });
+            pendingRequests--;
+            checkDone();
+          })
+          .catch(function() {
+            pendingRequests--;
+            checkDone();
+          });
+      }
+
+      // Fetch DB test case statuses
+      if (dbIds.length > 0) {
+        pendingRequests++;
+        fetch(`/db-lab/testcases/latest-results/?ids=${encodeURIComponent(dbIds.join(','))}`)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (reqToken !== latestStatusRequestToken) return;
+            const incoming = (data && data.results) ? data.results : {};
+            Object.keys(incoming).forEach(function(key) {
+              nextMap[String(key)] = String(incoming[key] || '').toLowerCase();
+            });
+            pendingRequests--;
+            checkDone();
+          })
+          .catch(function() {
+            pendingRequests--;
+            checkDone();
+          });
+      }
+
+      // If no requests to make, just render
+      if (pendingRequests === 0) {
+        latestStatusMap = nextMap;
+        renderSelectedTestcasesInFolders();
+      }
     }
 
       window.refreshProjectsApiLatestStatuses = refreshLatestStatusesFromServer;
 
     function renderSelectedTestcasesInFolders() {
-      document.querySelectorAll('tr.selected-api-testcase-row, tr.selected-api-detail-row').forEach(function(el) { el.remove(); });
+      // Remove both API and DB testcase rows
+      document.querySelectorAll('tr.selected-api-testcase-row, tr.selected-api-detail-row, tr.selected-db-testcase-row, tr.selected-db-detail-row').forEach(function(el) { el.remove(); });
       const byFolder = loadSelectedByFolder();
 
       Object.keys(byFolder).forEach(function(folderName) {
@@ -3097,50 +3264,94 @@
         if (emptyRow) emptyRow.classList.add('d-none');
 
         rows.forEach(function(row) {
+          const isDbTestcase = row.module_name === '' || row.module_name === undefined;
           const tr = document.createElement('tr');
-          const collapseId = `api-run-${makeSafeId(folderName)}-${makeSafeId(row.id)}`;
-          tr.className = 'session-row selected-api-testcase-row';
+          const collapseId = `testcase-run-${makeSafeId(folderName)}-${makeSafeId(row.id)}`;
+          
+          if (isDbTestcase) {
+            // DB Test Case Row
+            tr.className = 'session-row selected-db-testcase-row';
+            tr.setAttribute('draggable', 'true');
+            tr.dataset.dbTestcaseId = String(row.id || '');
+            tr.dataset.folderName = folderName;
+            const checkboxCell = hasBulkSelect
+              ? `<td class="text-center mobile-compact-cell" data-label="Select" style="padding:2px 4px;"><input type="checkbox" class="form-check-input db-testcase-cb" value="${row.id}"></td>`
+              : '';
+            tr.innerHTML = `
+              <td class="drag-handle text-center mobile-compact-cell" data-label="" style="cursor:grab;color:#adb5bd;user-select:none;font-size:0.85rem;padding:2px 4px;">⋮⋮</td>
+              ${checkboxCell}
+              <td class="mobile-primary-cell" data-label="Filename" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;padding:2px 6px;">
+                <span class="badge bg-success me-2">DB</span>
+                <a href="/db-lab/testcases/${encodeURIComponent(row.id)}/" target="_blank" class="text-decoration-none fw-semibold">${row.name}</a>
+              </td>
+              <td class="text-center" data-label="Steps" style="padding:2px 4px;"><span class="text-muted">-</span></td>
+              <td class="small text-muted text-truncate" data-label="Started" style="padding:2px 6px;">-</td>
+              <td class="small text-muted text-truncate" data-label="Last Event" style="padding:2px 6px;">-</td>
+              <td class="small text-muted text-truncate" data-label="Recorder" style="padding:2px 6px;">DB</td>
+              <td class="text-end text-nowrap mobile-actions-cell" data-label="Actions" style="white-space:nowrap;padding:2px 4px;text-align:right;">
+                <div class="mobile-actions-wrap d-inline-flex align-items-center gap-1">
+                  <a href="/db-lab/testcases/${encodeURIComponent(row.id)}/" class="btn btn-sm btn-outline-info" title="View DB Test Case" aria-label="View DB Test Case" target="_blank" rel="noopener"><i class="bi bi-eye"></i></a>
+                  <button type="button" class="btn btn-sm btn-outline-success" title="Run DB Test Case" aria-label="Run DB Test Case" data-run-db-testcase-id="${row.id}" data-run-target="${collapseId}"><i class="bi bi-play-circle"></i></button>
+                  <button type="button" class="btn btn-sm btn-outline-danger" title="Delete" aria-label="Delete" data-remove-selected-testcase-folder="${folderName}" data-remove-selected-testcase-id="${row.id}"><i class="bi bi-trash"></i></button>
+                </div>
+              </td>
+              <td data-label="Last Run Result">
+                ${dbResultButtonHtml(row.id, folderName, collapseId)}
+              </td>
+            `;
+          } else {
+            // API Test Case Row
+            tr.className = 'session-row selected-api-testcase-row';
+            tr.dataset.apiTestcaseId = String(row.id || '');
+            const moduleSuffix = row.module_name ? ` <span class="text-muted small">(${row.module_name})</span>` : '';
+            const checkboxCell = hasBulkSelect
+              ? `<td class="text-center mobile-compact-cell" data-label="Select" style="padding:2px 4px;"><input type="checkbox" class="form-check-input api-testcase-cb" value="${row.id}"></td>`
+              : '';
+            tr.innerHTML = `
+              <td class="drag-handle text-center mobile-compact-cell" data-label="" style="cursor:grab;color:#adb5bd;user-select:none;font-size:0.85rem;padding:2px 4px;">⋮⋮</td>
+              ${checkboxCell}
+              <td class="mobile-primary-cell" data-label="Filename" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;padding:2px 6px;">
+                <span class="badge bg-primary me-2">API</span>
+                <a href="/api-lab/testcases/${encodeURIComponent(row.id)}/" target="_blank" class="text-decoration-none fw-semibold">${row.name}</a>
+                ${moduleSuffix}
+              </td>
+              <td class="text-center" data-label="Steps" style="padding:2px 4px;"><span class="text-muted">-</span></td>
+              <td class="small text-muted text-truncate" data-label="Started" style="padding:2px 6px;">-</td>
+              <td class="small text-muted text-truncate" data-label="Last Event" style="padding:2px 6px;">-</td>
+              <td class="small text-muted text-truncate" data-label="Recorder" style="padding:2px 6px;">API</td>
+              <td class="text-end text-nowrap mobile-actions-cell" data-label="Actions" style="white-space:nowrap;padding:2px 4px;text-align:right;">
+                <div class="mobile-actions-wrap d-inline-flex align-items-center gap-1">
+                  <a href="/api-lab/testcases/${encodeURIComponent(row.id)}/?tab=details" class="btn btn-sm btn-outline-info" title="View API Test Case" aria-label="View API Test Case" target="_blank" rel="noopener"><i class="bi bi-eye"></i></a>
+                  <button type="button" class="btn btn-sm btn-outline-primary" title="Run API Test Case" aria-label="Run API Test Case" data-run-api-testcase-id="${row.id}" data-run-target="${collapseId}"><i class="bi bi-play-circle"></i></button>
+                  <button type="button" class="btn btn-sm btn-outline-danger" title="Delete" aria-label="Delete" data-remove-selected-testcase-folder="${folderName}" data-remove-selected-testcase-id="${row.id}"><i class="bi bi-trash"></i></button>
+                </div>
+              </td>
+              <td data-label="Last Run Result">
+                ${apiResultButtonHtml(row.id, folderName, collapseId)}
+              </td>
+            `;
+          }
+          
           tr.setAttribute('draggable', 'true');
-          tr.dataset.apiTestcaseId = String(row.id || '');
           tr.dataset.folderName = folderName;
-          const moduleSuffix = row.module_name ? ` <span class="text-muted small">(${row.module_name})</span>` : '';
-          const checkboxCell = hasBulkSelect
-            ? `<td class="text-center mobile-compact-cell" data-label="Select" style="padding:2px 4px;"><input type="checkbox" class="form-check-input api-testcase-cb" value="${row.id}"></td>`
-            : '';
-          tr.innerHTML = `
-            <td class="drag-handle text-center mobile-compact-cell" data-label="" style="cursor:grab;color:#adb5bd;user-select:none;font-size:0.85rem;padding:2px 4px;">⋮⋮</td>
-            ${checkboxCell}
-            <td class="mobile-primary-cell" data-label="Filename" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;padding:2px 6px;">
-              <span class="badge bg-primary me-2">API</span>
-              <a href="/api-lab/testcases/${encodeURIComponent(row.id)}/" target="_blank" class="text-decoration-none fw-semibold">${row.name}</a>
-              ${moduleSuffix}
-            </td>
-            <td class="text-center" data-label="Steps" style="padding:2px 4px;"><span class="text-muted">-</span></td>
-            <td class="small text-muted text-truncate" data-label="Started" style="padding:2px 6px;">-</td>
-            <td class="small text-muted text-truncate" data-label="Last Event" style="padding:2px 6px;">-</td>
-            <td class="small text-muted text-truncate" data-label="Recorder" style="padding:2px 6px;">API</td>
-            <td class="text-end text-nowrap mobile-actions-cell" data-label="Actions" style="white-space:nowrap;padding:2px 4px;text-align:right;">
-              <div class="mobile-actions-wrap d-inline-flex align-items-center gap-1">
-                <a href="/api-lab/testcases/${encodeURIComponent(row.id)}/?tab=details" class="btn btn-sm btn-outline-info" title="View API Test Case" aria-label="View API Test Case" target="_blank" rel="noopener"><i class="bi bi-eye"></i></a>
-                <button type="button" class="btn btn-sm btn-outline-primary" title="Run API Test Case" aria-label="Run API Test Case" data-run-api-testcase-id="${row.id}" data-run-target="${collapseId}"><i class="bi bi-play-circle"></i></button>
-                <button type="button" class="btn btn-sm btn-outline-danger" title="Delete" aria-label="Delete" data-remove-selected-testcase-folder="${folderName}" data-remove-selected-testcase-id="${row.id}"><i class="bi bi-trash"></i></button>
-              </div>
-            </td>
-            <td data-label="Last Run Result">
-              ${apiResultButtonHtml(row.id, folderName, collapseId)}
-            </td>
-          `;
           tbody.appendChild(tr);
 
           const detailTr = document.createElement('tr');
-          detailTr.className = 'sess-detail-row selected-api-detail-row';
-          detailTr.dataset.apiTestcaseId = String(row.id || '');
+          if (isDbTestcase) {
+            detailTr.className = 'sess-detail-row selected-db-detail-row';
+            detailTr.dataset.dbTestcaseId = String(row.id || '');
+          } else {
+            detailTr.className = 'sess-detail-row selected-api-detail-row';
+            detailTr.dataset.apiTestcaseId = String(row.id || '');
+          }
           detailTr.dataset.folderName = folderName;
+          const collapseClass = isDbTestcase ? 'collapse db-last-run-collapse' : 'collapse api-last-run-collapse';
+          const detailContentClass = isDbTestcase ? 'db-detail-content text-muted small' : 'api-detail-content text-muted small';
           detailTr.innerHTML = `
             <td colspan="${colSpan}" class="p-0 border-0">
-              <div class="collapse api-last-run-collapse" id="${collapseId}">
+              <div class="${collapseClass}" id="${collapseId}">
                 <div class="p-3 bg-light border-top border-bottom">
-                  <div class="api-detail-content text-muted small">
+                  <div class="${detailContentClass}">
                     <i class="bi bi-hourglass-split"></i> Loading&hellip;
                   </div>
                 </div>
@@ -3194,11 +3405,25 @@
       });
     }
 
+    function collectCheckedDbTestcases() {
+      const checked = Array.from(listEl.querySelectorAll('.testcase-search-item[data-testcase-lab="db"] .testcase-select-checkbox:checked'));
+      return checked.map(function(cb) {
+        return {
+          id: String(cb.value),
+          name: cb.getAttribute('data-testcase-name') || '',
+          module_name: '',
+        };
+      });
+    }
+
     function addCheckedTestcasesToProjects() {
       if (!activeFolderName) return;
       const current = getSelectedForFolder(activeFolderName);
       const map = new Map(current.map(function(r) { return [String(r.id), r]; }));
       collectCheckedApiTestcases().forEach(function(r) {
+        map.set(String(r.id), r);
+      });
+      collectCheckedDbTestcases().forEach(function(r) {
         map.set(String(r.id), r);
       });
       setSelectedForFolder(activeFolderName, Array.from(map.values()));
@@ -3228,11 +3453,8 @@
             visible = moduleQuery ? (moduleMatch && endpointMatch) : false;
           }
         } else if (activeLab === 'db') {
-          if (moduleQuery.length < 2) {
-            visible = false;
-          } else {
-            visible = itemLab === 'db' && itemText.indexOf(moduleQuery) !== -1;
-          }
+          // Show all DB test cases by default, filter by search query if provided
+          visible = itemLab === 'db' && (!moduleQuery || itemText.indexOf(moduleQuery) !== -1);
         } else {
           visible = false;
         }
@@ -3245,8 +3467,8 @@
         if (activeLab === 'api' && !moduleQuery) {
           hintEl.textContent = 'Select/search a module first to list API test cases.';
           hintEl.classList.remove('d-none');
-        } else if (activeLab === 'db' && moduleQuery.length < 2) {
-          hintEl.textContent = 'Type at least 2 characters to search DB test cases.';
+        } else if (activeLab === 'db' && !moduleQuery) {
+          hintEl.textContent = 'Search or select DB test cases by Name or Host.';
           hintEl.classList.remove('d-none');
         } else {
           hintEl.classList.add('d-none');
@@ -3269,6 +3491,13 @@
       if (runBtn) {
         const testcaseId = String(runBtn.getAttribute('data-run-api-testcase-id') || '');
         if (testcaseId) executeApiTestcase(testcaseId, runBtn);
+        return;
+      }
+
+      const runDbBtn = e.target.closest('[data-run-db-testcase-id]');
+      if (runDbBtn) {
+        const testcaseId = String(runDbBtn.getAttribute('data-run-db-testcase-id') || '');
+        if (testcaseId) executeDbTestcase(testcaseId, runDbBtn);
         return;
       }
 
@@ -3353,6 +3582,49 @@
       const btn = document.querySelector(`.api-expand-btn[data-bs-target="#${target.id}"]`);
       if (!btn) return;
       btn.classList.remove('active');
+      const ch = btn.querySelector('.sess-chevron');
+      if (ch) ch.style.transform = '';
+    });
+
+    document.addEventListener('show.bs.collapse', function(e) {
+      const target = e.target;
+      if (!target || !target.classList || !target.classList.contains('db-last-run-collapse')) return;
+
+      const btn = document.querySelector(`.db-expand-btn[data-bs-target="#${target.id}"]`);
+      if (btn) {
+        btn.classList.add('active');
+        btn.classList.remove('collapsed');
+        const ch = btn.querySelector('.sess-chevron');
+        if (ch) ch.style.transform = 'rotate(180deg)';
+      }
+
+      const content = target.querySelector('.db-detail-content');
+      if (!content || content.dataset.loaded === '1') return;
+      content.dataset.loaded = '1';
+
+      const partialUrl = btn ? btn.getAttribute('data-partial-url') : '';
+      if (!partialUrl) {
+        content.innerHTML = '<span class="text-muted">No run detail URL available.</span>';
+        return;
+      }
+
+      fetch(partialUrl)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          content.innerHTML = renderDbLastRunContent(data);
+        })
+        .catch(function() {
+          content.innerHTML = '<span class="text-danger">Failed to load run details.</span>';
+        });
+    });
+
+    document.addEventListener('hide.bs.collapse', function(e) {
+      const target = e.target;
+      if (!target || !target.classList || !target.classList.contains('db-last-run-collapse')) return;
+      const btn = document.querySelector(`.db-expand-btn[data-bs-target="#${target.id}"]`);
+      if (!btn) return;
+      btn.classList.remove('active');
+      btn.classList.add('collapsed');
       const ch = btn.querySelector('.sess-chevron');
       if (ch) ch.style.transform = '';
     });
@@ -3515,10 +3787,11 @@
   function updateBulkBar() {
     const checked = Array.from(document.querySelectorAll('.session-cb:checked'));
     const checkedApi = Array.from(document.querySelectorAll('.api-testcase-cb:checked'));
-    const n = checked.length + checkedApi.length;
+    const checkedDb = Array.from(document.querySelectorAll('.db-testcase-cb:checked'));
+    const n = checked.length + checkedApi.length + checkedDb.length;
     bulkCount.textContent = n;
     if (bulkSessionCount) bulkSessionCount.textContent = checked.length;
-    if (bulkApiCount) bulkApiCount.textContent = checkedApi.length;
+    if (bulkApiCount) bulkApiCount.textContent = checkedApi.length + checkedDb.length;
     if (n > 0) {
       bulkBar.classList.remove('d-none');
     } else {
@@ -3551,6 +3824,13 @@
         inp.value = cb.value;
         bulkApiInputs.appendChild(inp);
       });
+      checkedDb.forEach(function(cb) {
+        const inp = document.createElement('input');
+        inp.type  = 'hidden';
+        inp.name  = 'db_testcase_ids';
+        inp.value = cb.value;
+        bulkApiInputs.appendChild(inp);
+      });
     }
   }
 
@@ -3563,7 +3843,7 @@
   });
 
   document.addEventListener('change', function(e) {
-    if (!e.target.classList.contains('api-testcase-cb')) return;
+    if (!e.target.classList.contains('api-testcase-cb') && !e.target.classList.contains('db-testcase-cb')) return;
     updateBulkBar();
   });
 
@@ -3573,7 +3853,7 @@
       var nodeId = this.dataset.folderNodeId;
       var node   = nodeId ? document.getElementById(nodeId) : null;
       if (!node) return;
-      node.querySelectorAll('.session-cb, .api-testcase-cb').forEach(function(cb) {
+      node.querySelectorAll('.session-cb, .api-testcase-cb, .db-testcase-cb').forEach(function(cb) {
         if (!cb.disabled) {
           cb.checked = folderCb.checked;
           if (cb.classList.contains('session-cb')) {
@@ -3595,13 +3875,13 @@
 
   // Keep ancestor folder checkboxes in indeterminate / checked / unchecked state
   document.addEventListener('change', function(e) {
-    if (!e.target.classList.contains('session-cb') && !e.target.classList.contains('api-testcase-cb')) return;
+    if (!e.target.classList.contains('session-cb') && !e.target.classList.contains('api-testcase-cb') && !e.target.classList.contains('db-testcase-cb')) return;
     var node = e.target.closest('.folder-tree-node');
     while (node) {
       var folderCb = node.querySelector(':scope > .folder-tree-header > .folder-select-all');
       if (folderCb) {
-        var allCbs     = node.querySelectorAll('.session-cb:not(:disabled), .api-testcase-cb:not(:disabled)');
-        var checkedCbs = node.querySelectorAll('.session-cb:not(:disabled):checked, .api-testcase-cb:not(:disabled):checked');
+        var allCbs     = node.querySelectorAll('.session-cb:not(:disabled), .api-testcase-cb:not(:disabled), .db-testcase-cb:not(:disabled)');
+        var checkedCbs = node.querySelectorAll('.session-cb:not(:disabled):checked, .api-testcase-cb:not(:disabled):checked, .db-testcase-cb:not(:disabled):checked');
         if (allCbs.length === 0) {
           folderCb.checked       = false;
           folderCb.indeterminate = false;
@@ -3620,7 +3900,7 @@
   document.querySelectorAll('.select-all-group').forEach(function(master) {
     master.addEventListener('change', function() {
       const tbody = this.closest('table').querySelector('tbody');
-      tbody.querySelectorAll('.session-cb, .api-testcase-cb').forEach(function(cb) {
+      tbody.querySelectorAll('.session-cb, .api-testcase-cb, .db-testcase-cb').forEach(function(cb) {
         cb.checked = master.checked;
         if (cb.classList.contains('session-cb')) {
           const replayBtn = cb.closest('tr').querySelector('.row-replay-btn');
@@ -3632,7 +3912,7 @@
   });
 
   document.getElementById('bulkClear').addEventListener('click', function() {
-    document.querySelectorAll('.session-cb, .api-testcase-cb, .select-all-group').forEach(function(cb) {
+    document.querySelectorAll('.session-cb, .api-testcase-cb, .db-testcase-cb, .select-all-group').forEach(function(cb) {
       cb.checked = false;
     });
     document.querySelectorAll('.row-replay-btn').forEach(function(btn) {
@@ -3645,12 +3925,14 @@
     bulkReplayForm.addEventListener('submit', function() {
       const sessionCount = document.querySelectorAll('.session-cb:checked').length;
       const apiCount = document.querySelectorAll('.api-testcase-cb:checked').length;
-      if (!sessionCount && !apiCount) return;
+      const dbCount = document.querySelectorAll('.db-testcase-cb:checked').length;
+      if (!sessionCount && !apiCount && !dbCount) return;
       const mode = (bulkParallelCheck && bulkParallelCheck.checked) ? 'parallel' : 'serial';
       try {
         sessionStorage.setItem(BULK_RUN_TOAST_KEY, JSON.stringify({
           sessions: sessionCount,
           api: apiCount,
+          db: dbCount,
           mode: mode,
           ts: Date.now()
         }));
@@ -3671,11 +3953,18 @@
 
     const s = Number(payload.sessions || 0);
     const a = Number(payload.api || 0);
+    const db = Number(payload.db || 0);
     const modeLabel = payload.mode === 'parallel' ? 'parallel' : 'serial';
-    bulkRunSummaryToastBody.textContent = `Started ${s} session${s === 1 ? '' : 's'} + ${a} API test case${a === 1 ? '' : 's'} (${modeLabel}).`;
+    
+    const parts = [];
+    if (s > 0) parts.push(`${s} session${s === 1 ? '' : 's'}`);
+    if (a > 0) parts.push(`${a} API test case${a === 1 ? '' : 's'}`);
+    if (db > 0) parts.push(`${db} DB test case${db === 1 ? '' : 's'}`);
+    
+    bulkRunSummaryToastBody.textContent = `Started ${parts.join(' + ')} (${modeLabel}).`;
     bootstrap.Toast.getOrCreateInstance(bulkRunSummaryToast, { delay: 3200 }).show();
 
-    if (a > 0 && typeof window.refreshProjectsApiLatestStatuses === 'function') {
+    if ((a > 0 || db > 0) && typeof window.refreshProjectsApiLatestStatuses === 'function') {
       [900, 2200, 4500, 7500].forEach(function(delay) {
         setTimeout(function() {
           window.refreshProjectsApiLatestStatuses();

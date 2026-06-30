@@ -164,7 +164,7 @@
 
         <ul class="test-tree-list" id="testTree" data-tree-move-url="/db-lab/testcases/tree/move/" data-can-manage="{{ can_manage|yesno:'1,0' }}">
             {% for node in folder_tree %}
-                {% include "testcases/_tree_node.html" with node=node can_manage=can_manage %}
+                {% include "db/testcases/_tree_node.html" with node=node can_manage=can_manage %}
             {% endfor %}
 
             {% if root_tests %}
@@ -540,7 +540,7 @@
         fetch("/db-lab/testcases/folders/" + projectId + "/edit/", {
             method: "POST",
             headers: {
-                "X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || "",
+                "X-CSRFToken": _getCsrfToken(),
                 "X-Requested-With": "XMLHttpRequest",
             },
             body: formData,
@@ -712,7 +712,12 @@ var _execMode = 'serial';
 function _sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
 function _getCsrfToken() {
-    return (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+    function _readCookie(name) {
+        var val = '; ' + document.cookie;
+        var parts = val.split('; ' + name + '=');
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    return _readCookie('csrftoken_8000') || _readCookie('csrftoken') || '';
 }
 
 function _statusBadge(status) {

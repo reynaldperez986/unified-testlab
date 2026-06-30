@@ -13,7 +13,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
 from django.utils import timezone
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
 
@@ -739,16 +739,19 @@ def connection_edit(request, pk):
     )
 
 
+@csrf_exempt
 @role_required("Admin", "Tester")
 def connection_test(request, pk):
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if request.method != "POST":
+        if is_ajax:
+            return JsonResponse({"ok": False, "detail": "Invalid request method."}, status=405)
         messages.error(request, "Invalid request method for connection test.")
         return redirect("db:connection_edit", pk=pk)
 
     instance = get_object_or_404(DatabaseConnection, pk=pk)
     ok, detail = test_database_connection(instance)
-    
-    # Log the connection test action
+
     log_action(
         request,
         AuditLog.Action.TEST_CONNECTION,
@@ -757,12 +760,40 @@ def connection_test(request, pk):
         target_name=instance.name,
         details=f"Success: {ok}",
     )
-    
+
+    if is_ajax:
+        return JsonResponse({"ok": ok, "detail": detail})
+
     if ok:
         messages.success(request, f"{instance.name}: {detail}")
     else:
         messages.error(request, f"{instance.name}: Connection failed - {detail}")
     return redirect("db:connection_edit", pk=pk)
+
+
+@csrf_exempt
+@role_required("Admin", "Tester")
+def connection_test_unsaved(request):
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "detail": "Invalid request method."}, status=405)
+
+    try:
+        port = int(request.POST.get("port") or 0)
+    except ValueError:
+        port = 0
+
+    conn = DatabaseConnection(
+        name=request.POST.get("name") or "Untested",
+        db_type=request.POST.get("db_type", ""),
+        host=request.POST.get("host", ""),
+        port=port,
+        database_name=request.POST.get("database_name", ""),
+        service_name=request.POST.get("service_name", ""),
+        username=request.POST.get("username", ""),
+        password=request.POST.get("password", ""),
+    )
+    ok, detail = test_database_connection(conn)
+    return JsonResponse({"ok": ok, "detail": detail})
 
 
 @login_required
@@ -999,6 +1030,67 @@ def testcase_execute_ajax(request):
         "details": details,
         "actual_value": actual,
     })
+
+
+def testcase_latest_results(request):
+    """Get latest execution result for each requested test case (JSON API)."""
+    ids_param = request.GET.get("ids", "").strip()
+    if not ids_param:
+        return JsonResponse({"results": {}})
+
+    raw_ids = [s.strip() for s in ids_param.split(",") if s.strip()]
+    valid_ids = []
+    for raw_id in raw_ids:
+        try:
+            valid_ids.append(int(raw_id))
+        except (ValueError, TypeError):
+            pass
+
+    if not valid_ids:
+        return JsonResponse({"results": {}})
+
+    # Get latest execution for each test case
+    results = {}
+    for tc_id in valid_ids:
+        try:
+            latest_exec = TestExecution.objects.filter(test_case_id=tc_id).order_by("-executed_at").first()
+            if latest_exec:
+                results[str(tc_id)] = latest_exec.status or "unknown"
+            else:
+                results[str(tc_id)] = "no_run"
+        except Exception:
+            results[str(tc_id)] = "unknown"
+
+    return JsonResponse({"results": results})
+
+
+def testcase_recent_executions(request, pk):
+    """Return the most recent execution details for a DB test case (JSON API for Projects dropdown)."""
+    tc = get_object_or_404(TestCase, pk=pk)
+    latest_exec = TestExecution.objects.filter(test_case=tc).order_by("-executed_at").first()
+
+    rows = []
+    if latest_exec:
+        executed_by = ""
+        try:
+            # AuditLog may record the user who triggered this execution
+            log = AuditLog.objects.filter(
+                target_type="TestCase", target_id=tc.id, action=AuditLog.Action.EXECUTE
+            ).order_by("-timestamp").first()
+            if log:
+                executed_by = log.user.username if log.user else ""
+        except Exception:
+            pass
+
+        rows.append({
+            "id": latest_exec.id,
+            "status": latest_exec.status,
+            "connection": str(tc.connection) if tc.connection else "-",
+            "executed_at": latest_exec.executed_at.strftime("%Y-%m-%d %H:%M:%S") if latest_exec.executed_at else "-",
+            "executed_by": executed_by,
+        })
+
+    return JsonResponse({"rows": rows})
 
 
 @role_required("Admin", "Tester")

@@ -475,6 +475,43 @@
     white-space: nowrap;
   }
 
+  .mini-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    flex-shrink: 0;
+  }
+
+  .mini-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.32rem;
+    height: 1.32rem;
+    border-radius: .28rem;
+    border: 1px solid rgba(255,255,255,.28);
+    color: rgba(255,255,255,.92);
+    background: rgba(0, 0, 0, .16);
+    font-size: .68rem;
+    padding: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: transform .1s ease, background .12s ease;
+  }
+
+  .mini-btn:hover {
+    background: rgba(255,255,255,.2);
+  }
+
+  .mini-btn:active {
+    transform: scale(.9);
+  }
+
+  .mini-btn.mini-btn-stop {
+    border-color: rgba(252, 165, 165, .85);
+    color: #fecaca;
+  }
+
   /* empty ticker message */
   .mini-empty {
     padding: .22rem .85rem;
@@ -1090,9 +1127,27 @@ const currentUsername = '{{ current_username|escapejs }}';
           }
           ticker.innerHTML = liveRuns.map(function(r) {
             var isRec  = r.status === 'recording' || r.status === 'recording_paused';
+            var isLive = r.status === 'running' || r.status === 'paused' || isRec;
             var pct    = isRec ? 100 : (r.total > 0 ? Math.round(r.done / r.total * 100) : 0);
             var barClr = STATUS_BAR_COLOR[r.status] || '#9ca3af';
             var nm     = (r.folder_name ? r.folder_name + ' / ' : '') + (r.record_name || r.run_id.replace('rec:', '').substring(0, 8));
+            var canControl = isSuperuser || (r.runner === currentUsername);
+            var actionHtml = '';
+            if (canControl && isLive) {
+              if (isRec) {
+                actionHtml = '<span class="mini-actions">'
+                  + '<button class="mini-btn mini-btn-stop" title="Stop" aria-label="Stop" onclick="postAction(\'/api/hotkey/stop/\')">'
+                  + '<i class="bi bi-stop-fill"></i></button>'
+                  + '</span>';
+              } else {
+                actionHtml = '<span class="mini-actions">'
+                  + '<button class="mini-btn" title="' + (r.status === 'paused' ? 'Resume' : 'Pause') + '" aria-label="' + (r.status === 'paused' ? 'Resume' : 'Pause') + '" onclick="postAction(\'/replay/' + r.run_id + '/pause/\')">'
+                  + '<i class="bi bi-' + (r.status === 'paused' ? 'play' : 'pause') + '-fill"></i></button>'
+                  + '<button class="mini-btn mini-btn-stop" title="Stop" aria-label="Stop" onclick="postAction(\'/replay/' + r.run_id + '/stop/\')">'
+                  + '<i class="bi bi-stop-fill"></i></button>'
+                  + '</span>';
+              }
+            }
             var icon   = r.status === 'paused' || r.status === 'recording_paused'
               ? '<i class="bi bi-pause-fill" style="color:#f59e0b;flex-shrink:0;"></i>'
               : r.status === 'running'
@@ -1106,6 +1161,7 @@ const currentUsername = '{{ current_username|escapejs }}';
               + '<div class="mini-track"><div class="mini-bar' + (isRec ? ' rec-mini-bar' : '') + '" style="width:' + pct + '%;background:' + barClr + ';"></div></div>'
               + (isRec ? '' : '<span class="mini-pct" style="color:' + barClr + ';">' + pct + '%</span>')
               + (isRec ? '' : '<span class="mini-step">' + r.done + '/' + r.total + '</span>')
+              + actionHtml
               + '</div>';
           }).join('');
         })();

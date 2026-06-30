@@ -1399,6 +1399,7 @@ def sessions_list(request):
             'name': tc.name,
             'test_type': tc.get_test_type_display(),
             'connection': str(tc.connection),
+            'connection_host': tc.connection.host if tc.connection else '',
             'folder': str(tc.project_folder) if tc.project_folder else '',
             'status': latest.status if latest else None,
             'executed_at': latest.executed_at if latest else None,
@@ -13505,12 +13506,14 @@ def bulk_replay(request):
 
     raw_ids = request.POST.getlist("record_ids")
     raw_api_ids = request.POST.getlist("api_testcase_ids")
-    if not raw_ids and not raw_api_ids:
-        messages.warning(request, "No sessions or API test cases selected.")
+    raw_db_ids = request.POST.getlist("db_testcase_ids")
+    if not raw_ids and not raw_api_ids and not raw_db_ids:
+        messages.warning(request, "No sessions or test cases selected.")
         return redirect("sessions_list")
 
     started = 0
     api_started = 0
+    db_started = 0
     headless = request.POST.get("headless") == "on"
     _runner_name = request.user.username
     _tenant_id = getattr(request, "tenant_id", None)
@@ -13795,15 +13798,103 @@ def bulk_replay(request):
         except Exception as _bulk_api_exc:
             print(f"[BULK API EXECUTION SETUP ERROR] {_bulk_api_exc}", flush=True)
 
-    if started or api_started:
+    # Execute selected DB testcases and register them as monitor jobs.
+    _valid_db_ids: list[int] = []
+    for _raw_db in raw_db_ids:
+        try:
+            _valid_db_ids.append(int(str(_raw_db).strip()))
+        except (TypeError, ValueError):
+            pass
+
+    if _valid_db_ids:
+        try:
+            from db_testcases.models import TestCase as DbTestCase
+            from db_testcases.services import execute_test_case as execute_db_testcase
+
+            _db_qs = DbTestCase.objects.filter(pk__in=_valid_db_ids)
+            _db_map = {tc.id: tc for tc in _db_qs}
+            _ordered_db_tcs = [_db_map[_id] for _id in _valid_db_ids if _id in _db_map]
+
+            def _make_db_run(_tc, _job, _sem):
+                def _run_db():
+                    close_old_connections()
+                    if _sem is not None:
+                        _sem.acquire()
+                    try:
+                        if _job["stop_event"].is_set():
+                            with _job["lock"]:
+                                _job["status"] = "stopped"
+                                _job["finished_at"] = time.time()
+                            return
+
+                        status, details, actual = execute_db_testcase(_tc)
+                        ok = (str(status).lower() == "pass" or str(status).lower() == "passed")
+                        with _job["lock"]:
+                            _job["results"].append({
+                                "step_no": 1,
+                                "action": "DB_EXECUTE",
+                                "page_url": f"DB Connection: {_tc.connection}",
+                                "status": status,
+                                "ok": ok,
+                            })
+                            _job["status"] = "done" if ok else "failed"
+                            _job["finished_at"] = time.time()
+                    except Exception as _db_exc:
+                        print(f"[BULK DB EXECUTION ERROR] testcase={getattr(_tc, 'id', '?')} error={_db_exc}", flush=True)
+                        with _job["lock"]:
+                            _job["results"].append({
+                                "step_no": 1,
+                                "action": "DB_EXECUTE",
+                                "page_url": "-",
+                                "status": str(_db_exc),
+                                "ok": False,
+                            })
+                            _job["status"] = "error"
+                            _job["finished_at"] = time.time()
+                    finally:
+                        if _sem is not None:
+                            _sem.release()
+                        close_old_connections()
+                return _run_db
+
+            for _tc in _ordered_db_tcs:
+                _db_run_id = str(uuid.uuid4())
+                _db_job = {
+                    "run_id": _db_run_id,
+                    "record_id": f"db:{_tc.id}",
+                    "results": [],
+                    "status": "running",
+                    "pause_event": threading.Event(),
+                    "stop_event": threading.Event(),
+                    "total": 1,
+                    "lock": threading.Lock(),
+                    "started_at": time.time(),
+                    "finished_at": None,
+                    "runner": _runner_name,
+                    "record_name": getattr(_tc, "name", f"DB Test Case {_tc.id}"),
+                    "folder_name": "DB",
+                    "session_name": getattr(_tc, "name", f"DB Test Case {_tc.id}"),
+                    "tenant_id": _tenant_id,
+                    "engine": "db",
+                }
+                with _JOBS_LOCK:
+                    _REPLAY_JOBS[_db_run_id] = _db_job
+                _submit_replay_job(_make_db_run(_tc, _db_job, _serial_sem if _exec_mode == "serial" else None))
+                db_started += 1
+        except Exception as _bulk_db_exc:
+            print(f"[BULK DB EXECUTION SETUP ERROR] {_bulk_db_exc}", flush=True)
+
+    if started or api_started or db_started:
         _parts = []
         if started:
             _parts.append(f"{started} replay{'s' if started != 1 else ''} ({'headless' if headless else 'with browser'})")
         if api_started:
             _parts.append(f"{api_started} API test case{'s' if api_started != 1 else ''}")
+        if db_started:
+            _parts.append(f"{db_started} DB test case{'s' if db_started != 1 else ''}")
         messages.success(request, f"Started {' and '.join(_parts)}. Check the dashboard for progress.")
     else:
-        messages.warning(request, "No valid sessions or API test cases were found to execute.")
+        messages.warning(request, "No valid sessions or test cases were found to execute.")
     return redirect("sessions_list")
 
 

@@ -26,7 +26,7 @@
 
     <ul class="tree-dropzone collapse show" id="folderBody{{ node.folder.id }}" data-dropzone data-target-folder-id="{{ node.folder.id }}">
         {% for child in node.children %}
-            {% include "testcases/_tree_node.html" with node=child can_manage=can_manage %}
+            {% include "db/testcases/_tree_node.html" with node=child can_manage=can_manage %}
         {% endfor %}
 
         {% for t in node.tests %}

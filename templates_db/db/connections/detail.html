@@ -7,10 +7,16 @@
         <div class="d-flex gap-2">
             <a class="btn btn-outline-secondary" href="/db-lab/connections/">Back</a>
             {% if can_manage %}
+                <button id="btnTestConn" class="btn btn-outline-primary" type="button"
+                    data-test-url="/db-lab/connections/{{ connection.id }}/test/">
+                    <span id="btnTestConnSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
+                    Test Connection
+                </button>
                 <a class="btn btn-primary" href="/db-lab/connections/{{ connection.id }}/edit/">Edit</a>
             {% endif %}
         </div>
     </div>
+    {% if can_manage %}<div id="connTestResult" class="mt-3 d-none alert" role="alert"></div>{% endif %}
 
     <section class="section-card form-card">
         <div class="row g-3">
@@ -71,5 +77,60 @@
         </div>
     </section>
 </section>
+<script>
+(function () {
+    var btn = document.getElementById('btnTestConn');
+    if (!btn) return;
+    
+    // Get CSRF token from cookie
+    function getCookie(name) {
+        var cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i++) {
+                var cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    var csrftoken = getCookie('csrftoken');
+    
+    btn.addEventListener('click', function () {
+        var spinner = document.getElementById('btnTestConnSpinner');
+        var result = document.getElementById('connTestResult');
+        var url = btn.dataset.testUrl;
+        btn.disabled = true;
+        spinner.classList.remove('d-none');
+        result.className = 'mt-3 d-none alert';
+        var headers = { 'X-Requested-With': 'XMLHttpRequest' };
+        if (csrftoken) {
+            headers['X-CSRFToken'] = csrftoken;
+        }
+        fetch(url, {
+            method: 'POST',
+            headers: headers
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (json) {
+            result.classList.remove('d-none');
+            result.classList.add(json.ok ? 'alert-success' : 'alert-danger');
+            result.textContent = json.detail;
+        })
+        .catch(function () {
+            result.classList.remove('d-none');
+            result.classList.add('alert-danger');
+            result.textContent = 'Request failed. Please try again.';
+        })
+        .finally(function () {
+            btn.disabled = false;
+            spinner.classList.add('d-none');
+        });
+    });
+}());
+</script>
 {% endblock %}
 

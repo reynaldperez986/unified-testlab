@@ -11,11 +11,19 @@
             <div class="d-flex gap-2">
                 <a class="btn btn-outline-secondary" href="/db-lab/testcases/">Back</a>
                 {% if can_manage %}
+                <button id="btnRunTestCase" class="btn btn-success" data-tc-id="{{ testcase.id }}">
+                    <span id="btnRunSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
+                    Run
+                </button>
                 <a class="btn btn-primary" href="/db-lab/testcases/{{ testcase.id }}/edit/">Edit</a>
                 {% endif %}
             </div>
         </div>
     </div>
+
+    {% if can_manage %}
+    <div id="runResult" class="d-none alert mb-3" role="alert"></div>
+    {% endif %}
 
     <div class="section-card form-card testcase-detail-card mb-3 mb-md-4 p-3 p-md-4">
         <ul class="nav nav-tabs testcase-detail-tabs mb-4" id="testcaseDetailTabs" role="tablist">
@@ -155,4 +163,57 @@
         </div>
     </div>
 </section>
+
+{% if can_manage %}
+<script>
+(function () {
+    const btn = document.getElementById('btnRunTestCase');
+    if (!btn) return;
+    const spinner = document.getElementById('btnRunSpinner');
+    const result = document.getElementById('runResult');
+
+    function getCookie(name) {
+        const val = `; ${document.cookie}`;
+        const parts = val.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        spinner.classList.remove('d-none');
+        result.className = 'alert mb-3 d-none';
+        result.textContent = '';
+
+        const csrftoken = getCookie('csrftoken_8000') || getCookie('csrftoken');
+        fetch('/db-lab/testcases/execute-ajax/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ test_case_id: btn.dataset.tcId }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            const status = (data.result_status || '').toUpperCase();
+            const alertClass = status === 'PASS' ? 'alert-success' : status === 'FAIL' ? 'alert-warning' : 'alert-danger';
+            result.className = `alert mb-3 ${alertClass}`;
+            let msg = `<strong>${status}</strong>`;
+            if (data.details) msg += ` — ${data.details}`;
+            if (data.execution_id) msg += ` <a class="alert-link ms-2" href="/db-lab/executions/${data.execution_id}/">View Execution #${data.execution_id}</a>`;
+            result.innerHTML = msg;
+        })
+        .catch(() => {
+            result.className = 'alert mb-3 alert-danger';
+            result.textContent = 'Request failed. Please try again.';
+        })
+        .finally(() => {
+            btn.disabled = false;
+            spinner.classList.add('d-none');
+        });
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}
