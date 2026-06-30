@@ -96,10 +96,36 @@
     background: #f8fafc;
     flex-shrink: 0;
 }
+
+.transformed-json-pre {
+    max-height: 340px;
+    overflow: auto;
+    font-size: 0.78rem;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 0.45rem;
+    background: #f8fafc;
+    padding: 0.7rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.transformed-table-wrap {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 0.45rem;
+}
+
+.transformed-table-wrap table {
+    font-size: 0.78rem;
+}
 </style>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <p class="text-muted mb-0">Manage your database test cases.</p>
     <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/db-lab/testcases/global-data/">
+            <i class="bi bi-database"></i> Global Test Data
+        </a>
         {% if can_manage %}
             <button type="button" class="btn btn-outline-primary" onclick="openProjectModal();">
                 <i class="bi bi-folder-plus"></i> Create Project
@@ -214,6 +240,14 @@
                                 <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/testcases/{{ t.id }}/" title="View" aria-label="View test case">
                                     <i class="bi bi-eye"></i>
                                 </a>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-info btn-icon"
+                                        title="View transformed response"
+                                        aria-label="View transformed response"
+                                        data-transformed-url="/db-lab/testcases/{{ t.id }}/transformed-response/"
+                                        onclick="openTransformedResponse({{ t.id }}, '{{ t.name|escapejs }}', this)">
+                                    <i class="bi bi-diagram-3"></i>
+                                </button>
                                 {% if can_manage %}
                                     <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/testcases/{{ t.id }}/edit/" title="Edit" aria-label="Edit test case">
                                         <i class="bi bi-pencil-square"></i>
@@ -248,6 +282,51 @@
         </ul>
     </div>
 </section>
+
+<div class="modal fade" id="transformedResponseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-diagram-3 me-2"></i>
+                    Transformed Response JSON
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                    <span class="badge bg-primary" id="trTestcaseBadge">Test Case</span>
+                    <span class="badge bg-secondary" id="trExecutionBadge">Execution -</span>
+                    <span class="badge bg-light text-dark border" id="trRowsBadge">Rows: 0</span>
+                    <a href="#" id="trProjectDataLink" class="btn btn-sm btn-outline-secondary d-none" target="_blank" rel="noopener">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Open Project Test Data
+                    </a>
+                </div>
+                <div id="trMessage" class="alert alert-info d-none"></div>
+
+                <h6 class="mb-2">Flattened Key / Value (Project Data Style)</h6>
+                <div class="transformed-table-wrap mb-3">
+                    <table class="table table-sm table-striped table-hover mb-0" id="trRowsTable">
+                        <thead class="table-light" style="position:sticky;top:0;z-index:1;">
+                            <tr>
+                                <th style="width:52px;">#</th>
+                                <th style="width:44%;">Field Name</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <h6 class="mb-2">Transformed JSON</h6>
+                <pre id="trJsonPre" class="transformed-json-pre">{}</pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% if can_manage %}
 <div class="modal fade" id="projectFolderModal" tabindex="-1" aria-hidden="true">
@@ -864,6 +943,100 @@ function closeExecPanelAndReload() {
     location.reload();
 }
 
+function _escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
+    var modalEl = document.getElementById('transformedResponseModal');
+    if (!modalEl) return;
+    if (modalEl.parentElement !== document.body) {
+        document.body.appendChild(modalEl);
+    }
+
+    var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    var messageEl = document.getElementById('trMessage');
+    var rowsTbody = document.querySelector('#trRowsTable tbody');
+    var jsonPre = document.getElementById('trJsonPre');
+    var tcBadge = document.getElementById('trTestcaseBadge');
+    var exBadge = document.getElementById('trExecutionBadge');
+    var rowsBadge = document.getElementById('trRowsBadge');
+    var projectLink = document.getElementById('trProjectDataLink');
+
+    tcBadge.textContent = testCaseName || ('Test Case #' + testCaseId);
+    exBadge.textContent = 'Execution -';
+    rowsBadge.textContent = 'Rows: ...';
+    messageEl.classList.add('d-none');
+    messageEl.classList.remove('alert-danger', 'alert-warning', 'alert-info');
+    rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">Loading transformed response...</td></tr>';
+    jsonPre.textContent = '{\n  "loading": true\n}';
+    projectLink.classList.add('d-none');
+    projectLink.removeAttribute('href');
+
+    modal.show();
+
+    var url = triggerBtn && triggerBtn.dataset ? triggerBtn.dataset.transformedUrl : '';
+    if (!url) {
+        messageEl.textContent = 'Transformed response URL was not found.';
+        messageEl.classList.remove('d-none');
+        messageEl.classList.add('alert-danger');
+        rowsTbody.innerHTML = '';
+        jsonPre.textContent = '{}';
+        return;
+    }
+
+    fetch(url, { cache: 'no-store' })
+        .then(function(response) {
+            return response.json().then(function(data) {
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.error || 'Unable to load transformed response.');
+                }
+                return data;
+            });
+        })
+        .then(function(data) {
+            exBadge.textContent = 'Execution #' + data.execution_id;
+            rowsBadge.textContent = 'Rows: ' + (data.total_rows || 0);
+
+            var rows = Array.isArray(data.rows) ? data.rows : [];
+            if (!rows.length) {
+                rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows available.</td></tr>';
+            } else {
+                rowsTbody.innerHTML = rows.map(function(row, idx) {
+                    var fieldName = _escapeHtml(row.field_name);
+                    var value = _escapeHtml(row.value);
+                    return '<tr><td>' + (idx + 1) + '</td><td><code>' + fieldName + '</code></td><td><code>' + value + '</code></td></tr>';
+                }).join('');
+            }
+
+            jsonPre.textContent = data.transformed_json_pretty || '{}';
+
+            if (data.truncated) {
+                messageEl.textContent = 'Showing first ' + rows.length + ' rows out of ' + data.total_rows + '.';
+                messageEl.classList.remove('d-none');
+                messageEl.classList.add('alert-warning');
+            }
+
+            var folder = (data.project_folder || '').trim();
+            if (folder) {
+                projectLink.href = '/projects/data/?folder_name=' + encodeURIComponent(folder);
+                projectLink.classList.remove('d-none');
+            }
+        })
+        .catch(function(error) {
+            rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No data</td></tr>';
+            jsonPre.textContent = '{}';
+            messageEl.textContent = (error && error.message) ? error.message : 'Failed to load transformed response.';
+            messageEl.classList.remove('d-none');
+            messageEl.classList.add('alert-danger');
+        });
+}
+
 // ── Draggable floating panel ──
 (function() {
     var panel = document.getElementById('execFloatingPanel');
@@ -1014,5 +1187,103 @@ async function executeBulkTests(ids, mode) {
 }
 </script>
 {% endif %}
+
+<script>
+if (typeof openTransformedResponse !== 'function') {
+    function _escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
+        var modalEl = document.getElementById('transformedResponseModal');
+        if (!modalEl) return;
+        if (modalEl.parentElement !== document.body) {
+            document.body.appendChild(modalEl);
+        }
+
+        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        var messageEl = document.getElementById('trMessage');
+        var rowsTbody = document.querySelector('#trRowsTable tbody');
+        var jsonPre = document.getElementById('trJsonPre');
+        var tcBadge = document.getElementById('trTestcaseBadge');
+        var exBadge = document.getElementById('trExecutionBadge');
+        var rowsBadge = document.getElementById('trRowsBadge');
+        var projectLink = document.getElementById('trProjectDataLink');
+
+        tcBadge.textContent = testCaseName || ('Test Case #' + testCaseId);
+        exBadge.textContent = 'Execution -';
+        rowsBadge.textContent = 'Rows: ...';
+        messageEl.classList.add('d-none');
+        messageEl.classList.remove('alert-danger', 'alert-warning', 'alert-info');
+        rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">Loading transformed response...</td></tr>';
+        jsonPre.textContent = '{\n  "loading": true\n}';
+        projectLink.classList.add('d-none');
+        projectLink.removeAttribute('href');
+
+        modal.show();
+
+        var url = triggerBtn && triggerBtn.dataset ? triggerBtn.dataset.transformedUrl : '';
+        if (!url) {
+            messageEl.textContent = 'Transformed response URL was not found.';
+            messageEl.classList.remove('d-none');
+            messageEl.classList.add('alert-danger');
+            rowsTbody.innerHTML = '';
+            jsonPre.textContent = '{}';
+            return;
+        }
+
+        fetch(url, { cache: 'no-store' })
+            .then(function(response) {
+                return response.json().then(function(data) {
+                    if (!response.ok || !data.ok) {
+                        throw new Error(data.error || 'Unable to load transformed response.');
+                    }
+                    return data;
+                });
+            })
+            .then(function(data) {
+                exBadge.textContent = 'Execution #' + data.execution_id;
+                rowsBadge.textContent = 'Rows: ' + (data.total_rows || 0);
+
+                var rows = Array.isArray(data.rows) ? data.rows : [];
+                if (!rows.length) {
+                    rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows available.</td></tr>';
+                } else {
+                    rowsTbody.innerHTML = rows.map(function(row, idx) {
+                        var fieldName = _escapeHtml(row.field_name);
+                        var value = _escapeHtml(row.value);
+                        return '<tr><td>' + (idx + 1) + '</td><td><code>' + fieldName + '</code></td><td><code>' + value + '</code></td></tr>';
+                    }).join('');
+                }
+
+                jsonPre.textContent = data.transformed_json_pretty || '{}';
+
+                if (data.truncated) {
+                    messageEl.textContent = 'Showing first ' + rows.length + ' rows out of ' + data.total_rows + '.';
+                    messageEl.classList.remove('d-none');
+                    messageEl.classList.add('alert-warning');
+                }
+
+                var folder = (data.project_folder || '').trim();
+                if (folder) {
+                    projectLink.href = '/projects/data/?folder_name=' + encodeURIComponent(folder);
+                    projectLink.classList.remove('d-none');
+                }
+            })
+            .catch(function(error) {
+                rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No data</td></tr>';
+                jsonPre.textContent = '{}';
+                messageEl.textContent = (error && error.message) ? error.message : 'Failed to load transformed response.';
+                messageEl.classList.remove('d-none');
+                messageEl.classList.add('alert-danger');
+            });
+    }
+}
+</script>
 {% endblock %}
 

@@ -23,6 +23,7 @@ urlpatterns = [
 
     # Test Cases
     path('testcases/', views.testcase_list, name='testcase_list'),
+    path('testcases/global-data/', views.global_test_data_page, name='global_test_data_page'),
     path('testcases/projects/create/', views.project_create, name='project_create'),
     path('testcases/projects/<int:pk>/edit/', views.project_edit, name='project_edit'),
     path('testcases/projects/<int:pk>/delete/', views.project_delete, name='project_delete'),
@@ -34,6 +35,7 @@ urlpatterns = [
     path('testcases/<int:pk>/download/playwright/', views.testcase_download_playwright_py, name='testcase_download_playwright_py'),
     path('testcases/<int:pk>/run/<str:snippet_type>/', views.testcase_run_generated_py, name='testcase_run_generated_py'),
     path('api/testcases/<int:pk>/recent-executions/', views.testcase_recent_executions, name='testcase_recent_executions'),
+    path('api/testcases/<int:pk>/transformed-response/', views.testcase_transformed_response, name='testcase_transformed_response'),
     path('testcases/<int:pk>/edit/', views.testcase_edit, name='testcase_edit'),
     path('testcases/<int:pk>/delete/', views.testcase_delete, name='testcase_delete'),
     path('testcases/<int:pk>/duplicate/', views.testcase_duplicate, name='testcase_duplicate'),

@@ -1266,6 +1266,89 @@ def testcase_list(request):
 
 
 @login_required
+def global_test_data_page(request):
+    """Show global API test data entries stored in the shared recorder data table."""
+    search = (request.GET.get('search') or '').strip()
+    project_filter = (request.GET.get('project') or '').strip()
+
+    entries = []
+    projects = []
+
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT TRIM(COALESCE(folder_name, '')) AS folder_name
+                  FROM data
+                 WHERE COALESCE(is_global, FALSE) = TRUE
+                   AND field_name LIKE %s
+                   AND TRIM(COALESCE(folder_name, '')) <> ''
+                 ORDER BY folder_name
+                """,
+                ['api.%'],
+            )
+            projects = [row[0] for row in cur.fetchall() if row and row[0]]
+
+            where_clauses = [
+                'COALESCE(is_global, FALSE) = TRUE',
+                'field_name LIKE %s',
+            ]
+            params = ['api.%']
+
+            if project_filter:
+                where_clauses.append("TRIM(COALESCE(folder_name, '')) = %s")
+                params.append(project_filter)
+
+            if search:
+                where_clauses.append(
+                    "(field_name ILIKE %s OR value ILIKE %s OR TRIM(COALESCE(folder_name, '')) ILIKE %s)"
+                )
+                like_value = f'%{search}%'
+                params.extend([like_value, like_value, like_value])
+
+            query = f"""
+                SELECT id,
+                       TRIM(COALESCE(folder_name, '')) AS folder_name,
+                       COALESCE(field_name, '') AS field_name,
+                       COALESCE(value, '') AS value,
+                      COALESCE(record_id::text, '') AS record_id,
+                       COALESCE(step_no, 0) AS step_no,
+                       created_at
+                  FROM data
+                 WHERE {' AND '.join(where_clauses)}
+                 ORDER BY TRIM(COALESCE(folder_name, '')), field_name, id
+                 LIMIT 5000
+            """
+            cur.execute(query, params)
+            for row in cur.fetchall():
+                entries.append({
+                    'id': row[0],
+                    'folder_name': row[1] or '',
+                    'field_name': row[2] or '',
+                    'value': row[3] or '',
+                    'record_id': str(row[4]) if row[4] is not None else '',
+                    'step_no': row[5],
+                    'created_at': row[6],
+                })
+    except Exception as exc:
+        messages.error(request, f'Unable to load global test data: {exc}')
+
+    return render(
+        request,
+        'api/testcases/global_data.html',
+        {
+            'entries': entries,
+            'projects': projects,
+            'filters': {
+                'search': search,
+                'project': project_filter,
+            },
+            'total_entries': len(entries),
+        },
+    )
+
+
+@login_required
 @role_required(['admin', 'tester'])
 def testcase_create(request):
     if request.method == 'POST':
@@ -2000,6 +2083,75 @@ def testcase_recent_executions(request, pk):
         })
 
     return JsonResponse({'rows': rows})
+
+
+@login_required
+def testcase_transformed_response(request, pk):
+    """Return transformed response JSON (flattened key/value pairs) for a test case."""
+    tc = get_object_or_404(TestCase, pk=pk)
+
+    execution_id_raw = (request.GET.get('execution_id') or '').strip()
+    execution_qs = TestExecution.objects.filter(test_case=tc)
+    if execution_id_raw:
+        try:
+            execution_qs = execution_qs.filter(pk=int(execution_id_raw))
+        except ValueError:
+            return JsonResponse({'ok': False, 'error': 'execution_id must be numeric.'}, status=400)
+
+    execution = execution_qs.order_by('-executed_at').first()
+    if not execution:
+        return JsonResponse({'ok': False, 'error': 'No execution found for this test case.'}, status=404)
+
+    if not execution.response_body:
+        return JsonResponse({'ok': False, 'error': 'Execution has no response body.', 'execution_id': execution.id}, status=404)
+
+    try:
+        parsed = json.loads(execution.response_body)
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({
+            'ok': False,
+            'error': 'Latest response body is not valid JSON.',
+            'execution_id': execution.id,
+        }, status=400)
+
+    field_prefix = f"api.{_safe_data_prefix(tc.name)}"
+    flattened = _flatten_response_json(parsed, field_prefix)
+    if not flattened:
+        return JsonResponse({
+            'ok': True,
+            'execution_id': execution.id,
+            'test_case_id': tc.id,
+            'test_case_name': tc.name,
+            'project_folder': tc.project or '',
+            'rows': [],
+            'transformed_json': {},
+            'transformed_json_pretty': '{}',
+        })
+
+    # Cap preview payload for UI responsiveness.
+    max_rows = 1000
+    preview_rows = flattened[:max_rows]
+    transformed_map = {field_name: value for field_name, value in preview_rows}
+    rows = [
+        {
+            'field_name': field_name,
+            'value': value,
+        }
+        for field_name, value in preview_rows
+    ]
+
+    return JsonResponse({
+        'ok': True,
+        'execution_id': execution.id,
+        'test_case_id': tc.id,
+        'test_case_name': tc.name,
+        'project_folder': tc.project or '',
+        'truncated': len(flattened) > max_rows,
+        'total_rows': len(flattened),
+        'rows': rows,
+        'transformed_json': transformed_map,
+        'transformed_json_pretty': json.dumps(transformed_map, indent=2, ensure_ascii=False),
+    })
 
 
 # ========== API Execution ==========

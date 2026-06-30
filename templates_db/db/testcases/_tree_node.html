@@ -51,6 +51,14 @@
                         <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/testcases/{{ t.id }}/" title="View" aria-label="View test case">
                             <i class="bi bi-eye"></i>
                         </a>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-info btn-icon"
+                                title="View transformed response"
+                                aria-label="View transformed response"
+                                data-transformed-url="/db-lab/testcases/{{ t.id }}/transformed-response/"
+                                onclick="openTransformedResponse({{ t.id }}, '{{ t.name|escapejs }}', this)">
+                            <i class="bi bi-diagram-3"></i>
+                        </button>
                         {% if can_manage %}
                             <a class="btn btn-sm btn-outline-secondary btn-icon" href="/db-lab/testcases/{{ t.id }}/edit/" title="Edit" aria-label="Edit test case">
                                 <i class="bi bi-pencil-square"></i>

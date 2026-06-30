@@ -8,7 +8,7 @@ from io import StringIO
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db import models
+from django.db import connection, models
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
@@ -173,6 +173,74 @@ def _actual_value_to_csv_text(actual_value):
     writer.writerow(["actual_value"])
     writer.writerow([value])
     return out.getvalue().strip("\r\n")
+
+
+def _safe_data_prefix(raw_name):
+    base = slugify(raw_name or "").replace("-", "_").strip("_")
+    return base or "db_response"
+
+
+def _flatten_transformed_value(value, prefix=""):
+    rows = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_str = str(key)
+            child_prefix = f"{prefix}.{key_str}" if prefix else key_str
+            rows.extend(_flatten_transformed_value(child, child_prefix))
+        return rows
+
+    if isinstance(value, list):
+        if not value:
+            rows.append((prefix or "value", "[]"))
+            return rows
+        for idx, child in enumerate(value):
+            child_prefix = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+            rows.extend(_flatten_transformed_value(child, child_prefix))
+        return rows
+
+    if value is None:
+        value_text = ""
+    elif isinstance(value, bool):
+        value_text = "true" if value else "false"
+    else:
+        value_text = str(value)
+
+    rows.append((prefix or "value", value_text))
+    return rows
+
+
+def _parse_actual_value_for_transform(actual_value):
+    value = (actual_value or "").strip()
+    if not value:
+        return None
+
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        pass
+
+    csv_text = _actual_value_to_csv_text(value)
+    if csv_text:
+        try:
+            reader = list(csv.reader(StringIO(csv_text)))
+            if len(reader) >= 2:
+                headers = [str(h or "").strip() for h in reader[0]]
+                body_rows = reader[1:]
+                mapped = []
+                for row in body_rows:
+                    item = {}
+                    for idx, header in enumerate(headers):
+                        key = header or f"col_{idx + 1}"
+                        item[key] = row[idx] if idx < len(row) else ""
+                    mapped.append(item)
+                if len(mapped) == 1:
+                    return mapped[0]
+                if mapped:
+                    return mapped
+        except Exception:
+            pass
+
+    return {"actual_value": value}
 
 
 def _download_base_name(test_case_name):
@@ -836,6 +904,92 @@ def testcase_list(request):
     )
 
 
+@login_required
+def global_test_data_page(request):
+    """Show global DB test data entries stored in the shared recorder data table."""
+    search = (request.GET.get("search") or "").strip()
+    project_filter = (request.GET.get("project") or "").strip()
+
+    entries = []
+    projects = []
+
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT TRIM(COALESCE(folder_name, '')) AS folder_name
+                  FROM data
+                 WHERE COALESCE(is_global, FALSE) = TRUE
+                   AND field_name LIKE %s
+                   AND TRIM(COALESCE(folder_name, '')) <> ''
+                 ORDER BY folder_name
+                """,
+                ["db.%"],
+            )
+            projects = [row[0] for row in cur.fetchall() if row and row[0]]
+
+            where_clauses = [
+                "COALESCE(is_global, FALSE) = TRUE",
+                "field_name LIKE %s",
+            ]
+            params = ["db.%"]
+
+            if project_filter:
+                where_clauses.append("TRIM(COALESCE(folder_name, '')) = %s")
+                params.append(project_filter)
+
+            if search:
+                where_clauses.append(
+                    "(field_name ILIKE %s OR value ILIKE %s OR TRIM(COALESCE(folder_name, '')) ILIKE %s)"
+                )
+                like_value = f"%{search}%"
+                params.extend([like_value, like_value, like_value])
+
+            query = f"""
+                SELECT id,
+                       TRIM(COALESCE(folder_name, '')) AS folder_name,
+                       COALESCE(field_name, '') AS field_name,
+                       COALESCE(value, '') AS value,
+                       COALESCE(record_id::text, '') AS record_id,
+                       COALESCE(step_no, 0) AS step_no,
+                       created_at
+                  FROM data
+                 WHERE {' AND '.join(where_clauses)}
+                 ORDER BY TRIM(COALESCE(folder_name, '')), field_name, id
+                 LIMIT 5000
+            """
+            cur.execute(query, params)
+            for row in cur.fetchall():
+                entries.append(
+                    {
+                        "id": row[0],
+                        "folder_name": row[1] or "",
+                        "field_name": row[2] or "",
+                        "value": row[3] or "",
+                        "record_id": str(row[4]) if row[4] is not None else "",
+                        "step_no": row[5],
+                        "created_at": row[6],
+                    }
+                )
+    except Exception as exc:
+        messages.error(request, f"Unable to load global test data: {exc}")
+
+    return render(
+        request,
+        "db/testcases/global_data.html",
+        {
+            "entries": entries,
+            "projects": projects,
+            "filters": {
+                "search": search,
+                "project": project_filter,
+            },
+            "total_entries": len(entries),
+            "can_manage": can_manage_tests(request.user),
+        },
+    )
+
+
 @role_required("Admin", "Tester")
 def testcase_create(request):
     if request.method == "POST":
@@ -1091,6 +1245,62 @@ def testcase_recent_executions(request, pk):
         })
 
     return JsonResponse({"rows": rows})
+
+
+@login_required
+def testcase_transformed_response(request, pk):
+    """Return transformed execution value for a DB test case in project-data style."""
+    tc = get_object_or_404(TestCase, pk=pk)
+
+    execution_id_raw = (request.GET.get("execution_id") or "").strip()
+    execution_qs = TestExecution.objects.filter(test_case=tc)
+    if execution_id_raw:
+        try:
+            execution_qs = execution_qs.filter(pk=int(execution_id_raw))
+        except ValueError:
+            return JsonResponse({"ok": False, "error": "execution_id must be numeric."}, status=400)
+
+    execution = execution_qs.order_by("-executed_at").first()
+    if not execution:
+        return JsonResponse({"ok": False, "error": "No execution found for this test case."}, status=404)
+
+    parsed = _parse_actual_value_for_transform(execution.actual_value)
+    if parsed is None:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Execution has no actual value.",
+                "execution_id": execution.id,
+            },
+            status=404,
+        )
+
+    field_prefix = f"db.{_safe_data_prefix(tc.name)}"
+    flattened = _flatten_transformed_value(parsed, field_prefix)
+
+    max_rows = 1000
+    preview_rows = flattened[:max_rows]
+    transformed_map = {field_name: value for field_name, value in preview_rows}
+    rows = [{"field_name": field_name, "value": value} for field_name, value in preview_rows]
+
+    folder_name = ""
+    if getattr(tc, "project_folder", None):
+        folder_name = tc.project_folder.name or ""
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "execution_id": execution.id,
+            "test_case_id": tc.id,
+            "test_case_name": tc.name,
+            "project_folder": folder_name,
+            "truncated": len(flattened) > max_rows,
+            "total_rows": len(flattened),
+            "rows": rows,
+            "transformed_json": transformed_map,
+            "transformed_json_pretty": json.dumps(transformed_map, indent=2, ensure_ascii=False),
+        }
+    )
 
 
 @role_required("Admin", "Tester")

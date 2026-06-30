@@ -1,0 +1,95 @@
+{% extends 'api/base.html' %}
+
+{% block title %}Global Test Data - API TestLab{% endblock %}
+{% block page_title %}Global Test Data{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 gap-2 flex-wrap">
+    <div>
+        <p class="text-muted mb-0">Global API response data stored for project test data reuse.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'api:testcase_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Back To Test Cases
+        </a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small">Search</label>
+                <input type="text"
+                       name="search"
+                       value="{{ filters.search }}"
+                       class="form-control form-control-sm"
+                       placeholder="Field name, value, or project...">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small">Project</label>
+                <select name="project" class="form-select form-select-sm">
+                    <option value="">All Projects</option>
+                    {% for project_name in projects %}
+                    <option value="{{ project_name }}" {% if filters.project == project_name %}selected{% endif %}>{{ project_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Filter</button>
+                <a href="{% url 'api:global_test_data_page' %}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                {% if filters.project %}
+                <a href="/projects/data/?folder_name={{ filters.project|urlencode }}" target="_blank" rel="noopener" class="btn btn-outline-dark btn-sm" title="Open project test data page">
+                    <i class="bi bi-box-arrow-up-right"></i> Open Project Data
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0">Global API Data Entries</h6>
+        <span class="badge bg-secondary">{{ total_entries }}</span>
+    </div>
+    <div class="card-body p-0">
+        {% if entries %}
+        <div class="table-responsive" style="max-height:72vh; overflow:auto;">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                    <tr>
+                        <th style="width: 70px;">ID</th>
+                        <th style="width: 180px;">Project</th>
+                        <th style="width: 380px;">Field Name</th>
+                        <th>Value</th>
+                        <th style="width: 90px;">Step</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                    <tr>
+                        <td>{{ entry.id }}</td>
+                        <td>
+                            {% if entry.folder_name %}
+                            <a href="/projects/data/?folder_name={{ entry.folder_name|urlencode }}" target="_blank" rel="noopener">{{ entry.folder_name }}</a>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ entry.field_name }}</code></td>
+                        <td><code style="white-space: pre-wrap; word-break: break-word;">{{ entry.value }}</code></td>
+                        <td>{{ entry.step_no }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+            No global API test data entries found.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

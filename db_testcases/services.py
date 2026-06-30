@@ -123,6 +123,18 @@ def _row_to_csv_with_headers(column_names: list[str], row_values: tuple[Any, ...
     return out.getvalue().strip("\r\n")
 
 
+def _normalize_query_for_driver(query: str, db_type: str) -> str:
+    """Normalize user-entered SQL text before sending it to DB drivers."""
+    sql = (query or "").strip()
+
+    # Drivers (notably Oracle) expect the SQL statement only, without SQL*Plus
+    # terminators. Remove trailing ';' or '/' while preserving inner SQL text.
+    while sql.endswith(";") or sql.endswith("/"):
+        sql = sql[:-1].rstrip()
+
+    return sql
+
+
 def test_database_connection(db_conn: DatabaseConnection) -> tuple[bool, str]:
     conn = None
     cursor = None
@@ -190,7 +202,10 @@ def execute_test_case(test_case: TestCase) -> tuple[str, str, str]:
         if test_case.test_type == TestCase.TestType.QUERY_VALUE:
             if not test_case.query or not test_case.expected_value:
                 return "ERROR", "query and expected_value are required for QUERY_VALUE", ""
-            cursor.execute(test_case.query)
+            normalized_query = _normalize_query_for_driver(test_case.query, db_conn.db_type)
+            if not normalized_query:
+                return "ERROR", "query is empty after normalization", ""
+            cursor.execute(normalized_query)
             column_names = [desc[0] for desc in (cursor.description or [])]
             result = cursor.fetchone()
             if not result:

@@ -1,0 +1,84 @@
+{% extends "db/base.html" %}
+
+{% block content %}
+<section class="section-card mb-3">
+    <div class="section-card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h2 class="section-title mb-0">Global Test Data</h2>
+            <p class="small text-muted mb-0 mt-1">Global DB response data stored for project test data reuse.</p>
+        </div>
+        <a href="/db-lab/testcases/" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Back To Test Cases
+        </a>
+    </div>
+    <div class="p-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="field-label mb-1">Search</label>
+                <input class="form-control" type="text" name="search" value="{{ filters.search }}" placeholder="Field name, value, or project...">
+            </div>
+            <div class="col-md-4">
+                <label class="field-label mb-1">Project</label>
+                <select class="form-select" name="project">
+                    <option value="">All Projects</option>
+                    {% for project_name in projects %}
+                    <option value="{{ project_name }}" {% if filters.project == project_name %}selected{% endif %}>{{ project_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button class="btn btn-primary" type="submit">Filter</button>
+                <a class="btn btn-outline-secondary" href="/db-lab/testcases/global-data/">Clear</a>
+                {% if filters.project %}
+                <a class="btn btn-outline-dark" href="/projects/data/?folder_name={{ filters.project|urlencode }}" target="_blank" rel="noopener" title="Open project test data page">
+                    <i class="bi bi-box-arrow-up-right"></i> Open Project Data
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="section-card">
+    <div class="section-card-header d-flex justify-content-between align-items-center">
+        <h2 class="section-title mb-0">Global DB Data Entries</h2>
+        <span class="badge bg-secondary">{{ total_entries }}</span>
+    </div>
+    <div class="p-0">
+        {% if entries %}
+        <div class="table-responsive" style="max-height:72vh; overflow:auto;">
+            <table class="table table-sm table-hover mb-0 align-middle">
+                <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                    <tr>
+                        <th style="width: 80px;">ID</th>
+                        <th style="width: 220px;">Project</th>
+                        <th style="width: 380px;">Field Name</th>
+                        <th>Value</th>
+                        <th style="width: 90px;">Step</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                    <tr>
+                        <td>{{ entry.id }}</td>
+                        <td>
+                            {% if entry.folder_name %}
+                            <a href="/projects/data/?folder_name={{ entry.folder_name|urlencode }}" target="_blank" rel="noopener">{{ entry.folder_name }}</a>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ entry.field_name }}</code></td>
+                        <td><code style="white-space: pre-wrap; word-break: break-word;">{{ entry.value }}</code></td>
+                        <td>{{ entry.step_no }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted">No global DB test data entries found.</div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

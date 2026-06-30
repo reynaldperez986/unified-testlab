@@ -58,6 +58,9 @@
         <a class="side-link {% if 'testcase' in request.resolver_match.url_name %}active{% endif %}" href="/db-lab/testcases/">
             <i class="bi bi-clipboard-check"></i> Test Cases
         </a>
+        <a class="side-link {% if request.resolver_match.url_name == 'global_test_data_page' %}active{% endif %}" href="/db-lab/testcases/global-data/">
+            <i class="bi bi-table"></i> Global Test Data
+        </a>
         <a class="side-link {% if 'execution' in request.resolver_match.url_name %}active{% endif %}" href="/db-lab/executions/">
             <i class="bi bi-clock-history"></i> Executions
         </a>

@@ -119,11 +119,34 @@
     }
     .sortable-chosen { background: #f0f9ff; }
     .folder-item { transition: background 0.15s; }
+    .transformed-json-pre {
+        max-height: 340px;
+        overflow: auto;
+        font-size: 0.78rem;
+        border: 1px solid rgba(0,0,0,0.08);
+        border-radius: 0.45rem;
+        background: #f8fafc;
+        padding: 0.7rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    .transformed-table-wrap {
+        max-height: 260px;
+        overflow: auto;
+        border: 1px solid rgba(0,0,0,0.08);
+        border-radius: 0.45rem;
+    }
+    .transformed-table-wrap table {
+        font-size: 0.78rem;
+    }
 </style>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <p class="text-muted mb-0">Manage your API test cases.</p>
     {% if user.api_profile.role != 'viewer' %}
     <div class="d-flex gap-2">
+        <a href="{% url 'api:global_test_data_page' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-database"></i> Global Test Data
+        </a>
         <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#projectFolderModal">
             <i class="bi bi-folder-plus"></i> Create Project
         </button>
@@ -247,7 +270,7 @@
                                     <th style="width:180px;min-width:120px">Module</th>
                                     <th width="130">Last Result</th>
                                     <th width="100">Exp. Status</th>
-                                    <th width="180">Actions</th>
+                                    <th width="220">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="tc-sortable" data-folder-id="{{ item.folder_id|default:'ungrouped' }}">
@@ -270,7 +293,7 @@
                                         {% endif %}
                                     </td>
                                     <td width="100">{{ tc.expected_status_code|default:"-" }}</td>
-                                    <td width="180" class="text-nowrap">
+                                    <td width="220" class="text-nowrap">
                                         <div class="testcase-actions">
                                                           <a href="{% url 'api:testcase_detail' tc.pk %}?tab=details&code_mode=requests"
                                                               class="btn btn-sm btn-outline-secondary testcase-view-link"
@@ -278,6 +301,13 @@
                                                               data-base-url="{% url 'api:testcase_detail' tc.pk %}">
                                                 <i class="bi bi-eye"></i>
                                             </a>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-info"
+                                                    title="View transformed response JSON"
+                                                    data-transformed-url="{% url 'api:testcase_transformed_response' tc.pk %}"
+                                                    onclick="openTransformedResponse({{ tc.pk }}, '{{ tc.name|escapejs }}', this)">
+                                                <i class="bi bi-diagram-3"></i>
+                                            </button>
                                             <a href="{% url 'api:testcase_detail' tc.pk %}?tab=requests"
                                                class="btn btn-sm btn-outline-dark testcase-code-toggle"
                                                               title="Toggle code target"
@@ -481,6 +511,51 @@
     </div>
 </div>
 
+<div class="modal fade" id="transformedResponseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-diagram-3 me-2"></i>
+                    Transformed Response JSON
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                    <span class="badge bg-primary" id="trTestcaseBadge">Test Case</span>
+                    <span class="badge bg-secondary" id="trExecutionBadge">Execution -</span>
+                    <span class="badge bg-light text-dark border" id="trRowsBadge">Rows: 0</span>
+                    <a href="#" id="trProjectDataLink" class="btn btn-sm btn-outline-secondary d-none" target="_blank" rel="noopener">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Open Project Test Data
+                    </a>
+                </div>
+                <div id="trMessage" class="alert alert-info d-none"></div>
+
+                <h6 class="mb-2">Flattened Key / Value (Project Data Style)</h6>
+                <div class="transformed-table-wrap mb-3">
+                    <table class="table table-sm table-striped table-hover mb-0" id="trRowsTable">
+                        <thead class="table-light" style="position:sticky;top:0;z-index:1;">
+                            <tr>
+                                <th style="width:52px;">#</th>
+                                <th style="width:44%;">Field Name</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <h6 class="mb-2">Transformed JSON</h6>
+                <pre id="trJsonPre" class="transformed-json-pre">{}</pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ── Floating execution panel ── -->
 <div id="execFloatingPanel" class="exec-floating-panel d-none">
     <div class="exec-panel-header">
@@ -540,6 +615,94 @@ function getSelectedProjectFolderName() {
     const projectSelect = document.querySelector('select[name="project"]');
     if (projectSelect && projectSelect.value && projectSelect.value.trim()) return projectSelect.value.trim();
     return '';
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function openTransformedResponse(testCaseId, testCaseName, triggerBtn) {
+    const modalEl = document.getElementById('transformedResponseModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const messageEl = document.getElementById('trMessage');
+    const rowsTbody = document.querySelector('#trRowsTable tbody');
+    const jsonPre = document.getElementById('trJsonPre');
+    const tcBadge = document.getElementById('trTestcaseBadge');
+    const exBadge = document.getElementById('trExecutionBadge');
+    const rowsBadge = document.getElementById('trRowsBadge');
+    const projectLink = document.getElementById('trProjectDataLink');
+
+    tcBadge.textContent = testCaseName || `Test Case #${testCaseId}`;
+    exBadge.textContent = 'Execution -';
+    rowsBadge.textContent = 'Rows: ...';
+    messageEl.classList.add('d-none');
+    messageEl.classList.remove('alert-danger', 'alert-warning', 'alert-info');
+    rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">Loading transformed response...</td></tr>';
+    jsonPre.textContent = '{\n  "loading": true\n}';
+    projectLink.classList.add('d-none');
+    projectLink.removeAttribute('href');
+
+    modal.show();
+
+    const url = triggerBtn?.dataset?.transformedUrl;
+    if (!url) {
+        messageEl.textContent = 'Transformed response URL was not found.';
+        messageEl.classList.remove('d-none');
+        messageEl.classList.add('alert-danger');
+        rowsTbody.innerHTML = '';
+        jsonPre.textContent = '{}';
+        return;
+    }
+
+    fetch(url, { cache: 'no-store' })
+        .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                throw new Error(data.error || 'Unable to load transformed response.');
+            }
+            return data;
+        })
+        .then((data) => {
+            exBadge.textContent = `Execution #${data.execution_id}`;
+            rowsBadge.textContent = `Rows: ${data.total_rows || 0}`;
+
+            const rows = Array.isArray(data.rows) ? data.rows : [];
+            if (!rows.length) {
+                rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No transformed rows available.</td></tr>';
+            } else {
+                rowsTbody.innerHTML = rows.map((row, idx) => {
+                    const fieldName = escapeHtml(row.field_name);
+                    const value = escapeHtml(row.value);
+                    return `<tr><td>${idx + 1}</td><td><code>${fieldName}</code></td><td><code>${value}</code></td></tr>`;
+                }).join('');
+            }
+
+            jsonPre.textContent = data.transformed_json_pretty || '{}';
+
+            if (data.truncated) {
+                messageEl.textContent = `Showing first ${rows.length} rows out of ${data.total_rows}.`;
+                messageEl.classList.remove('d-none');
+                messageEl.classList.add('alert-warning');
+            }
+
+            const folder = (data.project_folder || '').trim();
+            if (folder) {
+                projectLink.href = `/projects/data/?folder_name=${encodeURIComponent(folder)}`;
+                projectLink.classList.remove('d-none');
+            }
+        })
+        .catch((error) => {
+            rowsTbody.innerHTML = '<tr><td colspan="3" class="text-muted">No data</td></tr>';
+            jsonPre.textContent = '{}';
+            messageEl.textContent = error.message || 'Failed to load transformed response.';
+            messageEl.classList.remove('d-none');
+            messageEl.classList.add('alert-danger');
+        });
 }
 
 function refreshListLatestResults() {
