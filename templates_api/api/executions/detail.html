@@ -141,6 +141,11 @@
                 </div>
             </div>
             <div class="card-body">
+                {% if global_data_refreshed %}
+                <div class="alert alert-success py-2 px-3 mb-3" role="alert">
+                    Global Test Data refreshed from this execution response.
+                </div>
+                {% endif %}
                 <pre class="bg-light p-3 rounded" style="max-height:400px;overflow:auto;font-size:0.8rem;">{{ response_json_view }}</pre>
             </div>
         </div>

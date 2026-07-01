@@ -14,10 +14,11 @@
                     <select id="environment-select" class="form-select form-select-sm" style="max-width: 520px;">
                         <option value="">-- Select Environment --</option>
                         {% for env in environments %}
-                        <option value="{{ env.pk }}" data-base-url="{{ env.base_url }}">{{ env.name }}</option>
+                        <option value="{{ env.pk }}" data-base-url="{{ env.base_url }}" {% if module.selected_environment_id == env.pk %}selected{% endif %}>{{ env.name }}</option>
                         {% endfor %}
                     </select>
                     <div class="form-text">Selecting an environment auto-populates Base Path and auth details below.</div>
+                    <div id="environment-autosave-status" class="small text-muted mt-1"></div>
                 </td>
             </tr>
             <tr>
@@ -28,7 +29,7 @@
             </tr>
             <tr>
                 <th>Environment</th>
-                <td id="module-selected-environment">{% if environments %}{{ environments.0.name }}{% else %}<span class="text-muted">No active environments</span>{% endif %}</td>
+                <td id="module-selected-environment">{% if module.selected_environment %}{{ module.selected_environment.name }}{% elif environments %}{{ environments.0.name }}{% else %}<span class="text-muted">No active environments</span>{% endif %}</td>
             </tr>
             <tr><th>Description</th><td>{{ module.description|default:"-"|truncatewords:50 }}</td></tr>
             <tr>
@@ -259,6 +260,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const headerPrefixInput = document.querySelector('input[name="oauth2_header_prefix"]');
     const currentTokenInput = document.querySelector('#oauthModal textarea[readonly]');
     const environmentDetailsUrlTemplate = "{% url 'api:api_environment_details' 0 %}";
+    const moduleApplyEnvironmentUrl = "{% url 'api:module_apply_environment' module.pk %}";
+    const autosaveStatus = document.getElementById('environment-autosave-status');
+    const canAutoSaveEnvironment = {% if user.api_profile.role != 'viewer' %}true{% else %}false{% endif %};
     if (!authType) return;
 
     const oauth2Fields = document.querySelectorAll('.oauth2-only');
@@ -281,6 +285,23 @@ document.addEventListener('DOMContentLoaded', function() {
     function truncateToken(value) {
         if (!value) return 'Not generated';
         return value.length > 90 ? value.slice(0, 90) + '...' : value;
+    }
+
+    function getCsrfToken() {
+        const fromCookie = document.cookie.split(';')
+            .map(v => v.trim())
+            .find(v => v.startsWith('csrftoken='));
+        if (fromCookie) return fromCookie.split('=').slice(1).join('=');
+        const input = document.querySelector('[name=csrfmiddlewaretoken]');
+        return input ? input.value : '';
+    }
+
+    function setAutosaveStatus(text, isError) {
+        if (!autosaveStatus) return;
+        autosaveStatus.textContent = text || '';
+        autosaveStatus.className = isError
+            ? 'small text-danger mt-1'
+            : 'small text-muted mt-1';
     }
 
     function applyEnvironmentData(data) {
@@ -333,9 +354,38 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch(detailsUrl)
                 .then(r => r.json())
                 .then(applyEnvironmentData);
+
+            if (!canAutoSaveEnvironment) return;
+
+            setAutosaveStatus('Saving environment selection...', false);
+            fetch(moduleApplyEnvironmentUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({ environment_id: parseInt(this.value, 10) }),
+            })
+                .then(async response => {
+                    let payload = {};
+                    try {
+                        payload = await response.json();
+                    } catch (_) {
+                        payload = {};
+                    }
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || 'Unable to save environment selection.');
+                    }
+                    setAutosaveStatus('Environment selection saved.', false);
+                })
+                .catch(err => {
+                    setAutosaveStatus(err.message || 'Unable to save environment selection.', true);
+                });
         });
 
-        if (envSelect.options.length > 1) {
+        if (envSelect.value) {
+            envSelect.dispatchEvent(new Event('change'));
+        } else if (envSelect.options.length > 1) {
             envSelect.selectedIndex = 1;
             envSelect.dispatchEvent(new Event('change'));
         }

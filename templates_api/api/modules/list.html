@@ -37,17 +37,21 @@
                         <td><code>{{ module.source_file|default:"-" }}</code></td>
                         <td>{{ module.uploaded_by.username|default:"-" }}</td>
                         <td>{{ module.created_at|date:"M d, Y H:i" }}</td>
-                        <td>
+                        <td class="text-nowrap">
+                            <div class="d-inline-flex align-items-center flex-nowrap gap-1">
                             <a href="{% url 'api:module_detail' module.pk %}" class="btn btn-sm btn-outline-primary" title="View">
                                 <i class="bi bi-eye"></i>
                             </a>
-                            {% if user.api_profile.role == 'admin' %}
-                            <form method="post" action="{% url 'api:module_delete' module.pk %}" class="d-inline"
-                                  onsubmit="return confirm('Delete module {{ module.name }}?')">
-                                {% csrf_token %}
-                                <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
-                            </form>
+                            {% if user.api_profile.role != 'viewer' %}
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-danger js-module-delete"
+                                title="Delete"
+                                data-delete-url="{% url 'api:module_delete' module.pk %}"
+                                data-module-name="{{ module.name|escape }}"
+                            ><i class="bi bi-trash"></i></button>
                             {% endif %}
+                            </div>
                         </td>
                     </tr>
                     {% empty %}
@@ -60,6 +64,58 @@
         </div>
     </div>
 </div>
+
+{% if user.api_profile.role != 'viewer' %}
+<div class="modal fade" id="moduleDeleteModal" tabindex="-1" aria-labelledby="moduleDeleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="moduleDeleteModalLabel">Delete Module</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Delete module <strong id="moduleDeleteName"></strong>?
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="post" id="moduleDeleteForm" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var modalEl = document.getElementById("moduleDeleteModal");
+        if (!modalEl || typeof bootstrap === "undefined") {
+            return;
+        }
+
+        var deleteModal = new bootstrap.Modal(modalEl);
+        var deleteForm = document.getElementById("moduleDeleteForm");
+        var deleteNameEl = document.getElementById("moduleDeleteName");
+        var buttons = document.querySelectorAll(".js-module-delete");
+
+        buttons.forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var deleteUrl = btn.getAttribute("data-delete-url") || "";
+                var moduleName = btn.getAttribute("data-module-name") || "this module";
+
+                if (deleteForm) {
+                    deleteForm.setAttribute("action", deleteUrl);
+                }
+                if (deleteNameEl) {
+                    deleteNameEl.textContent = moduleName;
+                }
+                deleteModal.show();
+            });
+        });
+    })();
+</script>
+{% endif %}
 {% endblock %}
 
 

@@ -79,6 +79,7 @@ urlpatterns = [
     path('modules/<int:pk>/', views.module_detail, name='module_detail'),
     path('modules/<int:pk>/delete/', views.module_delete, name='module_delete'),
     path('modules/<int:pk>/base-path/', views.module_update_base_path, name='module_update_base_path'),
+    path('modules/<int:pk>/apply-environment/', views.module_apply_environment, name='module_apply_environment'),
     path('modules/<int:pk>/oauth/', views.module_update_oauth, name='module_update_oauth'),
     path('modules/endpoints/<int:pk>/edit/', views.endpoint_edit, name='endpoint_edit'),
     path('modules/endpoints/<int:pk>/upload-payload/', views.endpoint_upload_payload, name='endpoint_upload_payload'),

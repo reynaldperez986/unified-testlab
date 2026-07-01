@@ -79,7 +79,7 @@
                         {{ form.headers }}
                     </div>
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-6 mb-3" id="queryParamsBlock">
                             <label class="form-label">Query Parameters <span class="text-muted fw-normal small">(JSON, optional)</span></label>
                             {{ form.query_params }}
                             <div class="form-text">Appended to the URL as <code>?key=value</code>. Example: <code>{"page": 1, "limit": 10}</code></div>
@@ -89,6 +89,25 @@
                             {{ form.path_params }}
                             <div class="form-text">Replaces <code>{variable}</code> in the endpoint path. Example: <code>{"id": "123"}</code> for endpoint <code>/users/{id}</code></div>
                         </div>
+                    </div>
+                    <div class="mb-3 d-none" id="requestKeyPairSection">
+                        <h6 class="text-primary mb-3"><i class="bi bi-list-check me-1"></i>Request key-pair value</h6>
+                        <div class="table-responsive mb-2">
+                            <table class="table table-sm table-bordered align-middle mb-0" id="requestKeyPairTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Key</th>
+                                        <th>Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="requestKeyPairBody"></tbody>
+                            </table>
+                        </div>
+                        <datalist id="requestKeyPairGlobalKeyOptions"></datalist>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnAddRequestKeyPairRow">
+                            <i class="bi bi-plus-lg me-1"></i>Add Row
+                        </button>
+                        <div class="form-text">Used for GET requests. Saved to Query Parameters automatically.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Request Body</label>
@@ -235,6 +254,7 @@ function downloadResponseFile(executionId, format) {
 
 // ── Form Data Table ──────────────────────────────────────────────
 let globalFieldValueMap = {};
+let globalFieldCanonicalKeyMap = {};
 
 function loadGlobalFieldValues() {
     const projectEl = document.getElementById('id_project');
@@ -249,25 +269,196 @@ function loadGlobalFieldValues() {
         .then(data => {
             const rows = Array.isArray(data.rows) ? data.rows : [];
             globalFieldValueMap = {};
+            globalFieldCanonicalKeyMap = {};
             const datalist = document.getElementById('formDataGlobalKeyOptions');
             if (datalist) {
                 datalist.innerHTML = '';
+            }
+            const reqKeyDatalist = document.getElementById('requestKeyPairGlobalKeyOptions');
+            if (reqKeyDatalist) {
+                reqKeyDatalist.innerHTML = '';
             }
 
             rows.forEach(row => {
                 const key = String(row.field_name || '').trim();
                 if (!key) return;
-                globalFieldValueMap[key] = String(row.value ?? '');
+                const latestValue = String(row.value ?? '');
+                globalFieldValueMap[key] = latestValue;
+
+                // Add a terminal alias so keys like "id" can consume
+                // latest values stored as "api.some_testcase.id".
+                const normalizedKey = normalizeRequestKey(key);
+                if (normalizedKey && !Object.prototype.hasOwnProperty.call(globalFieldCanonicalKeyMap, normalizedKey)) {
+                    globalFieldCanonicalKeyMap[normalizedKey] = key;
+                }
+                if (normalizedKey && !Object.prototype.hasOwnProperty.call(globalFieldValueMap, normalizedKey)) {
+                    globalFieldValueMap[normalizedKey] = latestValue;
+                }
+
                 if (datalist) {
                     const opt = document.createElement('option');
                     opt.value = key;
                     datalist.appendChild(opt);
+                }
+                if (reqKeyDatalist) {
+                    const opt = document.createElement('option');
+                    opt.value = key;
+                    reqKeyDatalist.appendChild(opt);
+
+                    if (normalizedKey && normalizedKey !== key) {
+                        const normalizedOpt = document.createElement('option');
+                        normalizedOpt.value = normalizedKey;
+                        reqKeyDatalist.appendChild(normalizedOpt);
+                    }
                 }
             });
         })
         .catch(() => {
             globalFieldValueMap = {};
         });
+}
+
+function applyGlobalValueForRequestRow(rowEl) {
+    if (!rowEl) return;
+    const keyEl = rowEl.querySelector('.rq-key');
+    const valueEl = rowEl.querySelector('.rq-value');
+    if (!keyEl || !valueEl) return;
+    const key = (keyEl.value || '').trim();
+    if (!key) return;
+
+    const normalized = normalizeRequestKey(key);
+    const canonical = globalFieldCanonicalKeyMap[normalized];
+    if (canonical && canonical !== key) {
+        keyEl.value = canonical;
+    }
+
+    const lookupKey = (keyEl.value || '').trim() || key;
+    if (Object.prototype.hasOwnProperty.call(globalFieldValueMap, lookupKey)) {
+        valueEl.value = globalFieldValueMap[lookupKey];
+        serializeRequestKeyPairs();
+        return;
+    }
+    if (Object.prototype.hasOwnProperty.call(globalFieldValueMap, normalized)) {
+        valueEl.value = globalFieldValueMap[normalized];
+        serializeRequestKeyPairs();
+    }
+}
+
+function normalizeRequestKey(rawKey) {
+    return String(rawKey || '').trim();
+}
+
+function toRequestBodyKey(rawKey) {
+    const key = String(rawKey || '').trim();
+    if (!key) return '';
+    if (key.startsWith('api.') && key.includes('.')) {
+        const terminal = key.split('.').filter(Boolean).pop();
+        return terminal || key;
+    }
+    return key;
+}
+
+function addRequestKeyPairRow(key='', value='') {
+    const tbody = document.getElementById('requestKeyPairBody');
+    if (!tbody) return;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm rq-key" list="requestKeyPairGlobalKeyOptions" value="${escHtml(key)}" placeholder="key"></td>
+        <td>
+            <div class="input-group input-group-sm">
+                <input type="text" class="form-control rq-value" value="${escHtml(value)}" placeholder="value">
+                <button type="button" class="btn btn-outline-danger" onclick="this.closest('tr').remove(); serializeRequestKeyPairs()" title="Remove row"><i class="bi bi-trash"></i></button>
+            </div>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    const keyInput = tr.querySelector('.rq-key');
+    if (keyInput) {
+        keyInput.addEventListener('input', () => applyGlobalValueForRequestRow(tr));
+        keyInput.addEventListener('change', () => {
+            keyInput.value = normalizeRequestKey(keyInput.value);
+            applyGlobalValueForRequestRow(tr);
+        });
+        keyInput.addEventListener('blur', () => {
+            keyInput.value = normalizeRequestKey(keyInput.value);
+            applyGlobalValueForRequestRow(tr);
+        });
+    }
+    tr.querySelectorAll('input').forEach(el => el.addEventListener('change', serializeRequestKeyPairs));
+    tr.querySelectorAll('input').forEach(el => el.addEventListener('input', serializeRequestKeyPairs));
+    applyGlobalValueForRequestRow(tr);
+}
+
+function parseQueryParamsRows(rawJson) {
+    let parsed = {};
+    try {
+        parsed = rawJson ? JSON.parse(rawJson) : {};
+    } catch {
+        parsed = {};
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return [];
+    }
+    return Object.keys(parsed).map(key => ({ key: normalizeRequestKey(key), value: String(parsed[key] ?? '') }));
+}
+
+function serializeRequestKeyPairs() {
+    const method = (document.getElementById('id_http_method')?.value || '').toUpperCase();
+    if (method !== 'GET') return;
+
+    const queryEl = document.getElementById('id_query_params');
+    const bodyEl = document.getElementById('id_request_body');
+    if (!queryEl) return;
+
+    const obj = {};
+    const bodyObj = {};
+    document.querySelectorAll('#requestKeyPairBody tr').forEach(tr => {
+        const keyEl = tr.querySelector('.rq-key');
+        const key = normalizeRequestKey(keyEl?.value || '');
+        const value = (tr.querySelector('.rq-value')?.value || '').trim();
+        if (key) {
+            obj[key] = value;
+            const bodyKey = toRequestBodyKey(key);
+            if (bodyKey) {
+                bodyObj[bodyKey] = value;
+            }
+            if (keyEl) keyEl.value = key;
+        }
+    });
+    queryEl.value = JSON.stringify(obj);
+
+    if (bodyEl) {
+        if (Object.keys(bodyObj).length) {
+            bodyEl.value = JSON.stringify(bodyObj, null, 2);
+        } else {
+            bodyEl.value = '';
+        }
+    }
+}
+
+function updateGetRequestKeyPairUI() {
+    const method = (document.getElementById('id_http_method')?.value || '').toUpperCase();
+    const section = document.getElementById('requestKeyPairSection');
+    const queryBlock = document.getElementById('queryParamsBlock');
+    if (!section || !queryBlock) return;
+
+    const isGet = method === 'GET';
+    section.classList.toggle('d-none', !isGet);
+    queryBlock.classList.toggle('d-none', isGet);
+
+    if (isGet) {
+        const tbody = document.getElementById('requestKeyPairBody');
+        if (tbody && !tbody.children.length) {
+            const queryRaw = document.getElementById('id_query_params')?.value || '{}';
+            const rows = parseQueryParamsRows(queryRaw);
+            if (rows.length) {
+                rows.forEach(r => addRequestKeyPairRow(r.key, r.value));
+            } else {
+                addRequestKeyPairRow('', '');
+            }
+        }
+        serializeRequestKeyPairs();
+    }
 }
 
 function applyGlobalValueForRow(rowEl) {
@@ -339,8 +530,25 @@ document.addEventListener('DOMContentLoaded', function() {
     if (Array.isArray(saved) && saved.length) {
         saved.forEach(r => addFormDataRow(r.key||'', r.value||''));
     }
+    const addRequestBtn = document.getElementById('btnAddRequestKeyPairRow');
+    if (addRequestBtn) {
+        addRequestBtn.addEventListener('click', function() {
+            addRequestKeyPairRow('', '');
+        });
+    }
+    const methodEl = document.getElementById('id_http_method');
+    if (methodEl) {
+        methodEl.addEventListener('change', function() {
+            updateGetRequestKeyPairUI();
+            serializeRequestKeyPairs();
+        });
+    }
+    updateGetRequestKeyPairUI();
     // Serialize on form submit
-    document.querySelector('form[method="post"]').addEventListener('submit', serializeFormData);
+    document.querySelector('form[method="post"]').addEventListener('submit', function() {
+        serializeRequestKeyPairs();
+        serializeFormData();
+    });
 });
 // ─────────────────────────────────────────────────────────────────
 
@@ -669,14 +877,33 @@ function runTest() {
         .map(c => c.split('=')[1])[0]
         || (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
 
-    fetch('{% url "api:execute_test" %}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-        body: JSON.stringify({
-            test_case_id: TC_ID,
-            environment_id: parseInt(DEFAULT_ENV_ID),
-            project_folder_name: "{{ test_case.project|default:''|escapejs }}"
-        })
+    const methodNow = (document.getElementById('id_http_method')?.value || '').toUpperCase();
+    const projectNow = (document.getElementById('id_project')?.value || '').trim();
+
+    Promise.resolve(loadGlobalFieldValues())
+    .then(() => {
+        if (methodNow === 'GET') {
+            document.querySelectorAll('#requestKeyPairBody tr').forEach(applyGlobalValueForRequestRow);
+        }
+        serializeRequestKeyPairs();
+
+        let latestQueryParams = {};
+        try {
+            latestQueryParams = JSON.parse(document.getElementById('id_query_params')?.value || '{}') || {};
+        } catch {
+            latestQueryParams = {};
+        }
+
+        return fetch('{% url "api:execute_test" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+            body: JSON.stringify({
+                test_case_id: TC_ID,
+                environment_id: parseInt(DEFAULT_ENV_ID),
+                project_folder_name: projectNow || "{{ test_case.project|default:''|escapejs }}",
+                query_params: latestQueryParams
+            })
+        });
     })
     .then(r => r.json())
     .then(d => {
@@ -766,6 +993,8 @@ function onEndpointSelect(endpointId) {
         } catch { bodyField.value = payloadSource; }
     }
     if (descField && ep.description && !descField.value) descField.value = ep.description;
+
+    updateGetRequestKeyPairUI();
 
     // Auto-fill expected response content from expected_responses (use 2xx if available)
     const expectedField = document.getElementById('id_expected_response_content');

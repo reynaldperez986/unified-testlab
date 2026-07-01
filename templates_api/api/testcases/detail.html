@@ -67,12 +67,12 @@
 
                         {% if test_case.query_params and test_case.query_params != '{}' %}
                         <h6 class="mt-3">Query Parameters</h6>
-                        <pre class="bg-light p-3 rounded"><code>{{ test_case.query_params }}</code></pre>
+                        <pre class="bg-light p-3 rounded"><code id="tc-query-params-json">{{ test_case.query_params }}</code></pre>
                         {% endif %}
 
                         {% if test_case.request_body %}
                         <h6 class="mt-3">Request Body</h6>
-                        <pre class="bg-light p-3 rounded"><code>{{ test_case.request_body }}</code></pre>
+                        <pre class="bg-light p-3 rounded"><code id="tc-request-body-json">{{ test_case.request_body }}</code></pre>
                         {% endif %}
 
                         {% if test_case.expected_response_content %}
@@ -90,11 +90,11 @@
                                         <th>Value</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="expected-key-pair-body">
                                     {% for row in expected_key_pairs %}
                                     <tr>
-                                        <td><code>{{ row.key }}</code></td>
-                                        <td><code>{{ row.value|default:"-" }}</code></td>
+                                        <td><code class="expected-key" data-key="{{ row.key|escape }}">{{ row.key }}</code></td>
+                                        <td><code class="expected-value" data-key="{{ row.key|escape }}">{{ row.value|default:"-" }}</code></td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -572,6 +572,109 @@ function bindExecutionReportButtons(executionId) {
     docBtn.onclick = () => downloadExecutionReport(executionId, 'doc');
 }
 
+function normalizeRequestKey(rawKey) {
+    const key = String(rawKey || '').trim();
+    if (!key) return '';
+    if (key.startsWith('api.') && key.includes('.')) {
+        const terminal = key.split('.').filter(Boolean).pop();
+        return terminal || key;
+    }
+    return key;
+}
+
+function toRequestBodyKey(rawKey) {
+    const key = String(rawKey || '').trim();
+    if (!key) return '';
+    if (key.startsWith('api.') && key.includes('.')) {
+        const terminal = key.split('.').filter(Boolean).pop();
+        return terminal || key;
+    }
+    return key;
+}
+
+function updateExpectedKeyPairPreview(latestQueryParamsForUi) {
+    if (!latestQueryParamsForUi || typeof latestQueryParamsForUi !== 'object') return;
+
+    const fullMap = {};
+    const aliasMap = {};
+    Object.keys(latestQueryParamsForUi).forEach((rawKey) => {
+        const key = String(rawKey || '').trim();
+        if (!key) return;
+        const value = String(latestQueryParamsForUi[rawKey] ?? '');
+        fullMap[key] = value;
+
+        const alias = normalizeRequestKey(key);
+        if (alias && !Object.prototype.hasOwnProperty.call(aliasMap, alias)) {
+            aliasMap[alias] = value;
+        }
+    });
+
+    document.querySelectorAll('#expected-key-pair-body .expected-value').forEach((el) => {
+        const key = (el.getAttribute('data-key') || '').trim();
+        if (!key) return;
+
+        if (Object.prototype.hasOwnProperty.call(fullMap, key)) {
+            el.textContent = fullMap[key];
+            return;
+        }
+
+        const alias = normalizeRequestKey(key);
+        if (Object.prototype.hasOwnProperty.call(aliasMap, alias)) {
+            el.textContent = aliasMap[alias];
+        }
+    });
+}
+
+function loadLatestQueryParamOverrides() {
+    let baseParams = {};
+    try {
+        baseParams = JSON.parse('{{ test_case.query_params|default:"{}"|escapejs }}') || {};
+    } catch {
+        baseParams = {};
+    }
+
+    const projectName = "{{ test_case.project|default:''|escapejs }}";
+    if (!projectName) {
+        return Promise.resolve(baseParams);
+    }
+
+    const url = new URL('{% url "api:api_global_field_values" %}', window.location.origin);
+    url.searchParams.set('project', projectName);
+
+    return fetch(url.toString(), { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() : { ok: false, rows: [] }))
+        .then(data => {
+            const rows = Array.isArray(data.rows) ? data.rows : [];
+            const latestMap = {};
+
+            rows.forEach(row => {
+                const key = String(row.field_name || '').trim();
+                if (!key) return;
+                const value = String(row.value ?? '');
+
+                latestMap[key] = value;
+                const normalized = normalizeRequestKey(key);
+                if (normalized && !Object.prototype.hasOwnProperty.call(latestMap, normalized)) {
+                    latestMap[normalized] = value;
+                }
+            });
+
+            const merged = { ...baseParams };
+            Object.keys(baseParams || {}).forEach(key => {
+                if (Object.prototype.hasOwnProperty.call(latestMap, key)) {
+                    merged[key] = latestMap[key];
+                    return;
+                }
+                const normalized = normalizeRequestKey(key);
+                if (normalized && Object.prototype.hasOwnProperty.call(latestMap, normalized)) {
+                    merged[key] = latestMap[normalized];
+                }
+            });
+            return merged;
+        })
+        .catch(() => baseParams);
+}
+
 function executeTest() {
     const btn = document.getElementById('btn-execute');
     const loading = document.getElementById('exec-loading');
@@ -581,7 +684,11 @@ function executeTest() {
     loading.classList.remove('d-none');
     resultPanel.classList.add('d-none');
 
-    fetch('{% url "api:execute_test" %}', {
+    let latestQueryParamsForUi = null;
+    loadLatestQueryParamOverrides()
+    .then((latestQueryParams) => {
+        latestQueryParamsForUi = latestQueryParams;
+        return fetch('{% url "api:execute_test" %}', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -589,8 +696,10 @@ function executeTest() {
         },
         body: JSON.stringify({
             test_case_id: {{ test_case.pk }},
-            project_folder_name: "{{ test_case.project|default:''|escapejs }}"
+            project_folder_name: "{{ test_case.project|default:''|escapejs }}",
+            query_params: latestQueryParams
         })
+    });
     })
     .then(response => response.json())
     .then(data => {
@@ -639,6 +748,33 @@ function executeTest() {
             } catch {
                 resBody.textContent = data.response_body;
             }
+        }
+
+        // Reflect runtime overrides in the Details tab preview blocks.
+        if (latestQueryParamsForUi && typeof latestQueryParamsForUi === 'object') {
+            const queryBlock = document.getElementById('tc-query-params-json');
+            if (queryBlock) {
+                queryBlock.textContent = JSON.stringify(latestQueryParamsForUi);
+            }
+            const requestBodyBlock = document.getElementById('tc-request-body-json');
+            if (requestBodyBlock) {
+                try {
+                    const requestBodyObj = {};
+                    Object.keys(latestQueryParamsForUi).forEach((key) => {
+                        const bodyKey = toRequestBodyKey(key);
+                        if (bodyKey) {
+                            requestBodyObj[bodyKey] = latestQueryParamsForUi[key];
+                        }
+                    });
+                    requestBodyBlock.textContent = Object.keys(requestBodyObj).length
+                        ? JSON.stringify(requestBodyObj, null, 2)
+                        : (data.request_body || '');
+                } catch {
+                    requestBodyBlock.textContent = data.request_body;
+                }
+            }
+
+            updateExpectedKeyPairPreview(latestQueryParamsForUi);
         }
 
         prependExecutionFromRunResult(data);

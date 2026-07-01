@@ -339,6 +339,7 @@ class TestCaseForm(forms.ModelForm):
         required=False,
         choices=[
             ('', '-- Select Status Code --'),
+            ('200', '200'),
             ('201', '201'),
             ('400', '400'),
             ('401', '401'),

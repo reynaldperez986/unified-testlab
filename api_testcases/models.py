@@ -169,6 +169,13 @@ class ApiModule(models.Model):
     oauth2_current_token = models.TextField(blank=True)
     oauth2_header_prefix = models.CharField(max_length=50, default='Bearer')
     oauth2_token_updated_at = models.DateTimeField(null=True, blank=True)
+    selected_environment = models.ForeignKey(
+        'Environment',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='selected_for_api_modules',
+    )
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='api_modules')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

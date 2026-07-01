@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 import csv
 import os
 from pathlib import Path
+from django.views.decorators.http import require_POST
 from pprint import pformat
 import re
 import subprocess
@@ -451,6 +452,158 @@ def _parse_form_data_rows(raw_form_data):
     return normalized
 
 
+def _latest_global_field_value_map(project_name=''):
+    """Return latest global data values keyed by field_name, newest row first."""
+    rows = {}
+    try:
+        with connection.cursor() as cur:
+            where = ["COALESCE(is_global, FALSE) = TRUE", "field_name IS NOT NULL", "field_name <> ''"]
+            params = []
+
+            project = (project_name or '').strip()
+            if project:
+                where.append("(TRIM(COALESCE(folder_name, '')) = %s OR TRIM(COALESCE(folder_name, '')) LIKE %s)")
+                params.extend([project, f"{project}/%"])
+
+            cur.execute(
+                f"""
+                SELECT field_name, COALESCE(value, '') AS value
+                  FROM data
+                 WHERE {' AND '.join(where)}
+                 ORDER BY id DESC
+                """,
+                params,
+            )
+
+            seen = set()
+            for field_name, value in cur.fetchall():
+                key = (field_name or '').strip()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                rows[key] = value or ''
+    except Exception:
+        return {}
+
+    return rows
+
+
+def _refresh_form_data_rows_from_global(test_case, form_data_rows, target_folder_name=None):
+    """Update expected key-pair values with latest global data values when available."""
+    rows = form_data_rows or []
+    if not rows:
+        return []
+
+    project_name = (target_folder_name or getattr(test_case, 'project', '') or '').strip()
+    latest_map = _latest_global_field_value_map(project_name)
+    if not latest_map:
+        return rows
+
+    alias_map = {}
+    for key, value in latest_map.items():
+        normalized = key.split('.')[-1].strip() if key.startswith('api.') and '.' in key else key
+        if normalized and normalized not in alias_map:
+            alias_map[normalized] = value
+
+    refreshed = []
+    for row in rows:
+        key = str((row or {}).get('key', '')).strip()
+        if not key:
+            continue
+        current_value = str((row or {}).get('value', '')).strip()
+
+        if key in latest_map:
+            latest_value = str(latest_map[key])
+        else:
+            normalized = key.split('.')[-1].strip() if key.startswith('api.') and '.' in key else key
+            if normalized in latest_map:
+                latest_value = str(latest_map[normalized])
+            else:
+                latest_value = str(alias_map.get(normalized, current_value))
+
+        refreshed.append({'key': key, 'value': latest_value})
+
+    return refreshed
+
+
+def _apply_query_override_to_form_rows(form_data_rows, query_override):
+    """Overlay form-data row values with runtime query override values when keys match."""
+    rows = form_data_rows or []
+    if not rows or not isinstance(query_override, dict):
+        return rows
+
+    full_map = {}
+    alias_map = {}
+    for raw_key, raw_value in query_override.items():
+        key_text = str(raw_key or '').strip()
+        if not key_text:
+            continue
+        value_text = str(raw_value)
+        full_map[key_text] = value_text
+
+        normalized = key_text.split('.')[-1].strip() if key_text.startswith('api.') and '.' in key_text else key_text
+        if normalized and normalized not in alias_map:
+            alias_map[normalized] = value_text
+
+    updated = []
+    for row in rows:
+        key = str((row or {}).get('key', '')).strip()
+        if not key:
+            continue
+
+        value = str((row or {}).get('value', '')).strip()
+        if key in full_map:
+            value = full_map[key]
+        else:
+            normalized = key.split('.')[-1].strip() if key.startswith('api.') and '.' in key else key
+            if normalized in full_map:
+                value = full_map[normalized]
+            elif normalized in alias_map:
+                value = alias_map[normalized]
+
+        updated.append({'key': key, 'value': value})
+
+    return updated
+
+
+def _refresh_query_params_from_global(test_case, query_params, target_folder_name=None):
+    """Refresh query-param values from latest global data while preserving original keys."""
+    params = query_params if isinstance(query_params, dict) else {}
+    if not params:
+        return {}
+
+    project_name = (target_folder_name or getattr(test_case, 'project', '') or '').strip()
+    latest_map = _latest_global_field_value_map(project_name)
+    if not latest_map:
+        return dict(params)
+
+    alias_map = {}
+    for key, value in latest_map.items():
+        normalized = key.split('.')[-1].strip() if key.startswith('api.') and '.' in key else key
+        if normalized and normalized not in alias_map:
+            alias_map[normalized] = value
+
+    refreshed = {}
+    for raw_key, raw_value in params.items():
+        key = str(raw_key or '').strip()
+        if not key:
+            continue
+
+        current_value = raw_value
+        if key in latest_map:
+            current_value = latest_map[key]
+        else:
+            normalized = key.split('.')[-1].strip() if key.startswith('api.') and '.' in key else key
+            if normalized in latest_map:
+                current_value = latest_map[normalized]
+            elif normalized in alias_map:
+                current_value = alias_map[normalized]
+
+        refreshed[key] = current_value
+
+    return refreshed
+
+
 def _format_expected_key_pairs(rows):
     """Render expected key/value rows as a readable multiline string."""
     if not rows:
@@ -752,6 +905,66 @@ def _safe_json_loads(raw_value, default):
         return default
 
 
+def _normalize_query_param_keys(params):
+    if not isinstance(params, dict):
+        return {}
+
+    normalized = {}
+    for raw_key, raw_value in params.items():
+        key_text = str(raw_key or '').strip()
+        if not key_text:
+            continue
+
+        if key_text.startswith('api.') and '.' in key_text:
+            key_text = key_text.split('.')[-1] or key_text
+
+        normalized[key_text] = raw_value
+
+    return normalized
+
+
+def _request_body_key_from_query_key(raw_key):
+    key_text = str(raw_key or '').strip()
+    if not key_text:
+        return ''
+    if key_text.startswith('api.') and '.' in key_text:
+        terminal = key_text.split('.')[-1]
+        return terminal or key_text
+    return key_text
+
+
+def _replace_url_path_placeholders(url, path_params=None, query_params=None):
+    updated_url = url
+    consumed_keys = set()
+
+    for source in (path_params or {}, query_params or {}):
+        if not isinstance(source, dict):
+            continue
+
+        for raw_key, raw_value in source.items():
+            key_text = str(raw_key or '').strip()
+            if not key_text:
+                continue
+
+            value_text = str(raw_value)
+            replaced = False
+
+            brace_token = f'{{{key_text}}}'
+            if brace_token in updated_url:
+                updated_url = updated_url.replace(brace_token, value_text)
+                replaced = True
+
+            colon_token = f':{key_text}'
+            if colon_token in updated_url:
+                updated_url = updated_url.replace(colon_token, value_text)
+                replaced = True
+
+            if replaced:
+                consumed_keys.add(key_text)
+
+    return updated_url, consumed_keys
+
+
 def _safe_python_name(raw_name, fallback):
     slug = re.sub(r'[^0-9a-zA-Z_]+', '_', (raw_name or '').strip().lower()).strip('_')
     if not slug:
@@ -775,6 +988,8 @@ def _resolve_testcase_runtime_context(tc):
     module_name = (tc.module or '').strip()
     if module_name:
         module = ApiModule.objects.filter(name__iexact=module_name).first()
+    if module and module.selected_environment_id:
+        env = module.selected_environment
 
     endpoint_template = (tc.endpoint or '').strip()
     url = endpoint_template
@@ -798,11 +1013,11 @@ def _resolve_testcase_runtime_context(tc):
             url += '/' + endpoint_relative
 
     path_params = _safe_json_loads(tc.path_params, {})
-    for key, value in path_params.items():
-        url = url.replace(f'{{{key}}}', str(value))
-
     headers = _safe_json_loads(tc.headers, {})
-    params = _safe_json_loads(tc.query_params, {})
+    params = _normalize_query_param_keys(_safe_json_loads(tc.query_params, {}))
+    url, consumed_keys = _replace_url_path_placeholders(url, path_params, params)
+    if consumed_keys:
+        params = {k: v for k, v in params.items() if str(k) not in consumed_keys}
     form_data_rows = _safe_json_loads(tc.form_data, [])
 
     if module and module.module_auth_type == 'oauth2':
@@ -2040,7 +2255,7 @@ def bulk_execute(request):
     })
 
 
-def _execute_tc(tc, env, user, request, target_project_folder_name=None):
+def _execute_tc(tc, env, user, request, target_project_folder_name=None, runtime_overrides=None):
     """Full execution of a single TestCase with auth, URL normalisation, and retry logic.
     Returns a result dict (not a JsonResponse) so both execute_test and bulk_execute can use it."""
 
@@ -2048,6 +2263,8 @@ def _execute_tc(tc, env, user, request, target_project_folder_name=None):
     module_name = (tc.module or '').strip()
     if module_name:
         module = ApiModule.objects.filter(name__iexact=module_name).first()
+    if module and module.selected_environment_id:
+        env = module.selected_environment
 
     # Build normalised URL
     endpoint_template = (tc.endpoint or '').strip()
@@ -2072,10 +2289,8 @@ def _execute_tc(tc, env, user, request, target_project_folder_name=None):
     # Replace path parameters
     try:
         path_params = json.loads(tc.path_params) if tc.path_params else {}
-        for key, value in path_params.items():
-            url = url.replace(f'{{{key}}}', str(value))
     except json.JSONDecodeError:
-        pass
+        path_params = {}
 
     # Parse headers and query params
     try:
@@ -2083,10 +2298,26 @@ def _execute_tc(tc, env, user, request, target_project_folder_name=None):
     except json.JSONDecodeError:
         headers = {}
 
-    try:
-        params = json.loads(tc.query_params) if tc.query_params else {}
-    except json.JSONDecodeError:
-        params = {}
+    overrides = runtime_overrides or {}
+
+    query_override = overrides.get('query_params')
+    if isinstance(query_override, dict):
+        params = query_override
+    elif isinstance(query_override, str):
+        try:
+            parsed_override = json.loads(query_override)
+            params = parsed_override if isinstance(parsed_override, dict) else {}
+        except json.JSONDecodeError:
+            params = {}
+    else:
+        try:
+            params = json.loads(tc.query_params) if tc.query_params else {}
+        except json.JSONDecodeError:
+            params = {}
+    params = _normalize_query_param_keys(params)
+    url, consumed_keys = _replace_url_path_placeholders(url, path_params, params)
+    if consumed_keys:
+        params = {k: v for k, v in params.items() if str(k) not in consumed_keys}
 
     # Determine auth source
     if module and module.module_auth_type == 'oauth2':
@@ -2161,12 +2392,9 @@ def _execute_tc(tc, env, user, request, target_project_folder_name=None):
 
     # Build request body / form data
     body = tc.request_body if tc.request_body else None
-    form_data_rows = []
-    if tc.form_data:
-        try:
-            form_data_rows = json.loads(tc.form_data)
-        except json.JSONDecodeError:
-            pass
+    form_data_rows = _parse_form_data_rows(tc.form_data)
+    form_data_rows = _refresh_form_data_rows_from_global(tc, form_data_rows, target_project_folder_name)
+    form_data_rows = _apply_query_override_to_form_rows(form_data_rows, overrides.get('query_params'))
 
     req_kwargs = dict(method=tc.http_method, url=url, headers=headers, params=params, auth=auth, timeout=30, verify=False)
     # Form Data rows in API TestLab are used for response contains validation only.
@@ -2527,11 +2755,53 @@ def execute_test(request):
     test_case_id = data.get('test_case_id')
     environment_id = data.get('environment_id')
     project_folder_name = (data.get('project_folder_name') or data.get('folder_name') or '').strip()
+    runtime_overrides = {
+        'query_params': data.get('query_params'),
+    }
 
     if not test_case_id:
         return JsonResponse({'error': 'test_case_id is required'}, status=400)
 
     tc = get_object_or_404(TestCase, pk=test_case_id)
+
+    query_override = data.get('query_params')
+    persisted_query = None
+    if isinstance(query_override, dict):
+        # Persist latest runtime key-pair values so page refresh shows current data.
+        persisted_query = {}
+        for raw_key, raw_value in query_override.items():
+            key_text = str(raw_key or '').strip()
+            if not key_text:
+                continue
+            persisted_query[key_text] = raw_value
+    else:
+        stored_query = _safe_json_loads(tc.query_params, {})
+        if isinstance(stored_query, dict) and stored_query:
+            persisted_query = _refresh_query_params_from_global(tc, stored_query, project_folder_name or None)
+
+    if persisted_query:
+        runtime_overrides['query_params'] = persisted_query
+        tc.query_params = json.dumps(persisted_query, ensure_ascii=False, separators=(',', ':'))
+
+        if (tc.http_method or '').upper() == 'GET':
+            body_payload = {}
+            for key_text, value in persisted_query.items():
+                body_key = _request_body_key_from_query_key(key_text)
+                if not body_key:
+                    continue
+                body_payload[body_key] = value
+            tc.request_body = json.dumps(body_payload, ensure_ascii=False, indent=2) if body_payload else ''
+
+        tc.save(update_fields=['query_params', 'request_body', 'updated_at'])
+
+    form_rows = _parse_form_data_rows(tc.form_data)
+    if form_rows:
+        refreshed_rows = _refresh_form_data_rows_from_global(tc, form_rows, project_folder_name or None)
+        refreshed_rows = _apply_query_override_to_form_rows(refreshed_rows, runtime_overrides.get('query_params'))
+        if refreshed_rows != form_rows:
+            tc.form_data = json.dumps(refreshed_rows, ensure_ascii=False)
+            tc.save(update_fields=['form_data', 'updated_at'])
+
     if environment_id:
         env = Environment.objects.filter(pk=environment_id).first()
         if not env:
@@ -2549,7 +2819,7 @@ def execute_test(request):
     if module_name:
         module = ApiModule.objects.filter(name__iexact=module_name).first()
 
-    result = _execute_tc(tc, env, request.user, request, project_folder_name or None)
+    result = _execute_tc(tc, env, request.user, request, project_folder_name or None, runtime_overrides)
     return JsonResponse(result)
 
 
@@ -2630,6 +2900,16 @@ def execution_detail(request, pk):
         TestExecution.objects.select_related('test_case', 'environment', 'executed_by'),
         pk=pk
     )
+
+    global_data_refreshed = False
+    if execution.response_body:
+        try:
+            _store_response_in_project_data(execution.test_case, execution.response_body)
+            global_data_refreshed = True
+        except Exception:
+            # Keep detail page resilient if shared data persistence fails.
+            pass
+
     try:
         parsed_body = json.loads(execution.response_body) if execution.response_body else None
     except (json.JSONDecodeError, TypeError):
@@ -2643,6 +2923,7 @@ def execution_detail(request, pk):
     return render(request, 'api/executions/detail.html', {
         'execution': execution,
         'response_json_view': response_json_view,
+        'global_data_refreshed': global_data_refreshed,
     })
 
 
@@ -3420,6 +3701,7 @@ def module_upload(request):
                 endpoint_path=ep['endpoint_path'],
                 headers=ep['headers'],
                 request_body=ep['request_body'],
+                default_payload=ep['request_body'] or '',
                 description=ep['description'],
             )
 
@@ -3443,7 +3725,9 @@ def module_detail(request, pk):
         )
 
     total_endpoints = module.endpoints.count()
-    environments = Environment.objects.filter(is_active=True).order_by('name')
+    environments = Environment.objects.filter(
+        Q(is_active=True) | Q(pk=module.selected_environment_id)
+    ).order_by('name').distinct()
     return render(request, 'api/modules/detail.html', {
         'module': module,
         'endpoints': endpoints,
@@ -3454,7 +3738,7 @@ def module_detail(request, pk):
 
 
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'tester'])
 def module_delete(request, pk):
     module = get_object_or_404(ApiModule, pk=pk)
     if request.method == 'POST':
@@ -3473,6 +3757,61 @@ def module_update_base_path(request, pk):
         module.save()
         messages.success(request, f'Base path updated for "{module.name}".')
     return redirect('api:module_detail', pk=module.pk)
+
+
+@login_required
+@role_required(['admin', 'tester'])
+@require_POST
+def module_apply_environment(request, pk):
+    """Persist selected environment settings into module configuration."""
+    module = get_object_or_404(ApiModule, pk=pk)
+
+    try:
+        payload = json.loads(request.body or '{}')
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON body.'}, status=400)
+
+    environment_id = payload.get('environment_id')
+    if not environment_id:
+        return JsonResponse({'ok': False, 'error': 'environment_id is required.'}, status=400)
+
+    env = Environment.objects.filter(pk=environment_id).first()
+    if not env:
+        return JsonResponse({'ok': False, 'error': 'Environment not found.'}, status=404)
+
+    creds = _safe_json_loads(env.auth_credentials, {})
+    module.selected_environment = env
+    module.base_path = (env.base_url or '').strip()
+
+    if env.auth_type == 'oauth2':
+        module.module_auth_type = 'oauth2'
+        module.oauth2_add_to = creds.get('add_to', 'request_headers') or 'request_headers'
+        module.oauth2_client_id = creds.get('client_id', '')
+        module.oauth2_client_secret = creds.get('client_secret', '')
+        module.oauth2_token_url = creds.get('token_url', '')
+        module.oauth2_header_prefix = creds.get('header_prefix', 'Bearer') or 'Bearer'
+        module.oauth2_current_token = creds.get('token', '')
+        module.oauth2_token_updated_at = timezone.now() if module.oauth2_current_token else None
+    else:
+        module.module_auth_type = 'none'
+        module.oauth2_add_to = 'request_headers'
+        module.oauth2_client_id = ''
+        module.oauth2_client_secret = ''
+        module.oauth2_token_url = ''
+        module.oauth2_current_token = ''
+        module.oauth2_header_prefix = 'Bearer'
+        module.oauth2_token_updated_at = None
+
+    module.save()
+
+    return JsonResponse({
+        'ok': True,
+        'module_id': module.id,
+        'environment_id': env.id,
+        'environment_name': env.name,
+        'base_path': module.base_path,
+        'auth_type': module.module_auth_type,
+    })
 
 
 @login_required

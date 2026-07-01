@@ -66,7 +66,7 @@
                 </div>
                 <div class="card-body">
                     <textarea id="id_default_payload" name="default_payload" class="form-control payload-editor"
-                              rows="25" placeholder='Paste or type the default JSON payload here...'>{{ endpoint.default_payload }}</textarea>
+                              rows="25" placeholder='Paste or type the default JSON payload here...'>{% firstof endpoint.default_payload endpoint.request_body %}</textarea>
                     <div class="form-text">This payload will auto-populate the Request Body when this endpoint is selected in Test Case creation.</div>
                 </div>
             </div>

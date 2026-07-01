@@ -1,0 +1,8 @@
+{
+  "title": "INTERNAL_SERVER_ERROR",
+  "status": 500,
+  "type": "CORE-VALIDATION",
+  "details": [
+    "Unexpected error. Please contact support for details."
+  ]
+}
