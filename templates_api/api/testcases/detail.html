@@ -43,6 +43,11 @@
                         <button class="nav-link {% if selected_tab == 'playwright' %}active{% endif %}" id="playwright-tab" data-bs-toggle="tab" data-bs-target="#playwright-pane" type="button" role="tab" aria-controls="playwright-pane" aria-selected="{% if selected_tab == 'playwright' %}true{% else %}false{% endif %}">Playwright API + UI</button>
                     </li>
                     {% endif %}
+                    {% if not code_view_mode or code_view_mode == 'robot' %}
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link {% if selected_tab == 'robot' %}active{% endif %}" id="robot-tab" data-bs-toggle="tab" data-bs-target="#robot-pane" type="button" role="tab" aria-controls="robot-pane" aria-selected="{% if selected_tab == 'robot' %}true{% else %}false{% endif %}">Robot Framework</button>
+                    </li>
+                    {% endif %}
                 </ul>
             </div>
             <div class="card-body">
@@ -172,7 +177,7 @@
                                 </button>
                                 {% endif %}
                                 <a href="{% url 'api:testcase_download_requests_py' test_case.pk %}" class="btn btn-sm btn-outline-secondary">
-                                    <i class="bi bi-download"></i> Download .py
+                                    <i class="bi bi-download"></i> Download .py + payload.json
                                 </a>
                             </div>
                         </div>
@@ -219,6 +224,38 @@
                             <pre id="playwright-run-output" class="bg-dark text-light p-3 rounded mb-0" style="min-height:120px;max-height:260px;overflow:auto;font-size:0.8rem;">Click "Run .py" to execute this generated script.</pre>
                         </div>
                         {% endif %}
+                    </div>
+                    {% endif %}
+
+                    {% if not code_view_mode or code_view_mode == 'robot' %}
+                    <div class="tab-pane fade {% if selected_tab == 'robot' %}show active{% endif %}" id="robot-pane" role="tabpanel" aria-labelledby="robot-tab" tabindex="0">
+                        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                            <div>
+                                <h6 class="mb-1">Robot Framework equivalent</h6>
+                                <p class="text-muted small mb-0">
+                                    Uses RequestsLibrary and mirrors the same request configuration for Robot execution.
+                                </p>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <a href="{% url 'api:testcase_download_robot' test_case.pk %}" class="btn btn-sm btn-outline-info">
+                                    <i class="bi bi-download"></i> Download .robot
+                                </a>
+                                <button type="button" id="btn-run-robot-py" class="btn btn-sm btn-info" onclick="runGeneratedSnippet('robot')">
+                                    <i class="bi bi-play-fill"></i> Run .robot
+                                </button>
+                                <button type="button" id="btn-download-robot-csv" class="btn btn-sm btn-outline-secondary" onclick="downloadRunOutput('robot', 'csv')" disabled>
+                                    <i class="bi bi-filetype-csv"></i> Output CSV
+                                </button>
+                                <button type="button" id="btn-download-robot-json" class="btn btn-sm btn-outline-secondary" onclick="downloadRunOutput('robot', 'json')" disabled>
+                                    <i class="bi bi-filetype-json"></i> Output JSON
+                                </button>
+                            </div>
+                        </div>
+                        <pre class="bg-light p-3 rounded mb-0" style="max-height:460px;overflow:auto;"><code>{{ robot_snippet }}</code></pre>
+                        <div class="mt-3">
+                            <h6 class="mb-2">Run Output</h6>
+                            <pre id="robot-run-output" class="bg-dark text-light p-3 rounded mb-0" style="min-height:120px;max-height:260px;overflow:auto;font-size:0.8rem;">Click "Run .robot" to execute this generated script.</pre>
+                        </div>
                     </div>
                     {% endif %}
                 </div>
@@ -279,6 +316,7 @@ let recentExecutionsPoller = null;
 const snippetRunResults = {
     requests: null,
     playwright: null,
+    robot: null,
 };
 
 function updateRunDownloadButtons(snippetType, enabled) {

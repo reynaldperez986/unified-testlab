@@ -33,6 +33,7 @@ urlpatterns = [
     path('testcases/<int:pk>/', views.testcase_detail, name='testcase_detail'),
     path('testcases/<int:pk>/download/requests/', views.testcase_download_requests_py, name='testcase_download_requests_py'),
     path('testcases/<int:pk>/download/playwright/', views.testcase_download_playwright_py, name='testcase_download_playwright_py'),
+    path('testcases/<int:pk>/download/robot/', views.testcase_download_robot, name='testcase_download_robot'),
     path('testcases/<int:pk>/run/<str:snippet_type>/', views.testcase_run_generated_py, name='testcase_run_generated_py'),
     path('api/testcases/<int:pk>/recent-executions/', views.testcase_recent_executions, name='testcase_recent_executions'),
     path('api/testcases/<int:pk>/transformed-response/', views.testcase_transformed_response, name='testcase_transformed_response'),

@@ -314,6 +314,7 @@
                                                data-tc-id="{{ tc.pk }}"
                                                data-requests-url="{% url 'api:testcase_detail' tc.pk %}?tab=requests"
                                                data-playwright-url="{% url 'api:testcase_detail' tc.pk %}?tab=playwright"
+                                                              data-robot-url="{% url 'api:testcase_detail' tc.pk %}?tab=robot"
                                                data-mode="requests">
                                                 <i class="bi bi-filetype-py"></i>
                                             </a>
@@ -1271,21 +1272,42 @@ function openDeleteTestCaseModal(testCaseId, testCaseName) {
 
 function applyCodeToggleMode(btn, mode) {
     const icon = btn.querySelector('i');
-    const resolvedMode = mode === 'playwright' ? 'playwright' : 'requests';
+    const resolvedMode = (mode === 'playwright' || mode === 'robot') ? mode : 'requests';
     const actionsWrap = btn.closest('.testcase-actions');
     const viewLink = actionsWrap ? actionsWrap.querySelector('.testcase-view-link') : null;
     btn.dataset.mode = resolvedMode;
-    btn.href = resolvedMode === 'playwright' ? btn.dataset.playwrightUrl : btn.dataset.requestsUrl;
-    btn.title = resolvedMode === 'playwright' ? 'Selected: Playwright API + UI' : 'Selected: Python Requests';
+    if (resolvedMode === 'playwright') {
+        btn.href = btn.dataset.playwrightUrl;
+        btn.title = 'Selected: Playwright API + UI';
+    } else if (resolvedMode === 'robot') {
+        btn.href = btn.dataset.robotUrl;
+        btn.title = 'Selected: Robot Framework';
+    } else {
+        btn.href = btn.dataset.requestsUrl;
+        btn.title = 'Selected: Python Requests';
+    }
     btn.classList.toggle('btn-outline-success', resolvedMode === 'playwright');
-    btn.classList.toggle('btn-outline-dark', resolvedMode !== 'playwright');
+    btn.classList.toggle('btn-outline-info', resolvedMode === 'robot');
+    btn.classList.toggle('btn-outline-dark', resolvedMode === 'requests');
     if (icon) {
-        icon.className = resolvedMode === 'playwright' ? 'bi bi-browser-chrome' : 'bi bi-filetype-py';
+        if (resolvedMode === 'playwright') {
+            icon.className = 'bi bi-browser-chrome';
+        } else if (resolvedMode === 'robot') {
+            icon.className = 'bi bi-robot';
+        } else {
+            icon.className = 'bi bi-filetype-py';
+        }
     }
     if (viewLink) {
         const baseUrl = viewLink.dataset.baseUrl || '';
         viewLink.href = baseUrl + '?tab=details&code_mode=' + resolvedMode;
-        viewLink.title = resolvedMode === 'playwright' ? 'View Details (Playwright mode selected)' : 'View Details (Python Requests mode selected)';
+        if (resolvedMode === 'playwright') {
+            viewLink.title = 'View Details (Playwright mode selected)';
+        } else if (resolvedMode === 'robot') {
+            viewLink.title = 'View Details (Robot mode selected)';
+        } else {
+            viewLink.title = 'View Details (Python Requests mode selected)';
+        }
     }
 }
 
@@ -1297,8 +1319,10 @@ function initTestcaseCodeToggles() {
 
         btn.addEventListener('click', function(e) {
             e.preventDefault();
-            const currentMode = btn.dataset.mode === 'playwright' ? 'playwright' : 'requests';
-            const nextMode = currentMode === 'playwright' ? 'requests' : 'playwright';
+            const currentMode = (btn.dataset.mode === 'playwright' || btn.dataset.mode === 'robot') ? btn.dataset.mode : 'requests';
+            const nextMode = currentMode === 'requests'
+                ? 'playwright'
+                : (currentMode === 'playwright' ? 'robot' : 'requests');
             localStorage.setItem(storageKey, nextMode);
             applyCodeToggleMode(btn, nextMode);
         });

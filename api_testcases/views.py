@@ -979,7 +979,7 @@ def _safe_download_name(raw_name, fallback):
     return cleaned or fallback
 
 
-def _resolve_testcase_runtime_context(tc):
+def _resolve_testcase_runtime_context(tc, refresh_oauth_token=False):
     env = Environment.objects.filter(is_active=True).order_by('id').first()
     if not env:
         env = Environment.objects.order_by('id').first()
@@ -1050,6 +1050,31 @@ def _resolve_testcase_runtime_context(tc):
         auth_type = env.auth_type if env else 'none'
         auth_creds = _safe_json_loads(env.auth_credentials if env else '', {})
 
+    if refresh_oauth_token and auth_type in ('oauth2', 'bearer'):
+        token = auth_creds.get('token', '')
+        if auth_creds.get('token_url') and auth_creds.get('client_id') and auth_creds.get('client_secret'):
+            refreshed_token, refresh_error = fetch_oauth2_access_token(
+                auth_creds.get('token_url'),
+                auth_creds.get('client_id'),
+                auth_creds.get('client_secret'),
+            )
+            if not refresh_error and refreshed_token:
+                token = refreshed_token
+                auth_creds['token'] = refreshed_token
+
+                if auth_source == 'module' and module:
+                    module.oauth2_current_token = refreshed_token
+                    module.oauth2_token_updated_at = timezone.now()
+                    module.save(update_fields=['oauth2_current_token', 'oauth2_token_updated_at', 'updated_at'])
+                elif auth_source == 'environment' and env:
+                    env.auth_credentials = json.dumps(auth_creds, ensure_ascii=False)
+                    env.save(update_fields=['auth_credentials', 'updated_at'])
+                elif auth_source == 'testcase':
+                    tc.auth_credentials = json.dumps(auth_creds, ensure_ascii=False)
+                    tc.save(update_fields=['auth_credentials', 'updated_at'])
+
+        auth_creds['token'] = token
+
     headers_for_request = dict(headers)
     params_for_request = dict(params)
     auth, auth_error = _apply_auth_to_request(auth_type, auth_creds, headers_for_request, params_for_request)
@@ -1070,7 +1095,7 @@ def _resolve_testcase_runtime_context(tc):
     }
 
 
-def _request_body_snippet_parts(tc):
+def _request_body_snippet_parts(tc, payload_json_filename=None):
     form_data_rows = _safe_json_loads(tc.form_data, [])
     file_rows = [row for row in form_data_rows if row.get('type') == 'file' and row.get('key')]
     text_rows = [row for row in form_data_rows if row.get('type') != 'file' and row.get('key')]
@@ -1105,7 +1130,13 @@ def _request_body_snippet_parts(tc):
     parsed_body = _safe_json_loads(body_text, None)
     if isinstance(parsed_body, (dict, list)):
         extra_imports.append('import json')
-        body_lines.append("    payload = json.loads(r'''" + body_text + "''')")
+        if payload_json_filename:
+            body_lines.append(f"    payload_path = Path(__file__).with_name({payload_json_filename!r})")
+            body_lines.append("    with open(payload_path, 'r', encoding='utf-8') as handle:")
+            body_lines.append('        payload = json.load(handle)')
+            notes.append(f"Payload is loaded from {payload_json_filename}.")
+        else:
+            body_lines.append("    payload = json.loads(r'''" + body_text + "''')")
         request_parts.append('json=payload')
         body_mode = 'json'
     else:
@@ -1203,12 +1234,29 @@ def _generated_response_output_helper_lines(base_name):
     ]
 
 
-def _build_requests_snippet(tc):
-    runtime = _resolve_testcase_runtime_context(tc)
+def _requests_payload_json_filename(tc):
+    safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
+    return f'{safe_name}_payload.json'
+
+
+def _requests_payload_json_text(tc):
+    body_text = (tc.request_body or '').strip()
+    parsed_body = _safe_json_loads(body_text, None)
+    if isinstance(parsed_body, (dict, list)):
+        return json.dumps(parsed_body, indent=2, ensure_ascii=False) + '\n'
+    return None
+
+
+def _build_requests_snippet(tc, refresh_oauth_token=False):
+    runtime = _resolve_testcase_runtime_context(tc, refresh_oauth_token=refresh_oauth_token)
     imports = ['import csv', 'import json', 'from datetime import datetime', 'from pathlib import Path', 'import requests', 'import urllib3']
     auth_imports, auth_lines, auth_request_parts, auth_notes = _requests_auth_lines(runtime)
     imports.extend(auth_imports)
-    body_lines, body_request_parts, body_notes, body_imports, _body_mode = _request_body_snippet_parts(tc)
+    payload_json_filename = _requests_payload_json_filename(tc)
+    body_lines, body_request_parts, body_notes, body_imports, _body_mode = _request_body_snippet_parts(
+        tc,
+        payload_json_filename=payload_json_filename,
+    )
     imports.extend(body_imports)
     imports = list(dict.fromkeys(imports))
 
@@ -1378,12 +1426,81 @@ def _build_playwright_snippet(tc):
     return '\n'.join(lines).rstrip() + '\n'
 
 
-def _build_generated_snippet(tc, snippet_type):
+def _build_robot_snippet(tc, refresh_oauth_token=False):
+    runtime = _resolve_testcase_runtime_context(tc, refresh_oauth_token=refresh_oauth_token)
+    parsed_url = urlparse(runtime.get('url') or '')
+    if parsed_url.scheme and parsed_url.netloc:
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        endpoint = parsed_url.path or '/'
+    else:
+        base_url = runtime.get('url') or ''
+        endpoint = '/'
+
+    method = (tc.http_method or 'GET').upper()
+    method_keyword = {
+        'GET': 'GET On Session',
+        'POST': 'POST On Session',
+        'PUT': 'PUT On Session',
+        'PATCH': 'PATCH On Session',
+        'DELETE': 'DELETE On Session',
+    }.get(method, 'GET On Session')
+
+    lines = [
+        '*** Settings ***',
+        'Library    RequestsLibrary',
+        'Library    OperatingSystem',
+        'Library    BuiltIn',
+        'Library    Collections',
+        '',
+        '*** Variables ***',
+        f'${{BASE_URL}}    {base_url}',
+        f'${{ENDPOINT}}    {endpoint}',
+        '',
+        '*** Test Cases ***',
+        f'{tc.name}',
+        '    Create Session    api    ${BASE_URL}    verify=${False}',
+    ]
+
+    headers_json = json.dumps(runtime.get('headers') or {}, ensure_ascii=False)
+    params_json = json.dumps(runtime.get('params') or {}, ensure_ascii=False)
+    lines.append(f"    ${{headers}}=    Evaluate    json.loads('''{headers_json}''')    json")
+    lines.append(f"    ${{params}}=    Evaluate    json.loads('''{params_json}''')    json")
+
+    body_json_text = _requests_payload_json_text(tc)
+    if body_json_text is not None:
+        payload_filename = _requests_payload_json_filename(tc)
+        lines.append(f'    ${{payload_file}}=    Set Variable    ${{CURDIR}}${{/}}{payload_filename}')
+        lines.append('    ${payload_raw}=    Get File    ${payload_file}')
+        lines.append("    ${payload}=    Evaluate    json.loads(r'''${payload_raw}''')    json")
+
+    request_args = ['api', '${ENDPOINT}', 'headers=${headers}', 'params=${params}']
+    if body_json_text is not None and method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+        request_args.append('json=${payload}')
+
+    lines.append(f"    ${{response}}=    {method_keyword}    {'    '.join(request_args)}")
+    lines.append('    Log    Status: ${response.status_code}')
+    lines.append('    Log    ${response.text}')
+
+    if tc.expected_status_code:
+        lines.append(f'    Should Be Equal As Integers    ${{response.status_code}}    {tc.expected_status_code}')
+    else:
+        lines.append('    Should Be True    ${response.ok}')
+
+    if tc.expected_response_content:
+        expected_text = str(tc.expected_response_content).replace('\n', ' ')
+        lines.append(f'    Should Contain    ${{response.text}}    {expected_text}')
+
+    return '\n'.join(lines).rstrip() + '\n'
+
+
+def _build_generated_snippet(tc, snippet_type, refresh_oauth_token=False):
     snippet_type = (snippet_type or '').strip().lower()
     if snippet_type == 'requests':
-        return _build_requests_snippet(tc)
+        return _build_requests_snippet(tc, refresh_oauth_token=refresh_oauth_token)
     if snippet_type == 'playwright':
         return _build_playwright_snippet(tc)
+    if snippet_type == 'robot':
+        return _build_robot_snippet(tc, refresh_oauth_token=refresh_oauth_token)
     raise ValueError(f'Unsupported snippet type: {snippet_type}')
 
 
@@ -2546,11 +2663,11 @@ def testcase_detail(request, pk):
     expected_key_pairs = _parse_form_data_rows(tc.form_data)
     selected_tab = (request.GET.get('tab') or 'details').strip().lower()
     selected_code_mode = (request.GET.get('code_mode') or '').strip().lower()
-    if selected_tab not in {'details', 'executions', 'requests', 'playwright'}:
+    if selected_tab not in {'details', 'executions', 'requests', 'playwright', 'robot'}:
         selected_tab = 'details'
-    if selected_tab in {'requests', 'playwright'}:
+    if selected_tab in {'requests', 'playwright', 'robot'}:
         code_view_mode = selected_tab
-    elif selected_tab == 'details' and selected_code_mode in {'requests', 'playwright'}:
+    elif selected_tab == 'details' and selected_code_mode in {'requests', 'playwright', 'robot'}:
         code_view_mode = selected_code_mode
     else:
         code_view_mode = ''
@@ -2562,6 +2679,7 @@ def testcase_detail(request, pk):
         'snippet_environment': snippet_runtime.get('environment'),
         'requests_snippet': _build_requests_snippet(tc),
         'playwright_snippet': _build_playwright_snippet(tc),
+        'robot_snippet': _build_robot_snippet(tc),
         'selected_tab': selected_tab,
         'code_view_mode': code_view_mode,
     }
@@ -2571,9 +2689,25 @@ def testcase_detail(request, pk):
 @login_required
 def testcase_download_requests_py(request, pk):
     tc = get_object_or_404(TestCase, pk=pk)
-    response = HttpResponse(_build_requests_snippet(tc), content_type='text/x-python; charset=utf-8')
     safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
-    response['Content-Disposition'] = f'attachment; filename="{safe_name}_requests.py"'
+    script_text = _build_requests_snippet(tc, refresh_oauth_token=True)
+    payload_json_text = _requests_payload_json_text(tc)
+
+    if payload_json_text is None:
+        response = HttpResponse(script_text, content_type='text/x-python; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{safe_name}_requests.py"'
+        return response
+
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f'{safe_name}_requests.py', script_text)
+        zf.writestr(_requests_payload_json_filename(tc), payload_json_text)
+
+    response = HttpResponse(buffer.getvalue(), content_type='application/zip')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_requests_bundle.zip"'
     return response
 
 
@@ -2587,6 +2721,31 @@ def testcase_download_playwright_py(request, pk):
 
 
 @login_required
+def testcase_download_robot(request, pk):
+    tc = get_object_or_404(TestCase, pk=pk)
+    safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
+    script_text = _build_robot_snippet(tc, refresh_oauth_token=True)
+    payload_json_text = _requests_payload_json_text(tc)
+
+    if payload_json_text is None:
+        response = HttpResponse(script_text, content_type='text/plain; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{safe_name}.robot"'
+        return response
+
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f'{safe_name}.robot', script_text)
+        zf.writestr(_requests_payload_json_filename(tc), payload_json_text)
+
+    response = HttpResponse(buffer.getvalue(), content_type='application/zip')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_robot_bundle.zip"'
+    return response
+
+
+@login_required
 @role_required(['admin', 'tester'])
 def testcase_run_generated_py(request, pk, snippet_type):
     if request.method != 'POST':
@@ -2594,20 +2753,45 @@ def testcase_run_generated_py(request, pk, snippet_type):
 
     tc = get_object_or_404(TestCase, pk=pk)
     try:
-        script_text = _build_generated_snippet(tc, snippet_type)
+        script_text = _build_generated_snippet(
+            tc,
+            snippet_type,
+            refresh_oauth_token=(snippet_type or '').strip().lower() in {'requests', 'robot'},
+        )
     except ValueError as exc:
         return JsonResponse({'error': str(exc)}, status=400)
 
     safe_name = _safe_download_name(tc.name, f'testcase_{tc.pk}')
-    file_suffix = '_playwright.py' if snippet_type == 'playwright' else '_requests.py'
+    snippet_type = (snippet_type or '').strip().lower()
+    if snippet_type == 'playwright':
+        file_suffix = '_playwright.py'
+    elif snippet_type == 'robot':
+        file_suffix = '.robot'
+    else:
+        file_suffix = '_requests.py'
+
     temp_path = None
+    temp_payload_path = None
     try:
         with tempfile.NamedTemporaryFile('w', suffix=file_suffix, prefix=f'{safe_name}_', delete=False, encoding='utf-8') as handle:
             handle.write(script_text)
             temp_path = handle.name
 
+        if snippet_type in {'requests', 'robot'}:
+            payload_json_text = _requests_payload_json_text(tc)
+            if payload_json_text is not None:
+                payload_name = _requests_payload_json_filename(tc)
+                temp_payload_path = str(Path(temp_path).with_name(payload_name))
+                with open(temp_payload_path, 'w', encoding='utf-8') as payload_file:
+                    payload_file.write(payload_json_text)
+
+        if snippet_type == 'robot':
+            exec_command = [sys.executable, '-m', 'robot', temp_path]
+        else:
+            exec_command = [sys.executable, temp_path]
+
         result = subprocess.run(
-            [sys.executable, temp_path],
+            exec_command,
             capture_output=True,
             text=True,
             cwd=str(Path(__file__).resolve().parent.parent),
@@ -2643,6 +2827,11 @@ def testcase_run_generated_py(request, pk, snippet_type):
         if temp_path:
             try:
                 os.remove(temp_path)
+            except OSError:
+                pass
+        if temp_payload_path:
+            try:
+                os.remove(temp_payload_path)
             except OSError:
                 pass
 
