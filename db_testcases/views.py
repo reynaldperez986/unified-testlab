@@ -95,17 +95,59 @@ def _status_theme(status):
     }
 
 
+def _expected_values_from_text(raw_expected):
+    raw = str(raw_expected or "").strip()
+    if not raw:
+        return []
+
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                values = [str(item).strip() for item in parsed]
+                return [value for value in values if value]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    if "\n" in raw or "\r" in raw:
+        values = [segment.strip() for segment in raw.splitlines()]
+        values = [value for value in values if value]
+        if values:
+            return values
+
+    return [raw]
+
+
 def _execution_report_payload(execution):
     conn = execution.test_case.connection
     actual_text = execution.actual_value or "-"
-    expected_text = execution.test_case.expected_value or "-"
+    expected_values = _expected_values_from_text(execution.test_case.expected_value)
+    expected_text = "\n".join(expected_values) if expected_values else "-"
+    expected_key_pairs = "-"
+    try:
+        rows = json.loads(getattr(execution.test_case, "form_data", "[]") or "[]")
+        parts = []
+        for row in rows or []:
+            key = str((row or {}).get("key", "")).strip()
+            if not key:
+                continue
+            value = str((row or {}).get("value", "")).strip()
+            parts.append(f"{key}={value}" if value else key)
+        if parts:
+            expected_key_pairs = "\n".join(parts)
+    except Exception:
+        expected_key_pairs = "-"
+
     mismatch_summary = ""
-    if expected_text and expected_text != "-":
+    if expected_values:
         actual_norm = str(actual_text)
-        expected_norm = str(expected_text)
-        if expected_norm not in actual_norm:
+        missing_expected = [str(expected_value) for expected_value in expected_values if str(expected_value) not in actual_norm]
+        if missing_expected:
+            expected_preview = " | ".join(missing_expected[:5])
+            if len(missing_expected) > 5:
+                expected_preview += " | ..."
             preview = actual_norm if len(actual_norm) <= 240 else (actual_norm[:237] + "...")
-            mismatch_summary = f"Expected '{expected_norm}' was not found in actual value '{preview}'."
+            mismatch_summary = f"Expected value(s) '{expected_preview}' were not found in actual value '{preview}'."
 
     return {
         "execution_id": str(execution.id),
@@ -114,6 +156,7 @@ def _execution_report_payload(execution):
         "test_case": execution.test_case.name,
         "test_type": execution.test_case.get_test_type_display(),
         "expected_value": expected_text,
+        "expected_key_pairs": expected_key_pairs,
         "mismatch_summary": mismatch_summary,
         "actual_value": actual_text,
         "query_return_results": _actual_value_to_csv_text(actual_text),
@@ -664,6 +707,7 @@ def _clone_folder_subtree(source_folder, target_parent):
             table_name=test.table_name,
             query=test.query,
             expected_value=test.expected_value,
+            form_data=test.form_data,
             comparison_operator=test.comparison_operator,
             is_active=test.is_active,
             notes=test.notes,
@@ -1018,6 +1062,36 @@ def global_test_data_page(request):
             "can_manage": can_manage_tests(request.user),
         },
     )
+
+
+@login_required
+def db_global_field_values(request):
+    """Return all global test-data field/value pairs for autocomplete in DB testcase form."""
+    rows = []
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COALESCE(field_name, '') AS field_name,
+                       COALESCE(value, '') AS value
+                  FROM data
+                 WHERE COALESCE(is_global, FALSE) = TRUE
+                   AND TRIM(COALESCE(field_name, '')) <> ''
+                 ORDER BY field_name, id DESC
+                LIMIT 10000
+                """
+            )
+            seen = set()
+            for field_name, value in cur.fetchall():
+                key = (field_name or '').strip()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                rows.append({"field_name": key, "value": value or ''})
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": str(exc), "rows": []}, status=500)
+
+    return JsonResponse({"ok": True, "rows": rows})
 
 
 @role_required("Admin", "Tester")
@@ -1421,6 +1495,7 @@ def testcase_duplicate(request, pk):
         table_name=source.table_name,
         query=source.query,
         expected_value=source.expected_value,
+        form_data=source.form_data,
         comparison_operator=source.comparison_operator,
         is_active=source.is_active,
         notes=source.notes,
@@ -1632,6 +1707,7 @@ def execution_report_csv(request, pk):
     writer.writerow(["Test Case", execution.test_case.name])
     writer.writerow(["Test Type", execution.test_case.get_test_type_display()])
     writer.writerow(["Expected Value", execution.test_case.expected_value or "-"])
+    writer.writerow(["Expected key-pair value", payload.get("expected_key_pairs") or "-"])
     writer.writerow(["Actual Value", execution.actual_value])
     if payload.get("mismatch_summary"):
         writer.writerow(["Mismatch Details", payload["mismatch_summary"]])
@@ -1656,8 +1732,6 @@ def execution_report_doc(request, pk):
     )
     payload = _execution_report_payload(execution)
     actual_preview = payload["actual_value"]
-    if len(actual_preview) > 320:
-        actual_preview = actual_preview[:317] + "..."
     status_theme = _status_theme(payload["status"])
     doc_html = [
         "<html><head><meta charset='utf-8'><title>Execution Report</title>",
@@ -1694,6 +1768,7 @@ def execution_report_doc(request, pk):
         f"<tr><td class='label'>Test Case</td><td>{html_escape(payload['test_case'])}</td></tr>",
         f"<tr><td class='label'>Test Type</td><td>{html_escape(payload['test_type'])}</td></tr>",
         f"<tr><td class='label'>Expected Value</td><td><div class='value-wrap'>{html_escape(payload.get('expected_value', '-'))}</div></td></tr>",
+        f"<tr><td class='label'>Expected key-pair value</td><td><div class='value-wrap'>{html_escape(payload.get('expected_key_pairs', '-'))}</div></td></tr>",
         f"<tr><td class='label'>Actual Value</td><td><div class='value-wrap'>{html_escape(actual_preview)}</div></td></tr>",
         f"<tr><td class='label'>Mismatch Details</td><td><div class='value-wrap'>{html_escape(payload.get('mismatch_summary') or '-')}</div></td></tr>",
         "</table>",
@@ -1718,6 +1793,10 @@ def execution_report_doc(request, pk):
         "<h3>Query</h3>",
         f"<div class='mono'>{html_escape(payload['query'])}</div>",
         "</div>",
+        "<div class='card wide'>",
+        "<h3>Query Return/Results</h3>",
+        f"<div class='mono'>{html_escape(payload.get('query_return_results') or payload.get('actual_value') or '-')}</div>",
+        "</div>",
         "</div>",
         "</div></body></html>",
     ]
@@ -1735,9 +1814,106 @@ def execution_report_pdf(request, pk):
         pk=pk,
     )
     payload = _execution_report_payload(execution)
-    pdf_bytes = _modern_pdf_from_payload(payload)
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+    import io
 
-    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    mono = ParagraphStyle("mono", parent=styles["Normal"], fontName="Courier", fontSize=7, leading=10)
+    h1 = ParagraphStyle("h1", parent=styles["Heading1"], textColor=colors.HexColor("#0f766e"), fontSize=12, spaceBefore=12)
+    title_style = ParagraphStyle("title", parent=styles["Title"], textColor=colors.HexColor("#0f172a"), fontSize=18)
+
+    def _table_preview(value, max_chars=800):
+        text = str(value or "-")
+        if len(text) > max_chars:
+            return text[: max_chars - 3] + "..."
+        return text
+
+    elements = [Paragraph("Execution Report", title_style), Spacer(1, 0.3 * cm)]
+    elements.append(Paragraph(f"Result: {payload['status']}", styles["Normal"]))
+
+    elements.append(Paragraph("Execution Snapshot", h1))
+    snapshot_data = [
+        ["Field", "Value"],
+        ["Execution ID", payload["execution_id"]],
+        ["Executed At", payload["executed_at"]],
+        ["Status", payload["status"]],
+        ["Test Case", payload["test_case"]],
+        ["Test Type", payload["test_type"]],
+        ["Expected Value", payload.get("expected_value") or "-"],
+        [
+            "Expected key-pair value",
+            Paragraph(_table_preview(payload.get("expected_key_pairs") or "-").replace("\n", "<br/>"), mono),
+        ],
+        [
+            "Actual Value",
+            Paragraph(_table_preview(payload.get("actual_value") or "-").replace("\n", "<br/>"), mono),
+        ],
+        ["Mismatch Details", _table_preview(payload.get("mismatch_summary") or "-")],
+    ]
+    snapshot_table = Table(snapshot_data, colWidths=[5 * cm, 11.5 * cm])
+    snapshot_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8fafc"), colors.white]),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dbe3ec")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(snapshot_table)
+
+    elements.append(Paragraph("Connection", h1))
+    conn = payload["connection"]
+    conn_data = [
+        ["Field", "Value"],
+        ["Name", conn["name"]],
+        ["DB Type", conn["db_type"]],
+        ["Host", conn["host"]],
+        ["Port", conn["port"]],
+        ["Database", conn["database_name"]],
+        ["Service", conn["service_name"]],
+        ["Username", conn["username"]],
+    ]
+    conn_table = Table(conn_data, colWidths=[5 * cm, 11.5 * cm])
+    conn_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8fafc"), colors.white]),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dbe3ec")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(conn_table)
+
+    elements.append(Paragraph("Details", h1))
+    elements.append(Paragraph((payload.get("details") or "-").replace("\n", "<br/>"), mono))
+    elements.append(Paragraph("Query", h1))
+    elements.append(Paragraph((payload.get("query") or "-").replace("\n", "<br/>"), mono))
+    elements.append(Paragraph("Query Return/Results", h1))
+    elements.append(Paragraph((payload.get("query_return_results") or payload.get("actual_value") or "-").replace("\n", "<br/>"), mono))
+
+    doc.build(elements)
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
     base_name = _download_base_name(execution.test_case.name)
     response["Content-Disposition"] = f'attachment; filename="{base_name}.pdf"'
     return response

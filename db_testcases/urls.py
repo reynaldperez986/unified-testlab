@@ -18,6 +18,7 @@ urlpatterns = [
     path("connections/<int:pk>/test/", views.connection_test, name="connection_test"),
     path("testcases/", views.testcase_list, name="testcase_list"),
     path("testcases/global-data/", views.global_test_data_page, name="global_test_data_page"),
+    path("testcases/global-field-values/", views.db_global_field_values, name="db_global_field_values"),
     path("testcases/new/", views.testcase_create, name="testcase_create"),
     path("testcases/<int:pk>/", views.testcase_detail, name="testcase_detail"),
     path("testcases/folders/new/", views.project_folder_create, name="project_folder_create"),

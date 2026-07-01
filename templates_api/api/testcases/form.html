@@ -298,6 +298,7 @@ function addFormDataRow(key='', value='') {
     tbody.appendChild(tr);
     const keyInput = tr.querySelector('.fd-key');
     if (keyInput) {
+        keyInput.addEventListener('input', () => applyGlobalValueForRow(tr));
         keyInput.addEventListener('change', () => applyGlobalValueForRow(tr));
         keyInput.addEventListener('blur', () => applyGlobalValueForRow(tr));
     }

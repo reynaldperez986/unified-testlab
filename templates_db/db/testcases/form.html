@@ -55,7 +55,41 @@
                 <div class="field-wrap" data-type-field="expected_value">
                     <label class="field-label" for="{{ form.expected_value.id_for_label }}">{{ form.expected_value.label }}</label>
                     {{ form.expected_value }}
+                    <div class="table-responsive mb-2">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="expectedValueTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expectedValueBody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnAddExpectedValueRow">
+                        Add Value
+                    </button>
                     {% for error in form.expected_value.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+                </div>
+
+                {{ form.form_data }}
+
+                <div class="field-wrap span-2" data-type-field="form_data">
+                    <label class="field-label mb-2">Form Data <span class="text-muted">(Expeceted key-pair value)</span></label>
+                    <div class="table-responsive mb-2">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="formDataTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 45%;">Key</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="formDataBody"></tbody>
+                        </table>
+                    </div>
+                    <datalist id="formDataGlobalKeyOptions"></datalist>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnAddFormDataRow">
+                        Add Row
+                    </button>
                 </div>
 
                 <div class="field-wrap span-2" data-type-field="table_name">
@@ -108,9 +142,196 @@
         var tableEl = document.getElementById("{{ form.table_name.id_for_label }}");
         var queryEl = document.getElementById("{{ form.query.id_for_label }}");
         var expectedEl = document.getElementById("{{ form.expected_value.id_for_label }}");
+        var expectedValueBodyEl = document.getElementById("expectedValueBody");
+        var addExpectedValueBtn = document.getElementById("btnAddExpectedValueRow");
+        var formDataHiddenEl = document.getElementById("{{ form.form_data.id_for_label }}");
+        var formDataBodyEl = document.getElementById("formDataBody");
+        var addFormDataRowBtn = document.getElementById("btnAddFormDataRow");
+        var formDataKeyDatalist = document.getElementById("formDataGlobalKeyOptions");
         var operatorEl = document.getElementById("{{ form.comparison_operator.id_for_label }}");
+        var globalFieldValueMap = {};
         if (!typeEl) {
             return;
+        }
+
+        function loadGlobalFieldValues() {
+            var url = "{% url 'db:db_global_field_values' %}";
+            return fetch(url, { cache: "no-store" })
+                .then(function (response) {
+                    if (!response.ok) {
+                        return { ok: false, rows: [] };
+                    }
+                    return response.json();
+                })
+                .then(function (data) {
+                    var rows = Array.isArray(data.rows) ? data.rows : [];
+                    globalFieldValueMap = {};
+                    if (formDataKeyDatalist) {
+                        formDataKeyDatalist.innerHTML = "";
+                    }
+
+                    rows.forEach(function (row) {
+                        var key = String((row || {}).field_name || "").trim();
+                        if (!key) {
+                            return;
+                        }
+                        globalFieldValueMap[key] = String((row || {}).value || "");
+                        if (formDataKeyDatalist) {
+                            var opt = document.createElement("option");
+                            opt.value = key;
+                            formDataKeyDatalist.appendChild(opt);
+                        }
+                    });
+                })
+                .catch(function () {
+                    globalFieldValueMap = {};
+                });
+        }
+
+        function applyGlobalValueForRow(rowEl) {
+            if (!rowEl) {
+                return;
+            }
+            var keyEl = rowEl.querySelector(".fd-key");
+            var valueEl = rowEl.querySelector(".fd-value");
+            if (!keyEl || !valueEl) {
+                return;
+            }
+            var key = (keyEl.value || "").trim();
+            if (!key) {
+                return;
+            }
+            if (Object.prototype.hasOwnProperty.call(globalFieldValueMap, key)) {
+                valueEl.value = globalFieldValueMap[key];
+                serializeFormData();
+            }
+        }
+
+        function escHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function serializeFormData() {
+            if (!formDataHiddenEl || !formDataBodyEl) {
+                return;
+            }
+            var rows = [];
+            formDataBodyEl.querySelectorAll("tr").forEach(function (tr) {
+                var keyEl = tr.querySelector(".fd-key");
+                var valueEl = tr.querySelector(".fd-value");
+                var key = keyEl ? (keyEl.value || "").trim() : "";
+                var value = valueEl ? (valueEl.value || "") : "";
+                if (key || value) {
+                    rows.push({ key: key, value: value });
+                }
+            });
+            formDataHiddenEl.value = JSON.stringify(rows);
+        }
+
+        function serializeExpectedValues() {
+            if (!expectedEl || !expectedValueBodyEl) {
+                return;
+            }
+            var values = [];
+            expectedValueBodyEl.querySelectorAll(".ev-value").forEach(function (inputEl) {
+                var value = (inputEl.value || "").trim();
+                if (value) {
+                    values.push(value);
+                }
+            });
+            expectedEl.value = JSON.stringify(values);
+        }
+
+        function addExpectedValueRow(value) {
+            if (!expectedValueBodyEl) {
+                return;
+            }
+            var tr = document.createElement("tr");
+            tr.innerHTML =
+                '<td><div class="input-group input-group-sm">' +
+                '<input type="text" class="form-control ev-value" placeholder="expected value" value="' + escHtml(value || "") + '">' +
+                '<button type="button" class="btn btn-outline-danger ev-remove" title="Remove value">Delete</button>' +
+                '</div></td>';
+            expectedValueBodyEl.appendChild(tr);
+
+            var valueEl = tr.querySelector(".ev-value");
+            if (valueEl) {
+                valueEl.addEventListener("input", serializeExpectedValues);
+                valueEl.addEventListener("change", serializeExpectedValues);
+            }
+
+            var removeBtn = tr.querySelector(".ev-remove");
+            if (removeBtn) {
+                removeBtn.addEventListener("click", function () {
+                    tr.remove();
+                    if (!expectedValueBodyEl.querySelector("tr")) {
+                        addExpectedValueRow("");
+                    }
+                    serializeExpectedValues();
+                });
+            }
+            serializeExpectedValues();
+        }
+
+        function parseExpectedValues(rawValue) {
+            var raw = String(rawValue || "").trim();
+            if (!raw) {
+                return [];
+            }
+            if (raw.charAt(0) === "[") {
+                try {
+                    var parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        return parsed
+                            .map(function (item) { return String(item || "").trim(); })
+                            .filter(function (item) { return !!item; });
+                    }
+                } catch (_err) {
+                    // Fall back to line parsing.
+                }
+            }
+            return raw
+                .split(/\r?\n/)
+                .map(function (item) { return String(item || "").trim(); })
+                .filter(function (item) { return !!item; });
+        }
+
+        function addFormDataRow(key, value) {
+            if (!formDataBodyEl) {
+                return;
+            }
+            var tr = document.createElement("tr");
+            tr.innerHTML =
+                '<td><input type="text" class="form-control form-control-sm fd-key" list="formDataGlobalKeyOptions" placeholder="key" value="' + escHtml(key || "") + '"></td>' +
+                '<td><div class="input-group input-group-sm">' +
+                '<input type="text" class="form-control fd-value" placeholder="value" value="' + escHtml(value || "") + '">' +
+                '<button type="button" class="btn btn-outline-danger fd-remove" title="Remove row">Delete</button>' +
+                '</div></td>';
+            formDataBodyEl.appendChild(tr);
+
+            tr.querySelectorAll("input").forEach(function (inputEl) {
+                inputEl.addEventListener("input", serializeFormData);
+                inputEl.addEventListener("change", serializeFormData);
+            });
+            var keyInput = tr.querySelector(".fd-key");
+            if (keyInput) {
+                keyInput.addEventListener("input", function () { applyGlobalValueForRow(tr); });
+                keyInput.addEventListener("change", function () { applyGlobalValueForRow(tr); });
+                keyInput.addEventListener("blur", function () { applyGlobalValueForRow(tr); });
+            }
+            var removeBtn = tr.querySelector(".fd-remove");
+            if (removeBtn) {
+                removeBtn.addEventListener("click", function () {
+                    tr.remove();
+                    serializeFormData();
+                });
+            }
+            serializeFormData();
         }
 
         function setFieldVisible(fieldName, visible) {
@@ -140,11 +361,61 @@
             setFieldVisible("query", needsQuery);
             setFieldVisible("comparison_operator", needsCompare);
             setFieldVisible("expected_value", needsCompare);
+            setFieldVisible("form_data", needsCompare);
 
             setRequired(tableEl, needsTable);
             setRequired(queryEl, needsQuery);
             setRequired(operatorEl, needsCompare);
-            setRequired(expectedEl, needsCompare);
+            setRequired(expectedEl, false);
+        }
+
+        if (addFormDataRowBtn) {
+            addFormDataRowBtn.addEventListener("click", function () {
+                addFormDataRow("", "");
+            });
+        }
+
+        if (addExpectedValueBtn) {
+            addExpectedValueBtn.addEventListener("click", function () {
+                addExpectedValueRow("");
+            });
+        }
+
+        loadGlobalFieldValues().then(function () {
+            if (formDataBodyEl) {
+                formDataBodyEl.querySelectorAll("tr").forEach(function (tr) {
+                    applyGlobalValueForRow(tr);
+                });
+            }
+        });
+
+        try {
+            var raw = formDataHiddenEl ? (formDataHiddenEl.value || "[]") : "[]";
+            var savedRows = JSON.parse(raw);
+            if (Array.isArray(savedRows) && savedRows.length) {
+                savedRows.forEach(function (row) {
+                    addFormDataRow((row || {}).key || "", (row || {}).value || "");
+                });
+            }
+        } catch (_err) {
+            // Ignore malformed saved payload and keep empty editor.
+        }
+
+        var initialExpectedValues = parseExpectedValues(expectedEl ? expectedEl.value : "");
+        if (initialExpectedValues.length) {
+            initialExpectedValues.forEach(function (value) {
+                addExpectedValueRow(value);
+            });
+        } else {
+            addExpectedValueRow("");
+        }
+
+        var formEl = document.querySelector("form[method='post']");
+        if (formEl) {
+            formEl.addEventListener("submit", function () {
+                serializeExpectedValues();
+                serializeFormData();
+            });
         }
 
         typeEl.addEventListener("change", applyTypeRules);

@@ -74,6 +74,7 @@ class TestCase(models.Model):
     table_name = models.CharField(max_length=255, blank=True)
     query = models.TextField(blank=True)
     expected_value = models.CharField(max_length=255, blank=True)
+    form_data = models.TextField(blank=True, default='[]', help_text='JSON array of expected key/value rows [{key, value}]')
     comparison_operator = models.CharField(max_length=20, choices=Operator.choices, default=Operator.EQ)
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)

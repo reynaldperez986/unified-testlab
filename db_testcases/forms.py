@@ -42,6 +42,7 @@ class TestCaseForm(forms.ModelForm):
             "table_name",
             "query",
             "expected_value",
+            "form_data",
             "comparison_operator",
             "is_active",
             "notes",
@@ -49,6 +50,8 @@ class TestCaseForm(forms.ModelForm):
         widgets = {
             "query": forms.Textarea(attrs={"rows": 4}),
             "notes": forms.Textarea(attrs={"rows": 3}),
+            "expected_value": forms.HiddenInput(),
+            "form_data": forms.HiddenInput(),
         }
 
     def save(self, commit=True):
@@ -76,14 +79,10 @@ class TestCaseForm(forms.ModelForm):
         if test_type == TestCase.TestType.ROW_COUNT:
             if not table_name:
                 self.add_error("table_name", "Table name is required for ROW_COUNT.")
-            if not expected_value:
-                self.add_error("expected_value", "Expected value is required for ROW_COUNT.")
 
         if test_type == TestCase.TestType.QUERY_VALUE:
             if not query:
                 self.add_error("query", "Query is required for QUERY_VALUE.")
-            if not expected_value:
-                self.add_error("expected_value", "Expected value is required for QUERY_VALUE.")
 
         return cleaned_data
 
